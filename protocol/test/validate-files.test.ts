@@ -273,6 +273,92 @@ describe("a hostname must appear in the cited lines", () => {
     expect(inLine(`fetch("https://${HOST}").then((r) => r.json())`)).toBe(true);
   });
 
+  // For an explicit URL the platform URL parser is the judge. Each line puts the claimed
+  // name inside the authority, so the verdict must be the parser's, whatever the form.
+  it("gives an explicit URL the verdict of the URL parser", () => {
+    const schemes = ["https://", "https:", "https:/", "https:///", "https:\\\\", "HTTPS://", "http://", "ws:", "wss://", "ftp://"];
+    const leads = ["", "user@", "user:pw@", "evil.example@", "evil.example:80@", "“", "evil“", "evil!", "(", "x.", "x-"];
+    const tails = [
+      ...["", "/", "/x", ":8443/x", "?q", "#f", ".", "./x", "x/", "-x/"],
+      ...["@evil.example/", ":pw@evil.example/", ";x@evil.example/", "\\@evil.example/"],
+      ...[".evil.example/", "!x.evil.example/", "”.evil.example/", "。evil.example/", "%2eevil.example/"],
+    ];
+    let found = 0;
+    for (const scheme of schemes) {
+      for (const lead of leads) {
+        for (const tail of tails) {
+          const line = `${scheme}${lead}${HOST}${tail}`;
+          const parsed = URL.canParse(line) ? new URL(line).hostname.replace(/\.$/, "") : undefined;
+          expect(inLine(line), line).toBe(parsed === HOST);
+          if (parsed === HOST) found += 1;
+        }
+      }
+    }
+    // Both verdicts occur, so the comparison is not empty.
+    expect(found).toBeGreaterThan(100);
+    expect(found).toBeLessThan(schemes.length * leads.length * tails.length - 100);
+  });
+
+  it("reads an authority with no paired slashes as the URL parser does", () => {
+    expect(inLine(`https:“${HOST}/`)).toBe(false);
+    expect(inLine(`https:/“${HOST}/`)).toBe(false);
+    expect(inLine(`https:${HOST}/`)).toBe(true);
+  });
+
+  it("finds the hostname of an explicit URL that the punctuation of prose follows", () => {
+    for (const line of [
+      `[site](https://${HOST})`,
+      `[site](https://${HOST}).`,
+      `<https://${HOST}>`,
+      `See https://${HOST}, then stop.`,
+      `It calls https://${HOST}.`,
+      `“https://${HOST}”`,
+      `(https://${HOST}/ingest)`,
+    ]) {
+      expect(inLine(line), line).toBe(true);
+    }
+  });
+
+  it("gives a URL with another scheme and two slashes to the parser too", () => {
+    expect(inLine(`git://${HOST}/plugin.git`)).toBe(true);
+    expect(inLine(`redis://user:pw@${HOST}:6379`)).toBe(true);
+    expect(inLine(`ssh://${HOST}@evil.example/`)).toBe(false);
+  });
+
+  it("finds a hostname in a compact list that also holds an at sign", () => {
+    expect(inLine(`targets: ${HOST},admin@status.example`)).toBe(true);
+    expect(inLine(`notify(${HOST},"ops@status.example")`)).toBe(true);
+    expect(inLine(`${HOST},status.example`)).toBe(true);
+  });
+
+  // The cited lines come from a file that may be hostile, so the work must grow with the
+  // size of the lines and no faster.
+  it.each([
+    ["scheme after scheme with nothing between", "https:".repeat(40_000)],
+    ["one URL with a very long authority", `https://${"!".repeat(240_000)}`],
+    ["a short name many times over", "a.b,".repeat(60_000)],
+    ["many small URLs", "https://x.example ".repeat(14_000)],
+    ["a long run of scheme characters", `${"a".repeat(240_000)}://x`],
+  ])("checks %s in a short time", (_what, line) => {
+    const started = performance.now();
+    expect(inLine(line, "nowhere.example")).toBe(false);
+    expect(inLine(`${line} a.b`, "a.b")).toBe(true);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
+  it("counts no name inside an authority that is too long to parse", () => {
+    expect(inLine(`https://${"x!".repeat(1_100)}${HOST}@evil.example/`)).toBe(false);
+    expect(inLine(`https://${"x!".repeat(1_100)}@${HOST}/`)).toBe(false);
+  });
+
+  // The stated limit: with no scheme there is no URL to parse, so the text is prose.
+  it("reads text with no scheme as prose", () => {
+    expect(inLine(`curl ${HOST},x@evil.example`)).toBe(true);
+    expect(inLine(`//evil“${HOST}/`)).toBe(true);
+    expect(inLine(`api.${HOST}`)).toBe(false);
+    expect(inLine(`${HOST}.evil.example`)).toBe(false);
+  });
+
   it("finds the hostname in front of a port", () => {
     expect(inLine(`https://${HOST}:8443/ingest`)).toBe(true);
     expect(inLine(`connect ${HOST}:8443 then mail ops@status.example`)).toBe(true);
