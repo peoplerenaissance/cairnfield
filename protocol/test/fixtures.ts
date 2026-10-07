@@ -54,6 +54,9 @@ type Spelling = readonly [why: string, value: string];
 export const GOOD_NODE_URLS: readonly string[] = [
   NODE_A,
   "https://node.team-a.example:8443",
+  "https://node.team-a.example:4430",
+  "https://node.team-a.example:65535",
+  "https://4node.team-a.example",
   "https://sim.cairnfield.example/nodes/7",
 ];
 
@@ -75,14 +78,20 @@ export const NODE_URLS_OFF_PATTERN: readonly Spelling[] = [
   ["a hostname outside ASCII", "https://nöde.team-a.example"],
   ["an address in brackets", "https://[::1]"],
   ["another scheme", "http://node.team-a.example"],
+  ["a port of 443", "https://node.team-a.example:443"],
+  ["a port of 443 before a path", "https://sim.cairnfield.example:443/nodes/7"],
+  ["a port with a zero in front", "https://node.team-a.example:08443"],
+  ["a port of 0", "https://node.team-a.example:0"],
+  ["a port past 65535", "https://node.team-a.example:65536"],
+  ["a numeric host in short form", "https://127.1"],
+  ["a numeric host in hexadecimal", "https://0x7f.1"],
+  ["an address in place of a hostname", "https://127.0.0.1"],
+  ["a last label that is a number", "https://node.123"],
 ];
 
-/** Node URL spellings the pattern admits and the validator refuses, because they are not in serialized form. */
+/** A node URL the pattern admits and the validator refuses, because a URL parser cannot read it. */
 export const NODE_URLS_NOT_SERIALIZED: readonly Spelling[] = [
-  ["a port of 443", "https://node.team-a.example:443"],
-  ["a port with a zero in front", "https://node.team-a.example:08443"],
-  ["a port past 65535", "https://node.team-a.example:99999"],
-  ["a numeric host in short form", "https://127.1"],
+  ["a label that is not valid Punycode", "https://xn--a.example"],
 ];
 
 /** Spellings the URL pattern refuses, so the validator and the generated schema refuse them alike. */

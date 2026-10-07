@@ -4,7 +4,8 @@
 // Two rules have no JSON Schema keyword, so they travel as annotations that a plain
 // validator ignores: `x-sorted` on a set, and `x-ordered` on an object whose first named
 // field must not be greater than its second. The 4 KB record limit is not in the schema.
-// Nor is the rule that a URL is in serialized form, which a pattern cannot state.
+// Nor is the rule that a URL is in serialized form, which a pattern cannot state. The
+// node URL pattern does state the one accepted spelling of a node URL in full.
 
 import { SCHEMA_VERSION } from "./enums.ts";
 import type { RecordType } from "./enums.ts";

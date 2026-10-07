@@ -226,6 +226,29 @@ describe("a hostname must appear in the cited lines", () => {
     },
   );
 
+  // A URL parser reads everything between the two slashes, or an at sign, and the claimed
+  // name as part of the hostname, whatever the characters.
+  it.each(["evil“", "“", "evil.“", "evil—", "「", "evil!", "(", "x,"])(
+    "does not take a decoy that follows %j inside the authority of a URL",
+    (lead) => {
+      for (const line of [`https://${lead}${HOST}/`, `https://user@${lead}${HOST}/`, `https:\\\\${lead}${HOST}/`]) {
+        expect(new URL(line).hostname, line).not.toBe(HOST);
+        expect(verdictFor(line), line).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+      }
+    },
+  );
+
+  it("finds a hostname that starts the authority of a URL, or sits outside one", () => {
+    expect(inLine(`https://${HOST}/`)).toBe(true);
+    expect(inLine(`https://user:pw@${HOST}/`)).toBe(true);
+    expect(inLine(`//${HOST}/ingest`)).toBe(true);
+    expect(inLine(`https://cdn.status.example/mirror/${HOST}/x`)).toBe(true);
+    expect(inLine(`https://cdn.status.example/go?to=${HOST}`)).toBe(true);
+    expect(inLine(`HOST=${HOST}`)).toBe(true);
+    expect(inLine(`送信先は「${HOST}」です。`)).toBe(true);
+    expect(inLine(`${HOST}\u00a0status.example`)).toBe(true);
+  });
+
   it("does not take a decoy that a letter outside ASCII makes longer", () => {
     expect(inLine(`https://${HOST}é/`)).toBe(false);
     expect(inLine(`https://${HOST}ｓ/`)).toBe(false);
