@@ -1,0 +1,16 @@
+{
+  "name": "@cairnfield/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Record schemas, limits, validation and patch checks. Pure functions with no platform dependency.",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "generate": "node scripts/generate-schemas.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5"
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cairnfield:schema:1:counter-finding",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": "1"
+    },
+    "type": {
+      "const": "counter-finding"
+    },
+    "component": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "finding": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "reason": {
+      "enum": [
+        "documented-behavior",
+        "not-present-at-lines",
+        "not-reachable",
+        "required-by-documented-feature"
+      ]
+    },
+    "cites": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+)*$",
+          "maxLength": 200
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "path",
+        "start",
+        "end"
+      ],
+      "additionalProperties": false,
+      "x-ordered": [
+        "start",
+        "end"
+      ]
+    },
+    "model": {
+      "enum": [
+        "claude-sonnet-5-5",
+        "claude-haiku-4-5-20251001",
+        "other",
+        "none"
+      ]
+    }
+  },
+  "required": [
+    "version",
+    "type",
+    "component",
+    "finding",
+    "reason",
+    "model"
+  ],
+  "additionalProperties": false
+}

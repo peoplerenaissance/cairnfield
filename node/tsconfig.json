@@ -1,0 +1,23 @@
+{
+  // Self-contained: a deploy button treats this directory as the root of a new repo,
+  // so this file extends nothing outside it.
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "esnext.disposable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["src", "test"]
+}

@@ -1,0 +1,8 @@
+{
+  // Library sources. No Node or Workers types, so a platform import fails the type check.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["es2022", "webworker"]
+  },
+  "include": ["src"]
+}

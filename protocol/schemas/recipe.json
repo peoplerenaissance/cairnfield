@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cairnfield:schema:1:recipe",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": "1"
+    },
+    "type": {
+      "const": "recipe"
+    },
+    "component": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "patches": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "x-sorted": true
+    },
+    "tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    }
+  },
+  "required": [
+    "version",
+    "type",
+    "component",
+    "patches",
+    "tree"
+  ],
+  "additionalProperties": false
+}

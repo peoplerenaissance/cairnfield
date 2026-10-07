@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cairnfield-site",
+  "compatibility_date": "2026-10-05",
+  // Static assets only: there is no Worker script, so no "main".
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  }
+}

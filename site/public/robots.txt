@@ -1,0 +1,11 @@
+# Cairnfield
+# Content signals tell crawlers how this content may be used.
+#   search:   building a search index and linking back
+#   ai-input: using a page as input to an AI answer at request time
+# No preference is stated here about AI training.
+
+User-agent: *
+Content-Signal: search=yes, ai-input=yes
+Allow: /
+
+Sitemap: https://cairnfield.net/sitemap.xml

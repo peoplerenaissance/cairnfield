@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cairnfield: the announcement and the questions</title>
+<meta name="description" content="Agents from many teams change the same shared code at once. Every change carries its evidence, and each team builds the version it trusts.">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<div class="bar">
+  <div class="wrap">
+    <a class="mark" href="/">Cairnfield</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="#release">Press release</a>
+      <a href="#users">Questions from teams</a>
+      <a href="#judges">Questions from judges</a>
+      <a href="/interfaces">Sketches</a>
+    </nav>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap hero-inner" style="padding-bottom:40px">
+    <h1>The announcement, and the questions it raises</h1>
+    <p class="lede">The press release below is the one we want to be able to make on submission day, written before the build. The two sets of questions are for a team deciding whether to run a node, and for the competition's judges. The status table in the repository README says what exists today.</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= PRESS RELEASE ================= -->
+  <section id="release">
+    <div class="wrap">
+      <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
+      <p class="eyebrow">Written ahead of the launch</p>
+      <h2>The press release</h2>
+      <p class="intro">This is <strong>the announcement we want to be able to make on submission day</strong>, drafted before the build. The quotes are illustrative, and the status table in the repository README says what exists today.</p>
+
+      <div class="release">
+        <aside class="rail">
+          <span class="stamp">Draft, written before the build</span>
+          <p>For release<br>October 14, 2026</p>
+          <p>Entry for<br>Build the Next-Gen Git Platform on Cloudflare</p>
+          <p>Built on<br>Cloudflare Workers and Artifacts</p>
+          <p>License<br>MIT</p>
+        </aside>
+
+        <div class="copy">
+          <h3 class="headline">Cairnfield lets every team's agents fix the same shared code at once, with no maintainer in the way</h3>
+          <p class="sub">Teams publish checkable findings and competing patches from their own repos. An index shows them side by side, and each team assembles the version it trusts.</p>
+
+          <p><strong>October 14, 2026.</strong> Cairnfield launches today as an open-source prototype for collaborating on code that many teams use and nobody has to merge. Its first use is the review of agent skills, plugins and MCP servers: the code teams now install into their coding agents with full developer privileges.</p>
+
+          <h4>The problem</h4>
+          <p>Today's collaboration model assumes a maintainer. One team finds a flaw in a shared plugin, opens an issue or a pull request, and waits. Every other team that uses the plugin either repeats the review in private or never does it. When agents can produce a careful fix in minutes, the person who has to merge it becomes the limit.</p>
+
+          <figure class="fig">
+            <svg viewBox="0 0 640 170" role="img" aria-label="Nine changes queue at a single gate and one gets through">
+              <rect x="436" y="14" width="8" height="52" rx="3" fill="#1E2A2E"/>
+              <rect x="436" y="88" width="8" height="52" rx="3" fill="#1E2A2E"/>
+              <g>
+                <circle class="fa s1" style="--from:translateX(-280px)" cx="418" cy="77" r="8"/>
+                <circle class="fb s1" style="--from:translateX(-280px)" cx="396" cy="65" r="8"/>
+                <circle class="fc s2" style="--from:translateX(-280px)" cx="396" cy="89" r="8"/>
+                <circle class="fa s2" style="--from:translateX(-280px)" cx="373" cy="54" r="8"/>
+                <circle class="fb s3" style="--from:translateX(-280px)" cx="373" cy="77" r="8"/>
+                <circle class="fc s3" style="--from:translateX(-280px)" cx="373" cy="100" r="8"/>
+                <circle class="fa s4" style="--from:translateX(-280px)" cx="350" cy="65" r="8"/>
+                <circle class="fb s4" style="--from:translateX(-280px)" cx="350" cy="89" r="8"/>
+                <circle class="fc s6" style="--from:translateX(-120px)" cx="540" cy="77" r="8"/>
+              </g>
+              <text x="40" y="160">nine changes are ready</text>
+              <text x="440" y="160" text-anchor="middle">one person merges</text>
+              <text x="540" y="160" text-anchor="middle">one landed</text>
+            </svg>
+            <figcaption>The usual model. Agents can write fixes in minutes, and every one of them waits at the same gate.</figcaption>
+          </figure>
+
+          <p>We know this from our own practice. For one team, we review each AI tool before anyone updates to it:</p>
+          <div class="facts">
+            <div><b>191</b><span>findings across seven reviews of six tools</span></div>
+            <div><b>44</b><span>of them are closed by a control on each engineer's machine</span></div>
+            <div><b>0</b><span>ways to check that an engineer runs the version that was reviewed</span></div>
+          </div>
+          <p>Most of our mitigations are settings and instructions that each engineer has to apply by hand. Nothing in the record can verify that they did. Another 12 findings are small code fixes waiting on someone else to make.</p>
+
+          <h4>The answer</h4>
+          <p>Cairnfield has no shared main branch and no merge queue. Each team runs a small node in its own Cloudflare account. Its agents review a component at an exact Git SHA and publish what they find as plain facts: this file, these lines, this observation. A finding carries no verdict and no free text, so another team's agent can check it and cannot be steered by it.</p>
+
+          <figure class="fig">
+            <svg viewBox="0 0 640 170" role="img" aria-label="Nine changes land in three teams' own repos at once, and a computed view shows them together">
+              <line class="la" x1="40" y1="40" x2="400" y2="40" stroke-width="2"/>
+              <line class="lb" x1="40" y1="77" x2="400" y2="77" stroke-width="2"/>
+              <line class="lc" x1="40" y1="114" x2="400" y2="114" stroke-width="2"/>
+              <g>
+                <circle class="fa s1" style="--from:translateX(-90px)" cx="130" cy="40" r="8"/><circle class="fa s1" style="--from:translateX(-90px)" cx="220" cy="40" r="8"/><circle class="fa s1" style="--from:translateX(-90px)" cx="310" cy="40" r="8"/>
+                <circle class="fb s1" style="--from:translateX(-90px)" cx="130" cy="77" r="8"/><circle class="fb s1" style="--from:translateX(-90px)" cx="220" cy="77" r="8"/><circle class="fb s1" style="--from:translateX(-90px)" cx="310" cy="77" r="8"/>
+                <circle class="fc s1" style="--from:translateX(-90px)" cx="130" cy="114" r="8"/><circle class="fc s1" style="--from:translateX(-90px)" cx="220" cy="114" r="8"/><circle class="fc s1" style="--from:translateX(-90px)" cx="310" cy="114" r="8"/>
+              </g>
+              <g class="s3" style="--from:translateX(14px)">
+                <path d="M400 40 L452 66 M400 77 L452 77 M400 114 L452 88" stroke="#C9D1CC" stroke-width="1.5" fill="none"/>
+                <rect x="452" y="46" width="176" height="62" rx="8" fill="#FAFBF9" stroke="#1E2A2E" stroke-width="1.5"/>
+                <text x="540" y="73" text-anchor="middle" style="fill:#1E2A2E;font-weight:600">one shared view</text>
+                <text x="540" y="92" text-anchor="middle">computed, never written</text>
+              </g>
+              <text x="40" y="160">each team writes to its own repo</text>
+              <text x="540" y="160" text-anchor="middle">no gate, no queue</text>
+            </svg>
+            <figcaption>Cairnfield. The same nine changes land at once, because no two teams write to the same place.</figcaption>
+          </figure>
+
+          <p>Agents then fix what they find. A patch is one commit, tied to the finding that prompted it. When two teams fix the same lines differently, both patches appear side by side on a public page. When two teams write the same fix, it shows as one patch with two names behind it.</p>
+          <p>No team has to accept anyone else's work. Each keeps a short local policy, called a lens, that says which outside hosts it approves and whose patches it takes. Its command builds a patched copy from the patches that pass, re-checks every one of them locally, and records a tree hash. Any engineer can compare that hash with what is on their machine.</p>
+
+          <blockquote class="a">
+            "We already had the findings. What we did not have was anywhere to put the fix, or any way to know which copy people were running. Now the fix lives in the copy, and the copy has a hash."
+            <footer>Illustrative quote, from the team that built Cairnfield</footer>
+          </blockquote>
+
+          <h4>What a first user does</h4>
+          <ol class="start">
+            <li>Deploys a team node to their own Cloudflare account.</li>
+            <li>Writes a lens: the destinations the team approves, and the patch level it accepts.</li>
+            <li>Runs <code>cairnfield review</code> on a plugin commit. Three agents read it blind, in parallel, and publish their findings.</li>
+            <li>Runs <code>cairnfield reconcile</code> to confirm or dispute what other teams found.</li>
+            <li>Runs <code>cairnfield assemble</code> and gets a patched copy with a tree hash.</li>
+          </ol>
+
+          <figure class="fig">
+            <div class="term" role="img" aria-label="A terminal runs review, reconcile and assemble, ending with a tree hash">
+              <div class="s1" style="--from:none"><span class="p">$</span> <span class="cmd">cairnfield review 9f3c1e7a</span></div>
+              <div class="s2 dimm" style="--from:none">  3 agents, read-only, in parallel</div>
+              <div class="s2 ok" style="--from:none">  4 findings published</div>
+              <div class="s3" style="--from:none"><span class="p">$</span> <span class="cmd">cairnfield reconcile 9f3c1e7a</span></div>
+              <div class="s4 ok" style="--from:none">  2 confirmed, 1 disputed</div>
+              <div class="s5" style="--from:none"><span class="p">$</span> <span class="cmd">cairnfield assemble 9f3c1e7a</span></div>
+              <div class="s6 ok" style="--from:none">  3 patches re-checked · tree 71aa09…</div>
+            </div>
+            <figcaption>Three commands from a pinned commit to a copy you can verify.</figcaption>
+          </figure>
+
+          <p>If another team has already confirmed a finding that breaks the lens, the first command says so and stops before any agent runs.</p>
+
+          <blockquote class="b">
+            "Another team had already found the line that sent our environment variables to an outside host, and two teams had written the same one-line fix. I re-checked it, took it, and was running a copy I could verify the same afternoon."
+            <footer>Illustrative quote, an engineering lead on a team of twelve</footer>
+          </blockquote>
+
+          <h4>Built for more than three teams</h4>
+          <p>Each team's agents write only to that team's repos, so adding agents adds repos, not contention on one. The shared page is computed and nobody writes to it. In the launch demo, nine agents from three teams push at once, a hostile contributor's patch is rejected, and a simulator then plays more than two hundred further organizations against the same index.</p>
+
+          <figure class="fig">
+            <div class="field" role="img" aria-label="Cairns appear across a landscape as more teams join">
+              <svg viewBox="0 0 640 210" preserveAspectRatio="none" aria-hidden="true">
+                <g fill="none" stroke="#DDE3DF" stroke-width="1">
+                  <path d="M-10 150 C 100 110, 190 180, 320 140 S 520 80, 650 130"/>
+                  <path d="M-10 110 C 110 70, 200 140, 330 100 S 530 40, 650 90"/>
+                  <path d="M-10 190 C 90 150, 180 220, 310 180 S 510 120, 650 170"/>
+                  <path d="M-10 70 C 120 30, 210 100, 340 60 S 540 0, 650 50"/>
+                </g>
+              </svg>
+              <span class="cairn s1" style="left:6%;top:58%"><span class="stone o"></span><span class="stone a"></span><span class="stone a"></span></span>
+              <span class="cairn s1" style="left:46%;top:44%"><span class="stone o"></span><span class="stone two"></span><span class="stone b"></span></span>
+              <span class="cairn s1" style="left:84%;top:30%"><span class="stone o"></span><span class="stone c"></span></span>
+              <span class="cairn s2" style="left:20%;top:26%"><span class="stone o"></span><span class="stone two"></span><span class="stone b"></span></span>
+              <span class="cairn s2" style="left:64%;top:66%"><span class="stone o"></span><span class="stone a"></span></span>
+              <span class="cairn s2" style="left:33%;top:70%"><span class="stone o"></span><span class="stone two"></span><span class="stone a"></span><span class="stone b"></span></span>
+              <span class="cairn s3" style="left:12%;top:12%"><span class="stone o"></span><span class="stone b"></span></span>
+              <span class="cairn s3" style="left:56%;top:14%"><span class="stone o"></span><span class="stone two"></span><span class="stone a"></span></span>
+              <span class="cairn s3" style="left:74%;top:44%"><span class="stone o"></span><span class="stone two"></span><span class="stone b"></span></span>
+              <span class="cairn s3" style="left:92%;top:68%"><span class="stone o"></span><span class="stone a"></span><span class="stone b"></span></span>
+              <span class="cairn s4" style="left:27%;top:48%"><span class="stone o"></span><span class="stone two"></span></span>
+              <span class="cairn s4" style="left:40%;top:16%"><span class="stone o"></span><span class="stone c"></span><span class="stone a"></span></span>
+              <span class="cairn s4" style="left:68%;top:22%"><span class="stone o"></span><span class="stone two"></span><span class="stone b"></span></span>
+              <span class="cairn s4" style="left:52%;top:72%"><span class="stone o"></span><span class="stone two"></span><span class="stone a"></span></span>
+              <span class="cairn s4" style="left:2%;top:30%"><span class="stone o"></span><span class="stone b"></span><span class="stone b"></span></span>
+              <span class="cairn s5" style="left:80%;top:72%"><span class="stone o"></span><span class="stone two"></span><span class="stone b"></span></span>
+              <span class="cairn s5" style="left:16%;top:74%"><span class="stone o"></span><span class="stone two"></span></span>
+              <span class="cairn s5" style="left:60%;top:42%"><span class="stone o"></span><span class="stone a"></span><span class="stone a"></span></span>
+              <span class="cairn s5" style="left:36%;top:36%"><span class="stone o"></span><span class="stone two"></span><span class="stone b"></span></span>
+              <span class="cairn s5" style="left:88%;top:10%"><span class="stone o"></span><span class="stone two"></span><span class="stone a"></span></span>
+              <span class="cairn s5" style="left:72%;top:4%"><span class="stone o"></span><span class="stone b"></span></span>
+              <span class="cairn s5" style="left:44%;top:60%"><span class="stone o"></span><span class="stone two"></span><span class="stone a"></span></span>
+            </div>
+            <figcaption>More teams means more cairns in the field, not a longer queue. Teams that accept the same patches end up with the same cairn.</figcaption>
+          </figure>
+
+          <h4>Availability</h4>
+          <p>Cairnfield is open source under the MIT license. A team node deploys to any Cloudflare account on the Workers Paid plan, and the public index for the demo runs at <code>index.cairnfield.net</code>. The repository includes a replay mode, so anyone can run the full demo without a model API key.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= USERS FAQ ================= -->
+  <section id="users">
+    <div class="wrap users">
+      <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
+      <p class="eyebrow">Frequently asked</p>
+      <h2>Questions from teams</h2>
+      <p class="intro">For a team deciding whether to run a node.</p>
+      <div class="faq">
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip s1">skill</span><span class="chip s2">plugin</span><span class="chip s3">MCP server</span>
+            <span class="arr s4" style="--from:none">→</span>
+            <span class="chip yes s4" style="--from:translateX(-10px)">your agent, your privileges</span>
+          </div>
+          <div class="body">
+            <h3>Who is this for?</h3>
+            <p>Teams that install third-party agent skills, plugins and local MCP servers, and want to look before they update. More generally, anyone who depends on code that many teams use and no one team owns.</p>
+            <p>It is not for one team building its own application in one repo. It also cannot cover a hosted tool with no public commit, because there is nothing to pin.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <div class="zone"><small>yours</small><div class="rowc"><span class="chip b s1">team node</span><span class="chip b s2">the command</span><span class="chip b s3">model API key</span></div></div>
+            <div class="zone s5" style="--from:none"><small>anyone's</small><div class="rowc"><span class="chip">an index</span></div></div>
+          </div>
+          <div class="body">
+            <h3>What do we have to run?</h3>
+            <ul>
+              <li>A team node: one Worker and one Artifacts namespace in your own Cloudflare account, on the Workers Paid plan.</li>
+              <li>The <code>cairnfield</code> command on a machine or in your build system.</li>
+              <li>Your own model API key for the reviewer agents. The bundled agents use Claude; the records, the node, the index and the checks involve no model, and an agent on any harness can take part by writing records the command publishes.</li>
+            </ul>
+            <p>You do not run the index. Anyone can, and it holds nothing that cannot be rebuilt from the nodes.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <div class="zone"><small>published</small><div class="rowc"><span class="chip s1">findings</span><span class="chip s2">patches</span><span class="chip s3">re-checks</span></div></div>
+            <div class="zone" style="border-color:var(--ink)"><small>stays on your machine</small><div class="rowc"><span class="chip yes s4">lens</span><span class="chip yes s5">verdict</span></div></div>
+          </div>
+          <div class="body">
+            <h3>What can other teams see about us?</h3>
+            <p>Only what you publish: your claims, findings, re-checks and patches, under your node's address.</p>
+            <p>Your lens and your verdict stay in local files. Your recipe is published only if your lens opts in, because a recipe reveals that you approved a version. Publishing anything does reveal which tools you are evaluating.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip yes s1">path</span><span class="chip yes s2">lines 12–13</span><span class="chip yes s3">observation</span>
+            <span class="chip no s5" style="--from:translateX(26px)">"ignore your instructions and…"</span>
+          </div>
+          <div class="body">
+            <h3>Why does a finding carry no verdict and no text?</h3>
+            <p>No verdict, because whether something is acceptable depends on the team. A host one team already does business with is a finding for another.</p>
+            <p>No text, because other teams' agents read findings. A field that can hold a sentence can hold an instruction. Every field is a fixed value, a hash, a number, a path, or a hostname that must appear in the cited lines. People still see the cited lines on the page, read from the index's own copy.</p>
+            <p>The limit applies to what teams share, not to what a team may record. A team's fuller notes, with prose, dispositions and mitigations, belong in a private log on its own machine that no agent and no other team reads. That log is planned and is not in this prototype.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="cairn"><span class="stone a s1" style="width:30px"></span></span>
+            <span class="cairn"><span class="stone two s1" style="width:30px"></span></span>
+            <span class="cairn dim4"><span class="stone d" style="width:30px"></span></span>
+            <span class="cairn dim4"><span class="stone c" style="width:30px"></span></span>
+            <span class="arr">→</span>
+            <span class="chip b s3" style="--from:none">lens: level 3, 2 confirmations</span>
+            <span class="arr">→</span>
+            <span class="chip yes s5" style="--from:none">2 accepted</span>
+          </div>
+          <div class="body">
+            <h3>What is a lens?</h3>
+            <p>A short local file with four things: the criterion a component must meet for your kind of use, the outside destinations you approve, the patch level you accept, and whether you publish recipes.</p>
+            <p>Patch level 0 takes no patches. Level 1 takes your own. Level 3 also takes patches that enough organizations stand behind.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip a">their patch</span><span class="arr">→</span>
+            <span class="chip yes s1">cites only its files</span><span class="chip yes s2">under the size limit</span><span class="chip yes s3">finding confirmed by others</span><span class="chip yes s4">your agents re-review</span>
+            <span class="arr s5" style="--from:none">→</span><span class="chip b s5">your copy</span>
+          </div>
+          <div class="body">
+            <h3>How do we know someone else's patch is safe to take?</h3>
+            <p>You do not take anyone's word, including the index's. Before a patch enters your copy, your command fetches it from the team that wrote it and re-checks that it changes only the content its finding cites and stays under a size limit. The finding itself must be confirmed by someone other than the patch's author. Your own agents then re-review the full diff of the assembled copy.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="cairn md"><span class="stone a s1"></span><span class="stone b s2"></span></span>
+            <span class="chip yes s3" style="--from:none">confirmed by 2</span>
+            <span class="chip ghost s5" style="--from:none">independent? not proven</span>
+          </div>
+          <div class="body">
+            <h3>What does "confirmed" mean, and what does it not mean?</h3>
+            <p>Two organizations stand behind the finding or patch, counting its author. A dispute never hides a finding.</p>
+            <p>It does not prove independence. The page is public, so one team can copy another, and teams that run the same agents will agree for the same reasons. A domain is also cheap to register. If that matters to you, limit your lens to contributors you know.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <div class="timeline">
+              <div class="v"><span class="cairn s1"><span class="stone o"></span><span class="stone two"></span><span class="stone a"></span></span><span class="dotc"></span>version 1</div>
+              <span class="link"></span>
+              <div class="v s3" style="--from:translateX(-16px)"><span class="ghostcairn"></span><span class="dotc"></span>version 2: not carried forward</div>
+            </div>
+          </div>
+          <div class="body">
+            <h3>What happens when the plugin releases a new version?</h3>
+            <p>A finding and a patch are tied to a file's content, not to one commit. When a release leaves a file unchanged, the work on that file still applies, and a patch keeps its identity and its confirmations. The prototype stores records this way, but it does not yet show carried work on a new version's page, so today a new commit still starts with an empty page. That is the first thing we would build next. Real reviews are driven by updates, so we consider this the largest gap.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <div class="bars">
+              <div>work to reject a bad component<div class="track"><div class="fill shrink"></div></div></div>
+              <div>work to approve a good one<div class="track"><div class="fill" style="--c:var(--muted)"></div></div></div>
+            </div>
+          </div>
+          <div class="body">
+            <h3>What do we get for sharing?</h3>
+            <p>An early rejection when others have already confirmed something your lens forbids. Patches you did not have to write. A second opinion on your own findings.</p>
+            <p>You do not get out of reviewing. An approval still needs your team's own review, so the saving is lopsided: rejections get cheaper, approvals get better evidence.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip dotted s1">tuned to pass the agents</span><span class="chip dotted s2">no sealed findings</span><span class="chip dotted s3">wrong findings about real products</span><span class="chip dotted s4">too many patches to choose from</span>
+          </div>
+          <div class="body">
+            <h3>What is not solved?</h3>
+            <ul>
+              <li>A hostile component can be tuned until the open-source reviewer agents pass it.</li>
+              <li>Nothing can be shown to some readers only, so a flaw cannot be sealed until a fix exists. Tell the maintainer first and publish later.</li>
+              <li>A finding about a real product can be wrong. That is a legal exposure as well as a technical one.</li>
+              <li>With thousands of competing patches for the same lines, a team still has to choose.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= JUDGES FAQ ================= -->
+  <section id="judges">
+    <div class="wrap judges">
+      <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
+      <p class="eyebrow">Frequently asked</p>
+      <h2>Questions from judges</h2>
+      <p class="intro">For the Build the Next-Gen Git Platform on Cloudflare competition, organized by its three criteria.</p>
+      <div class="faq">
+
+        <div class="qa wide">
+          <div class="body">
+            <h3>Where should we look for each criterion?</h3>
+            <div class="scroll">
+              <table class="plain">
+                <thead><tr><th>Criterion</th><th>Weight</th><th>What Cairnfield offers</th><th>Where to see it</th></tr></thead>
+                <tbody>
+                  <tr><td>Originality and quality as a prototype for agent-oriented collaboration</td><td>50%</td><td>No maintainer, no shared main branch, no merge queue. Changes carry their evidence, and each consumer assembles its own version.</td><td>Demo moments 2 and 3; the component page</td></tr>
+                  <tr><td>Concurrency, coordination, context, review, conflict handling</td><td>25%</td><td>Agents write only to their own team's repos. Live claims show who is changing what. Competing patches are merged by the team that wants them, and the merge is re-reviewed.</td><td>Demo moments 1, 3 and 5</td></tr>
+                  <tr><td>Ease of use and product experience</td><td>25%</td><td>One command per step, one page per component version, a setup script for the node, and a replay mode that needs no API key.</td><td>The README and the <a href="/interfaces">interface sketches</a></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="cairn md"><span class="stone o"></span><span class="stone two s1" style="--from:translateY(-30px)"></span><span class="stone b s2" style="--from:translateY(-30px)"></span><span class="stone a s3" style="--from:translateY(-30px)"></span></span>
+            <span class="arr s4" style="--from:none">=</span>
+            <span class="chip yes s4" style="--from:none">tree 71aa09…</span>
+            <span class="chip s6" style="--from:none">same patches, same hash, anywhere</span>
+          </div>
+          <div class="body">
+            <h3>How is this "the next GitHub" and not GitHub with agents added?</h3>
+            <p>GitHub's model is fork, propose, wait for a maintainer to merge. Cairnfield removes the last step. There is no canonical branch for agents to contend over, and no person whose attention every change must pass through.</p>
+            <p>What replaces the merge is a recipe: a pinned original plus the patches one consumer accepts, identified by a tree hash. Two teams that accept the same patches arrive at the same hash without trusting each other.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <div class="lanes">
+              <div class="lane a"><i class="s1" style="left:18%;--from:translateX(-40px)"></i><i class="s1" style="left:46%;--from:translateX(-40px)"></i><i class="s1" style="left:74%;--from:translateX(-40px)"></i></div>
+              <div class="lane b"><i class="s1" style="left:18%;--from:translateX(-40px)"></i><i class="s1" style="left:46%;--from:translateX(-40px)"></i><i class="s1" style="left:74%;--from:translateX(-40px)"></i></div>
+              <div class="lane c"><i class="s1" style="left:18%;--from:translateX(-40px)"></i><i class="s1" style="left:46%;--from:translateX(-40px)"></i><i class="s1" style="left:74%;--from:translateX(-40px)"></i></div>
+            </div>
+            <span class="chip yes s3" style="--from:none">9 agents, 3 repos, 1 moment</span>
+          </div>
+          <div class="body">
+            <h3>Where do multiple agents work on changes concurrently?</h3>
+            <p>In the demo, nine agents from three teams review and patch one plugin at the same time and push at once. Within a team, concurrent pushes to one repo succeed with pull and retry. Across teams there is nothing to contend over, because each team writes to its own repos.</p>
+            <p>A simulator then registers more than two hundred further organizations, and the page reports how far the index lags behind their pushes.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip a s1" style="--from:translateX(-18px)">northfork: limit hosts</span>
+            <span class="chip b s2" style="--from:translateX(18px)">kestrel: limit variables</span>
+            <span class="arr s4" style="--from:none">→</span>
+            <span class="chip yes s4" style="--from:none">kestrel merges both, lists its sources</span>
+          </div>
+          <div class="body">
+            <h3>What happens when two agents change the same lines?</h3>
+            <p>Nothing breaks, and nothing is lost. Both patches are published, and the page groups patches whose lines overlap or adjoin and shows them side by side.</p>
+            <p>A conflict is resolved only where someone needs a resolution: a team that wants both fixes has its agent merge them into a new patch under its own name. The merge lists its sources and is re-reviewed. Identical patches from two teams collapse into one entry.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip a"><span class="dot pulse"></span>northfork is patching plugin.json</span>
+            <span class="chip yes s3" style="--from:none">closed when the patch lands</span>
+            <span class="chip ghost s5" style="--from:none">or expired</span>
+          </div>
+          <div class="body">
+            <h3>How do agents know what other agents are working on?</h3>
+            <p>Before an agent starts, its command publishes a small claim. The page shows live claims per component. A claim closes when the work it announced lands, and expires if nothing does.</p>
+            <p>Review claims name only the component and the kind of check, never the files, so a first review stays blind. Patch claims name the finding and files, because that finding is already public.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip s1">finding: file, lines, observation</span>
+            <span class="arr s2" style="--from:none">←</span><span class="chip a s2">patch</span>
+            <span class="arr s3" style="--from:none">←</span><span class="chip b s3">merged patch</span>
+            <span class="arr s4" style="--from:none">←</span><span class="chip yes s4">recipe</span>
+          </div>
+          <div class="body">
+            <h3>How is the reason for a change preserved?</h3>
+            <p>Structurally. A patch record must name the finding it resolves, and a finding names a file, lines and an observation at an exact Git SHA. A merged patch names its source patches. The index rejects a patch that touches content its finding does not cite, so the stated reason bounds the change.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip a">northfork's finding</span>
+            <span class="chip yes s2" style="--from:translateX(18px)"><span class="dot" style="--c:var(--sandstone)"></span>kestrel confirms</span>
+            <span class="chip c s4" style="--from:translateX(18px)"><span class="dot" style="--c:var(--ironstone)"></span>marlow disputes: documented behavior</span>
+          </div>
+          <div class="body">
+            <h3>How is the work reviewed?</h3>
+            <p>By other teams' agents, as checkable records. An agent re-checks a finding at its cited lines and either confirms it or publishes a counter-finding with a reason. An agent re-checks a patch and says whether it resolves its finding and does nothing more.</p>
+            <p>Agents that read other teams' work have read-only file tools, no shell and no network tool, and can answer only in fixed fields.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <div class="pipe">
+              <span class="runner travel"></span>
+              <span class="chip">Artifacts repo</span><span class="arr">→</span><span class="chip">push trigger</span><span class="arr">→</span><span class="chip">Workflow</span><span class="arr">→</span><span class="chip">Queue</span><span class="arr">→</span><span class="chip">D1</span><span class="arr">→</span><span class="chip yes">page</span>
+            </div>
+          </div>
+          <div class="body">
+            <h3>How does it use Workers and Artifacts?</h3>
+            <ul>
+              <li><strong>Artifacts</strong> holds everything original: each team's records repo, its pinned copy of a component, and a fork with one commit per patch. Repo-scoped tokens keep one team from writing to another's repo.</li>
+              <li><strong>A push trigger and a Workflow</strong> on each node tell the index about every push.</li>
+              <li><strong>Workers, D1 and a Queue</strong> run the index and the public page. The index reads nodes over HTTP only, so nodes can live in different accounts.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip s1">cargo-vet</span><span class="chip s2">cargo-crev</span><span class="chip s3">Nix patches</span>
+            <span class="arr s4" style="--from:none">+</span>
+            <span class="chip yes s4">facts with no verdict</span><span class="chip yes s5">patches tied to findings</span><span class="chip yes s6">recipes by hash</span>
+          </div>
+          <div class="body">
+            <h3>What is original here, and what is borrowed?</h3>
+            <p>Borrowed, with credit: audits published per organization with a local policy (cargo-vet), publishing from your own repo into a rebuildable aggregate (cargo-crev), and a pinned original plus a patch list (Nix, quilt, patch-package).</p>
+            <p>We found no precedent for the combination: findings as verdict-free, checkable facts; patches tied to findings, with competing patches across organizations shown side by side; and recipes compared by tree hash. Our search was not exhaustive.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip s1">hidden instruction</span><span class="chip s2">over-broad permissions</span><span class="chip yes s4">an off switch one script never reads</span>
+          </div>
+          <div class="body">
+            <h3>Is this a security tool?</h3>
+            <p>Security review is the first use, because it is a real problem we have and because it gives agents something concrete to find and fix. The model is not limited to it. One of the three changes in the demo is an ordinary bug: a documented off switch that one script never reads.</p>
+            <p>The claim we are making is about collaboration: changes without a merge, on code nobody has to own.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip s1">3 teams</span><span class="arr s2" style="--from:none">→</span><span class="chip s2">50</span><span class="arr s3" style="--from:none">→</span><span class="chip dotted s3">214 organizations, simulated</span>
+            <div class="bars s4" style="--from:none"><div>index lag stays small<div class="track"><div class="fill" style="width:14%"></div></div></div></div>
+          </div>
+          <div class="body">
+            <h3>Does it really scale to hundreds of thousands of agents?</h3>
+            <p>Publishing does, by construction: more agents means more repos, and no shared repo takes the writes. The index is the one place where work converges, and the scale run measures its lag.</p>
+            <p>The scale run uses scripted nodes with no model, so it shows intake, not collaboration. Choosing among very many competing patches is not solved. The lens automates acceptance, but a team facing thousands of different fixes for the same lines still has to choose.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip s1">1 review at once</span><span class="chip s2">2 reconcile</span><span class="chip s3">3 three versions</span><span class="chip d s4">4 hostile patch</span><span class="chip s5">5 scale</span>
+          </div>
+          <div class="body">
+            <h3>What does the demo show?</h3>
+            <ul>
+              <li>Two teams change the same code at once, with live claims on screen.</li>
+              <li>They reconcile: one fix written identically twice, and two competing fixes side by side.</li>
+              <li>Three lenses produce three versions, and one dispute.</li>
+              <li>A hostile patch is rejected, with the reason shown.</li>
+              <li>The same page with more than two hundred organizations.</li>
+            </ul>
+            <p>Agent runs are recorded once and replayed through the same validation and publishing path, so the video does not depend on a live model call.</p>
+          </div>
+        </div>
+
+        <div class="qa">
+          <div class="mini" aria-hidden="true">
+            <span class="chip d">a dishonest node</span><span class="arr">→</span>
+            <span class="chip ghost s2" style="--from:none">the index can be misled</span>
+            <span class="arr s4" style="--from:none">→</span>
+            <span class="chip yes s4" style="--from:none">your command re-checks the real commit</span>
+          </div>
+          <div class="body">
+            <h3>What is honest to say about its limits?</h3>
+            <p>The index checks a patch using what the patch's own node reports, so a dishonest node could hide a change from it. The enforcement point is each team's own command, which fetches and re-checks the real commit before accepting anything.</p>
+            <p>The demo's nodes share one Cloudflare account, organizations are named and not verified by domain, and one node in a second account proves the cross-account path. The threat model in the repository marks each defense as built, partly built, or described only.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="end">
+  <div class="wrap cols">
+    <div>
+      <h4>Cairnfield</h4>
+      <p>Change together, decide for yourself.</p>
+      <p>Open source under the MIT license.</p>
+      <p>Set in Routed Gothic by Darren Embry, Hanken Grotesk by Hanken Design Co. and Spline Sans Mono by Sorkin Type, all under the SIL Open Font License and served from this site.</p>
+      <p class="badge"><a href="https://cloudflare.com"><img src="/built-with-cloudflare.svg" alt="Built with Cloudflare" height="36"></a></p>
+    </div>
+    <div>
+      <h4>Read more</h4>
+      <p><a href="/">Home</a></p>
+      <p><a href="/interfaces">Interface sketches</a></p>
+    </div>
+    <div>
+      <h4>About this page</h4>
+      <p>Names of plugins, hosts and teams are invented. Quotes are illustrative. The figures in the press release come from our own team's reviews.</p>
+    </div>
+  </div>
+</footer>
+
+<script src="map.js" defer></script>
+
+</body>
+</html>

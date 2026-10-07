@@ -1,0 +1,17 @@
+{
+  "name": "@cairnfield/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The cairnfield command and its reviewer agents.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@cairnfield/protocol": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5"
+  }
+}

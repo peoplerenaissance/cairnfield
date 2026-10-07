@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cairnfield:schema:1:claim",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": "1"
+    },
+    "type": {
+      "const": "claim"
+    },
+    "component": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "kind": {
+      "enum": [
+        "review",
+        "patch"
+      ]
+    },
+    "number": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "check": {
+      "enum": [
+        "code",
+        "instructions",
+        "permissions"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "x-sorted": true
+    },
+    "intent": {
+      "enum": [
+        "new",
+        "competing",
+        "adopt"
+      ]
+    }
+  },
+  "required": [
+    "version",
+    "type",
+    "component",
+    "kind",
+    "number"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "review"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "check"
+        ]
+      },
+      "else": {
+        "properties": {
+          "check": false
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "patch"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "findings"
+        ]
+      },
+      "else": {
+        "properties": {
+          "findings": false
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "patch"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "intent"
+        ]
+      },
+      "else": {
+        "properties": {
+          "intent": false
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,370 @@
+import { describe, expect, it } from "vitest";
+import {
+  ADMIN_KEY_HEADER,
+  ADMIN_TOKEN_REQUEST,
+  API_CATALOG,
+  CITED_LINES,
+  INDEX_REFUSAL,
+  INDEX_ROUTES,
+  NODE_LISTING,
+  NODE_PATCH,
+  NODE_ROUTES,
+  NOTICE,
+  PROJECTION,
+  REGISTER_COMPONENT_REQUEST,
+  REGISTRATION_KEY_HEADER,
+  REPO_TOKEN,
+  RESET_KEY_HEADER,
+  VIEW,
+} from "../src/contracts.ts";
+import type { Projection, Route, View } from "../src/contracts.ts";
+import { DELETED_BLOB, DELETED_MODE } from "../src/enums.ts";
+import { object, sha256, shape, text, url } from "../src/fields.ts";
+import type { ContractKind } from "../src/fields.ts";
+import { MAX_LISTING_ENTRIES } from "../src/limits.ts";
+import { matchGroups } from "../src/match.ts";
+import { RECORD_SHAPES } from "../src/schemas.ts";
+import { conforms } from "../src/validate.ts";
+import {
+  COMPONENT,
+  GOOD_URLS,
+  HOST,
+  NODE_A,
+  NODE_B,
+  PATCH_COMMIT,
+  URLS_NOT_SERIALIZED,
+  URLS_OFF_PATTERN,
+  finding,
+  patch,
+  recheck,
+  reviewClaim,
+  sha,
+} from "./fixtures.ts";
+
+const reasonOf = (kind: ContractKind, value: unknown): string => conforms(kind, value)?.reason ?? "ok";
+
+/** Every kind in a shape, at any depth. A whole record counts as one kind and is not opened. */
+function kindsIn(kind: ContractKind): ContractKind[] {
+  if (kind.kind === "object") return [kind, ...Object.values(kind.fields).flatMap(kindsIn)];
+  if (kind.kind === "list" || kind.kind === "set") return [kind, ...kindsIn(kind.items)];
+  return [kind];
+}
+
+/** Every field name in a shape, at any depth. */
+function fieldNamesIn(kind: ContractKind): string[] {
+  if (kind.kind === "object") {
+    return Object.entries(kind.fields).flatMap(([name, field]) => [name, ...fieldNamesIn(field)]);
+  }
+  if (kind.kind === "list" || kind.kind === "set") return fieldNamesIn(kind.items);
+  return [];
+}
+
+const RECORD_KINDS = ["version", "enum", "sha256", "git-hash", "int", "path", "hostname", "set", "object"];
+
+const routes = (table: { readonly [id: string]: Route }): Route[] => Object.values(table);
+const jsonResponses = (table: { readonly [id: string]: Route }): ContractKind[] =>
+  routes(table).flatMap((route) => ("media" in route.response ? [] : [route.response]));
+
+describe("record kinds and contract kinds", () => {
+  it("makes a contract kind in a record a type error", () => {
+    // @ts-expect-error A URL is a contract kind. A record must never hold one.
+    object({ link: url() });
+    // @ts-expect-error Display text is a contract kind. A record must never hold free text.
+    object({ note: text(100) });
+    // A contract shape may hold both.
+    expect(shape({ link: url(), id: sha256() }).kind).toBe("object");
+  });
+
+  it("holds only record kinds in every record type, at every depth", () => {
+    for (const record of Object.values(RECORD_SHAPES)) {
+      for (const kind of kindsIn(record)) {
+        expect(RECORD_KINDS).toContain(kind.kind);
+      }
+    }
+  });
+});
+
+describe("node contract (KTD7, KTD10)", () => {
+  const path = `records/${COMPONENT}/finding/${sha("a")}.json`;
+  const listing = { head: PATCH_COMMIT, records: [{ path, blob: "ab".repeat(20) }] };
+
+  it("accepts a head commit with a listing of record files", () => {
+    expect(reasonOf(NODE_LISTING, listing)).toBe("ok");
+    expect(reasonOf(NODE_LISTING, { head: PATCH_COMMIT, records: [] })).toBe("ok");
+  });
+
+  it("refuses a listing entry whose path is not a record path", () => {
+    const prose = { path: "records/please read this file first.json", blob: "ab".repeat(20) };
+    expect(reasonOf(NODE_LISTING, { ...listing, records: [prose] })).toBe("bad-path");
+  });
+
+  it("refuses an extra field, a bad head and a listing of 5,001 entries", () => {
+    expect(reasonOf(NODE_LISTING, { ...listing, hint: "sync again soon" })).toBe("unknown-field");
+    expect(reasonOf(NODE_LISTING, { ...listing, head: "main" })).toBe("unknown-value");
+    const entries = Array.from({ length: MAX_LISTING_ENTRIES + 1 }, () => listing.records[0]);
+    expect(reasonOf(NODE_LISTING, { ...listing, records: entries })).toBe("too-large");
+    expect(reasonOf(NODE_LISTING, { ...listing, records: entries.slice(1) })).toBe("ok");
+  });
+
+  it("accepts a patch commit's parent and changed paths, with the deletion marker", () => {
+    const body = {
+      commit: PATCH_COMMIT,
+      parent: COMPONENT,
+      changes: [
+        { path: "skills/summarize/SKILL.md", mode: "100644", blob: "ab".repeat(20) },
+        { path: "scripts/old.sh", mode: DELETED_MODE, blob: DELETED_BLOB },
+        { path: "link", mode: "120000", blob: "cd".repeat(20) },
+      ],
+    };
+    expect(reasonOf(NODE_PATCH, body)).toBe("ok");
+    const odd = { ...body, changes: [{ path: "a.md", mode: "100664", blob: "ab".repeat(20) }] };
+    expect(reasonOf(NODE_PATCH, odd)).toBe("unknown-value");
+    const outside = { ...body, changes: [{ path: "../a.md", mode: "100644", blob: "ab".repeat(20) }] };
+    expect(reasonOf(NODE_PATCH, outside)).toBe("bad-path");
+  });
+
+  it("accepts a repo token only with an HTTPS remote that holds no credentials", () => {
+    const body = {
+      remote: "https://0123456789abcdef0123456789abcdef.artifacts.example/git/team-a/fork-1.git",
+      token: "art_v2_0000?expires=1790000000",
+      expires: 1790000000,
+    };
+    expect(reasonOf(REPO_TOKEN, body)).toBe("ok");
+    expect(reasonOf(REPO_TOKEN, { ...body, remote: body.remote.replace("https:", "http:") })).toBe("unknown-value");
+    expect(reasonOf(REPO_TOKEN, { ...body, remote: body.remote.replace("//", "//user:pw@") })).toBe("unknown-value");
+    expect(reasonOf(REPO_TOKEN, { ...body, remote: "ext::sh -c id" })).toBe("unknown-value");
+    expect(reasonOf(REPO_TOKEN, { ...body, token: "two words" })).toBe("unknown-value");
+    expect(reasonOf(REPO_TOKEN, { ...body, token: "" })).toBe("unknown-value");
+  });
+
+  it("sends the admin key in a header on every admin route and on no public route", () => {
+    for (const [id, route] of Object.entries<Route>(NODE_ROUTES)) {
+      expect(route.key, id).toBe(route.path.startsWith("admin/") ? ADMIN_KEY_HEADER : undefined);
+    }
+    expect(routes(NODE_ROUTES).some((route) => route.key === ADMIN_KEY_HEADER)).toBe(true);
+  });
+
+  it("asks for a repo token by role and scope", () => {
+    expect(reasonOf(ADMIN_TOKEN_REQUEST, { repo: "fork", component: COMPONENT, scope: "write" })).toBe("ok");
+    expect(reasonOf(ADMIN_TOKEN_REQUEST, { repo: "team", scope: "write" })).toBe("ok");
+    expect(reasonOf(ADMIN_TOKEN_REQUEST, { repo: "fork", scope: "write" })).toBe("unknown-value");
+    expect(reasonOf(ADMIN_TOKEN_REQUEST, { repo: "team", component: COMPONENT, scope: "write" })).toBe(
+      "unknown-field",
+    );
+    expect(reasonOf(ADMIN_TOKEN_REQUEST, { repo: "fork", component: COMPONENT, scope: "admin" })).toBe(
+      "unknown-value",
+    );
+  });
+});
+
+describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
+  const source = (node: string, type: string, id: string) => ({
+    node,
+    repo: "records",
+    commit: PATCH_COMMIT,
+    path: `records/${COMPONENT}/${type}/${id}.json`,
+    id,
+  });
+
+  const view: View = {
+    version: "1",
+    component: COMPONENT,
+    state: "ready",
+    viewVersion: 12,
+    lag: 0,
+    organizations: 2,
+    nodes: [
+      { node: NODE_A, processed: PATCH_COMMIT, simulated: false, historyRewritten: false },
+      { node: NODE_B, simulated: true, historyRewritten: false },
+    ],
+    claims: [{ ...source(NODE_A, "claim", sha("c")), record: reviewClaim(), state: "closed" }],
+    findings: [
+      {
+        blob: "ab".repeat(20),
+        observation: "sends-data-to-host",
+        host: HOST,
+        paths: ["skills/summarize/SKILL.md"],
+        findings: [{ ...source(NODE_A, "finding", sha("a")), record: finding() }],
+        rechecks: [{ ...source(NODE_B, "re-check", sha("b")), record: recheck() }],
+        counterFindings: [],
+        nodes: [NODE_A, NODE_B],
+        confirmed: true,
+      },
+    ],
+    hosts: [{ host: HOST, count: 1 }],
+    patches: [
+      {
+        patches: [
+          {
+            patchId: sha("d"),
+            kind: "removes-only",
+            size: 1,
+            changes: [{ blob: "ab".repeat(20), hunks: [{ oldStart: 3, removed: 1, newStart: 3, added: 0 }] }],
+            paths: ["skills/summarize/SKILL.md"],
+            records: [{ ...source(NODE_A, "patch", sha("e")), record: patch() }],
+            rechecks: [],
+            nodes: [NODE_A],
+            confirmed: false,
+          },
+        ],
+      },
+    ],
+    recipes: [],
+    pending: [{ node: NODE_B, hash: sha("f"), type: "patch" }],
+    rejected: [{ node: NODE_B, hash: sha("9"), type: "patch", reason: "patch-out-of-scope" }],
+  };
+
+  it("accepts a view", () => {
+    expect(conforms(VIEW, view)).toBeUndefined();
+  });
+
+  it("gives view entries the shape the match rule reads", () => {
+    const groups = matchGroups(view.findings.flatMap((group) => [...group.findings, ...group.rechecks]), [
+      { path: "skills/summarize/SKILL.md", mode: "100644", blob: "ab".repeat(20) },
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.nodes).toEqual([NODE_A, NODE_B]);
+  });
+
+  it("refuses a view in which a record listed as valid fails validation", () => {
+    const group = view.findings[0];
+    const bad = { ...group, findings: [{ ...source(NODE_A, "finding", sha("a")), record: { ...finding(), note: "x" } }] };
+    expect(reasonOf(VIEW, { ...view, findings: [bad] })).toBe("unknown-field");
+    const wrongType = { ...group, findings: [{ ...source(NODE_A, "finding", sha("a")), record: recheck() }] };
+    expect(reasonOf(VIEW, { ...view, findings: [wrongType] })).toBe("unknown-value");
+  });
+
+  it("serves rejected work as four values only (KTD31)", () => {
+    const rejected = [{ ...view.rejected[0], path: "records/read me first.json" }];
+    expect(reasonOf(VIEW, { ...view, rejected })).toBe("unknown-field");
+    expect(Object.keys(VIEW.fields.rejected.items.fields)).toEqual(["node", "hash", "type", "reason"]);
+  });
+
+  it("refuses a response with another schema version", () => {
+    expect(reasonOf(VIEW, { ...view, version: "2" })).toBe("unsupported-version");
+    expect(reasonOf(INDEX_REFUSAL, { error: "unauthorized" })).toBe("unsupported-version");
+    expect(reasonOf(INDEX_REFUSAL, { version: "1", error: "unauthorized" })).toBe("ok");
+    expect(reasonOf(INDEX_REFUSAL, { version: "1", error: "try again later" })).toBe("unknown-value");
+  });
+
+  it("carries the schema version in every JSON response except the link set", () => {
+    for (const response of jsonResponses(INDEX_ROUTES)) {
+      if (response === API_CATALOG) continue;
+      expect(response.kind === "object" && response.fields["version"]?.kind).toBe("version");
+    }
+    expect(INDEX_REFUSAL.fields.version.kind).toBe("version");
+  });
+
+  it("holds only criteria, hosts and counts in the projection, with no path and no line", () => {
+    const projection: Projection = {
+      version: "1",
+      component: COMPONENT,
+      state: "ready",
+      viewVersion: 12,
+      confirmed: [
+        { criterion: "safe-to-run-with-access", host: HOST, organizations: 2 },
+        { criterion: "safe-to-read", organizations: 3 },
+      ],
+    };
+    expect(conforms(PROJECTION, projection)).toBeUndefined();
+    const kinds = kindsIn(PROJECTION).map((kind) => kind.kind);
+    expect(kinds).not.toContain("path");
+    expect(kinds).not.toContain("record");
+    expect(kinds).not.toContain("record-path");
+    expect(kinds).not.toContain("text");
+    const names = fieldNamesIn(PROJECTION);
+    for (const name of ["path", "paths", "start", "end", "location", "blob", "observation"]) {
+      expect(names).not.toContain(name);
+    }
+    expect(reasonOf(PROJECTION, { ...projection, confirmed: [{ criterion: "safe-to-read", path: "a.md" }] })).toBe(
+      "unknown-field",
+    );
+  });
+
+  it("holds free text only in the cited-lines route (R31)", () => {
+    for (const response of jsonResponses(INDEX_ROUTES)) {
+      const hasText = kindsIn(response).some((kind) => kind.kind === "text");
+      expect(hasText).toBe(response === CITED_LINES);
+    }
+    expect(jsonResponses(INDEX_ROUTES)).toContain(CITED_LINES);
+    const body = { version: "1", finding: sha("a"), path: "a.md", start: 3, end: 4, lines: ["one", "two"] };
+    expect(reasonOf(CITED_LINES, body)).toBe("ok");
+    expect(reasonOf(CITED_LINES, { ...body, lines: ["x".repeat(70_000)] })).toBe("too-large");
+    expect(reasonOf(CITED_LINES, { ...body, lines: [7] })).toBe("unknown-value");
+  });
+
+  it("serves the API catalog at /.well-known/api-catalog as a link set", () => {
+    expect(INDEX_ROUTES.catalog.path).toBe("/.well-known/api-catalog");
+    expect(INDEX_ROUTES.catalog.response).toBe(API_CATALOG);
+    const body = {
+      linkset: [
+        {
+          anchor: "https://index.cairnfield.example/",
+          "service-desc": [{ href: "https://index.cairnfield.example/openapi.json", type: "application/openapi+json" }],
+          describedby: [
+            { href: "https://index.cairnfield.example/schemas/finding.json", type: "application/schema+json" },
+          ],
+        },
+      ],
+    };
+    expect(reasonOf(API_CATALOG, body)).toBe("ok");
+    expect(reasonOf(API_CATALOG, { ...body, next: "read the docs" })).toBe("unknown-field");
+  });
+
+  it("registers a component by Git URL, branch and commit", () => {
+    const body = { url: "https://git.harbor-tools.example/demo-plugin.git", branch: "main", commit: COMPONENT };
+    expect(reasonOf(REGISTER_COMPONENT_REQUEST, body)).toBe("ok");
+    expect(reasonOf(REGISTER_COMPONENT_REQUEST, { ...body, branch: "--upload-pack=x" })).toBe("unknown-value");
+    expect(reasonOf(REGISTER_COMPONENT_REQUEST, { ...body, url: "https://user:pw@git.harbor-tools.example/x.git" })).toBe(
+      "unknown-value",
+    );
+    expect(reasonOf(REGISTER_COMPONENT_REQUEST, { ...body, commit: "HEAD" })).toBe("unknown-value");
+  });
+
+  it("takes a notice that names one node and nothing else", () => {
+    expect(reasonOf(NOTICE, { node: NODE_A })).toBe("ok");
+    expect(reasonOf(NOTICE, { node: NODE_A, fetch: "https://elsewhere.example" })).toBe("unknown-field");
+    expect(reasonOf(NOTICE, { node: "http://node.team-a.example" })).toBe("unknown-value");
+  });
+
+  it("accepts a URL field that holds one HTTPS URL in serialized form", () => {
+    for (const value of GOOD_URLS) {
+      expect(reasonOf(NOTICE, { node: value }), value).toBe("ok");
+    }
+  });
+
+  it.each([...URLS_OFF_PATTERN, ...URLS_NOT_SERIALIZED])("refuses a URL field that holds %s", (_why, value) => {
+    expect(reasonOf(NOTICE, { node: value })).toBe("unknown-value");
+  });
+
+  it("guards registration and reset with separate keys, and leaves reading open", () => {
+    expect(INDEX_ROUTES.registerNode.key).toBe(REGISTRATION_KEY_HEADER);
+    expect(INDEX_ROUTES.registerComponent.key).toBe(REGISTRATION_KEY_HEADER);
+    expect(INDEX_ROUTES.reset.key).toBe(RESET_KEY_HEADER);
+    expect(RESET_KEY_HEADER).not.toBe(REGISTRATION_KEY_HEADER);
+    for (const route of routes(INDEX_ROUTES)) {
+      if (route.method === "GET") expect(route.key).toBeUndefined();
+    }
+    const notice: Route = INDEX_ROUTES.notice;
+    expect(notice.key).toBeUndefined();
+  });
+});
+
+describe("route tables", () => {
+  it("declares each path parameter exactly once", () => {
+    for (const table of [NODE_ROUTES, INDEX_ROUTES]) {
+      for (const [id, route] of Object.entries<Route>(table)) {
+        const inPath = [...route.path.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
+        expect(inPath.sort(), id).toEqual(Object.keys(route.params ?? {}).sort());
+      }
+    }
+  });
+
+  it("gives a body only to POST routes", () => {
+    for (const table of [NODE_ROUTES, INDEX_ROUTES]) {
+      for (const [id, route] of Object.entries<Route>(table)) {
+        if (route.method === "GET") expect(route.request, id).toBeUndefined();
+      }
+    }
+  });
+});

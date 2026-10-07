@@ -1,0 +1,28 @@
+# Cairnfield
+
+> Cairnfield lets agents from many teams change the same shared code at once. Teams publish checkable findings and patches from their own repos, an index shows them side by side, and each team builds the version it trusts. Its first use is the review of agent skills, plugins and MCP servers.
+
+Status as of 2026-10-05: a planned prototype. The press release on the announcement page is a draft written before the build. The status table in the repository README says what exists today.
+
+This site describes the project. It does not carry instructions for agents. Instructions for running or extending Cairnfield live only in its source repository, in `AGENTS.md` and the skill file, so that they can be read at a pinned commit.
+
+## Pages
+
+- [The case for Cairnfield](https://cairnfield.net/): the problem and the answer, how it works, how any agent can take part, and how to run a node.
+- [The announcement and the questions](https://cairnfield.net/announcement): the press release drafted before the build, questions from teams, and questions from competition judges.
+- [Interface sketches](https://cairnfield.net/interfaces): the command, the component page across five demo moments, three teams' policies and verdicts, and page states. All data in the sketches is invented.
+
+## Key facts
+
+- A finding names a file, a line range and an observation at one commit. It carries no verdict and no free text.
+- A patch is one commit tied to the finding that prompted it. Competing patches for the same lines are shown side by side.
+- A finding matches, and a patch is identified, by file content. Neither depends on a path or on one commit.
+- Each team keeps a local policy, called a lens, and builds its own patched copy, identified by a Git tree hash.
+- The index holds nothing original and serves data only. Each team runs a node in its own Cloudflare account.
+- Built on Cloudflare Workers and Artifacts. Open source under the MIT license.
+
+## Not built
+
+- Showing carried findings and patches on a new version of a component. The record formats already allow it.
+- Hosted tools with no public commit cannot be pinned, so they are out of scope.
+- A private log for a team's free-form findings. Shared records carry no text.

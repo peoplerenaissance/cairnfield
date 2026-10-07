@@ -1,0 +1,28 @@
+{
+  "name": "cairnfield",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "workspaces": [
+    "protocol",
+    "index",
+    "cli",
+    "sim"
+  ],
+  "scripts": {
+    "dev:site": "npm --prefix site run dev",
+    "deploy:site": "npm --prefix site run deploy",
+    "test": "vitest run",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "scan:secrets": "secretlint \"**/*\""
+  },
+  "devDependencies": {
+    "@secretlint/secretlint-rule-pattern": "^13.0.7",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.7",
+    "secretlint": "^13.0.7",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

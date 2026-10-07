@@ -1,0 +1,2078 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Cairnfield index",
+    "version": "1"
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "paths": {
+    "/.well-known/api-catalog": {
+      "get": {
+        "operationId": "catalog",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/linkset+json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "linkset": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "anchor": {
+                            "type": "string",
+                            "format": "uri",
+                            "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                            "maxLength": 2048
+                          },
+                          "service-desc": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "href": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                  "maxLength": 2048
+                                },
+                                "type": {
+                                  "enum": [
+                                    "application/openapi+json",
+                                    "application/schema+json"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "href",
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 32
+                          },
+                          "describedby": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "href": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                  "maxLength": 2048
+                                },
+                                "type": {
+                                  "enum": [
+                                    "application/openapi+json",
+                                    "application/schema+json"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "href",
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 32
+                          }
+                        },
+                        "required": [
+                          "anchor",
+                          "service-desc",
+                          "describedby"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 32
+                    }
+                  },
+                  "required": [
+                    "linkset"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "description",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/openapi+json": {}
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schemas/{type}.json": {
+      "get": {
+        "operationId": "schema",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "claim",
+                "finding",
+                "re-check",
+                "counter-finding",
+                "patch",
+                "patch-re-check",
+                "recipe"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/schema+json": {}
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nodes": {
+      "post": {
+        "operationId": "registerNode",
+        "security": [
+          {
+            "registrationKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                    "maxLength": 2048
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "const": "1"
+                    },
+                    "node": {
+                      "type": "string",
+                      "format": "uri",
+                      "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                      "maxLength": 2048
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "node"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/components": {
+      "post": {
+        "operationId": "registerComponent",
+        "security": [
+          {
+            "registrationKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                    "maxLength": 2048
+                  },
+                  "branch": {
+                    "type": "string",
+                    "pattern": "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+                    "maxLength": 200
+                  },
+                  "commit": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{40}$"
+                  }
+                },
+                "required": [
+                  "url",
+                  "branch",
+                  "commit"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "const": "1"
+                    },
+                    "component": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "state": {
+                      "enum": [
+                        "importing",
+                        "ready",
+                        "failed"
+                      ]
+                    },
+                    "importError": {
+                      "enum": [
+                        "INVALID_URL",
+                        "REMOTE_AUTH_REQUIRED",
+                        "NOT_FOUND",
+                        "UPSTREAM_UNAVAILABLE",
+                        "MEMORY_LIMIT"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "component",
+                    "state"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "lookup",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+              "maxLength": 2048
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "const": "1"
+                    },
+                    "components": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "component": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{40}$"
+                          },
+                          "branch": {
+                            "type": "string",
+                            "pattern": "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+                            "maxLength": 200
+                          },
+                          "state": {
+                            "enum": [
+                              "importing",
+                              "ready",
+                              "failed"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "component",
+                          "branch",
+                          "state"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "components"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notices": {
+      "post": {
+        "operationId": "notice",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "node": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                    "maxLength": 2048
+                  }
+                },
+                "required": [
+                  "node"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "const": "1"
+                    }
+                  },
+                  "required": [
+                    "version"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/components/{component}/view": {
+      "get": {
+        "operationId": "view",
+        "parameters": [
+          {
+            "name": "component",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "const": "1"
+                    },
+                    "component": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "state": {
+                      "enum": [
+                        "importing",
+                        "ready",
+                        "failed"
+                      ]
+                    },
+                    "viewVersion": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "lag": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "organizations": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "node": {
+                            "type": "string",
+                            "format": "uri",
+                            "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                            "maxLength": 2048
+                          },
+                          "processed": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{40}$"
+                          },
+                          "simulated": {
+                            "type": "boolean"
+                          },
+                          "historyRewritten": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "node",
+                          "simulated",
+                          "historyRewritten"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    },
+                    "claims": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "node": {
+                            "type": "string",
+                            "format": "uri",
+                            "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                            "maxLength": 2048
+                          },
+                          "repo": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                            "maxLength": 100
+                          },
+                          "commit": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{40}$"
+                          },
+                          "path": {
+                            "type": "string",
+                            "pattern": "^records/([0-9a-f]{40})/(claim|finding|re-check|counter-finding|patch|patch-re-check|recipe)/([0-9a-f]{64})\\.json$"
+                          },
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                          },
+                          "record": {
+                            "$ref": "#/components/schemas/claim"
+                          },
+                          "state": {
+                            "enum": [
+                              "live",
+                              "closed",
+                              "expired"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "node",
+                          "repo",
+                          "commit",
+                          "path",
+                          "id",
+                          "record",
+                          "state"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    },
+                    "findings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "blob": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{40}$"
+                          },
+                          "observation": {
+                            "enum": [
+                              "sends-data-to-host",
+                              "fetches-instructions-from-host",
+                              "loads-resource-from-host",
+                              "network-access-any-host",
+                              "environment-access-all-variables",
+                              "reads-outside-workspace",
+                              "writes-outside-workspace",
+                              "runs-shell-command",
+                              "runs-with-permissions-bypassed",
+                              "runs-install-script",
+                              "hidden-instruction",
+                              "overrides-host-instructions",
+                              "requests-broad-credential-scope",
+                              "stores-credential-in-plain-text",
+                              "installs-unpinned-dependency",
+                              "documented-control-not-read",
+                              "fails-on-documented-input"
+                            ]
+                          },
+                          "host": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+                            "maxLength": 253
+                          },
+                          "paths": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+)*$",
+                              "maxLength": 200
+                            },
+                            "maxItems": 50000
+                          },
+                          "findings": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "node": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                  "maxLength": 2048
+                                },
+                                "repo": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                                  "maxLength": 100
+                                },
+                                "commit": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{40}$"
+                                },
+                                "path": {
+                                  "type": "string",
+                                  "pattern": "^records/([0-9a-f]{40})/(claim|finding|re-check|counter-finding|patch|patch-re-check|recipe)/([0-9a-f]{64})\\.json$"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{64}$"
+                                },
+                                "record": {
+                                  "$ref": "#/components/schemas/finding"
+                                }
+                              },
+                              "required": [
+                                "node",
+                                "repo",
+                                "commit",
+                                "path",
+                                "id",
+                                "record"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 50000
+                          },
+                          "rechecks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "node": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                  "maxLength": 2048
+                                },
+                                "repo": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                                  "maxLength": 100
+                                },
+                                "commit": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{40}$"
+                                },
+                                "path": {
+                                  "type": "string",
+                                  "pattern": "^records/([0-9a-f]{40})/(claim|finding|re-check|counter-finding|patch|patch-re-check|recipe)/([0-9a-f]{64})\\.json$"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{64}$"
+                                },
+                                "record": {
+                                  "$ref": "#/components/schemas/re-check"
+                                }
+                              },
+                              "required": [
+                                "node",
+                                "repo",
+                                "commit",
+                                "path",
+                                "id",
+                                "record"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 50000
+                          },
+                          "counterFindings": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "node": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                  "maxLength": 2048
+                                },
+                                "repo": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                                  "maxLength": 100
+                                },
+                                "commit": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{40}$"
+                                },
+                                "path": {
+                                  "type": "string",
+                                  "pattern": "^records/([0-9a-f]{40})/(claim|finding|re-check|counter-finding|patch|patch-re-check|recipe)/([0-9a-f]{64})\\.json$"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{64}$"
+                                },
+                                "record": {
+                                  "$ref": "#/components/schemas/counter-finding"
+                                }
+                              },
+                              "required": [
+                                "node",
+                                "repo",
+                                "commit",
+                                "path",
+                                "id",
+                                "record"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 50000
+                          },
+                          "nodes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "format": "uri",
+                              "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                              "maxLength": 2048
+                            },
+                            "maxItems": 50000
+                          },
+                          "confirmed": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "blob",
+                          "observation",
+                          "paths",
+                          "findings",
+                          "rechecks",
+                          "counterFindings",
+                          "nodes",
+                          "confirmed"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    },
+                    "hosts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "host": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+                            "maxLength": 253
+                          },
+                          "count": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "host",
+                          "count"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    },
+                    "patches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "patches": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "patchId": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{64}$"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "removes-only",
+                                    "adds-or-changes"
+                                  ]
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 60
+                                },
+                                "changes": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "blob": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{40}$"
+                                      },
+                                      "hunks": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "oldStart": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 1000001
+                                            },
+                                            "removed": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 60
+                                            },
+                                            "newStart": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 1000001
+                                            },
+                                            "added": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 60
+                                            }
+                                          },
+                                          "required": [
+                                            "oldStart",
+                                            "removed",
+                                            "newStart",
+                                            "added"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "maxItems": 60
+                                      }
+                                    },
+                                    "required": [
+                                      "blob",
+                                      "hunks"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "maxItems": 3
+                                },
+                                "paths": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+)*$",
+                                    "maxLength": 200
+                                  },
+                                  "maxItems": 50000
+                                },
+                                "records": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "node": {
+                                        "type": "string",
+                                        "format": "uri",
+                                        "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                        "maxLength": 2048
+                                      },
+                                      "repo": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                                        "maxLength": 100
+                                      },
+                                      "commit": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{40}$"
+                                      },
+                                      "path": {
+                                        "type": "string",
+                                        "pattern": "^records/([0-9a-f]{40})/(claim|finding|re-check|counter-finding|patch|patch-re-check|recipe)/([0-9a-f]{64})\\.json$"
+                                      },
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{64}$"
+                                      },
+                                      "record": {
+                                        "$ref": "#/components/schemas/patch"
+                                      }
+                                    },
+                                    "required": [
+                                      "node",
+                                      "repo",
+                                      "commit",
+                                      "path",
+                                      "id",
+                                      "record"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "maxItems": 50000
+                                },
+                                "rechecks": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "node": {
+                                        "type": "string",
+                                        "format": "uri",
+                                        "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                        "maxLength": 2048
+                                      },
+                                      "repo": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                                        "maxLength": 100
+                                      },
+                                      "commit": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{40}$"
+                                      },
+                                      "path": {
+                                        "type": "string",
+                                        "pattern": "^records/([0-9a-f]{40})/(claim|finding|re-check|counter-finding|patch|patch-re-check|recipe)/([0-9a-f]{64})\\.json$"
+                                      },
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^[0-9a-f]{64}$"
+                                      },
+                                      "record": {
+                                        "$ref": "#/components/schemas/patch-re-check"
+                                      }
+                                    },
+                                    "required": [
+                                      "node",
+                                      "repo",
+                                      "commit",
+                                      "path",
+                                      "id",
+                                      "record"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "maxItems": 50000
+                                },
+                                "nodes": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "format": "uri",
+                                    "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                    "maxLength": 2048
+                                  },
+                                  "maxItems": 50000
+                                },
+                                "confirmed": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "patchId",
+                                "kind",
+                                "size",
+                                "changes",
+                                "paths",
+                                "records",
+                                "rechecks",
+                                "nodes",
+                                "confirmed"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 50000
+                          }
+                        },
+                        "required": [
+                          "patches"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    },
+                    "recipes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tree": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{40}$"
+                          },
+                          "records": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "node": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                  "maxLength": 2048
+                                },
+                                "repo": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                                  "maxLength": 100
+                                },
+                                "commit": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{40}$"
+                                },
+                                "path": {
+                                  "type": "string",
+                                  "pattern": "^records/([0-9a-f]{40})/(claim|finding|re-check|counter-finding|patch|patch-re-check|recipe)/([0-9a-f]{64})\\.json$"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{64}$"
+                                },
+                                "record": {
+                                  "$ref": "#/components/schemas/recipe"
+                                }
+                              },
+                              "required": [
+                                "node",
+                                "repo",
+                                "commit",
+                                "path",
+                                "id",
+                                "record"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 50000
+                          },
+                          "nodes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "format": "uri",
+                              "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                              "maxLength": 2048
+                            },
+                            "maxItems": 50000
+                          }
+                        },
+                        "required": [
+                          "tree",
+                          "records",
+                          "nodes"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    },
+                    "pending": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "node": {
+                            "type": "string",
+                            "format": "uri",
+                            "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                            "maxLength": 2048
+                          },
+                          "hash": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                          },
+                          "type": {
+                            "enum": [
+                              "claim",
+                              "finding",
+                              "re-check",
+                              "counter-finding",
+                              "patch",
+                              "patch-re-check",
+                              "recipe"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "node",
+                          "hash",
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    },
+                    "rejected": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "node": {
+                            "type": "string",
+                            "format": "uri",
+                            "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                            "maxLength": 2048
+                          },
+                          "hash": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                          },
+                          "type": {
+                            "enum": [
+                              "claim",
+                              "finding",
+                              "re-check",
+                              "counter-finding",
+                              "patch",
+                              "patch-re-check",
+                              "recipe"
+                            ]
+                          },
+                          "reason": {
+                            "enum": [
+                              "unknown-field",
+                              "unknown-value",
+                              "too-large",
+                              "bad-path",
+                              "lines-out-of-range",
+                              "host-not-in-lines",
+                              "hash-mismatch",
+                              "unsupported-version",
+                              "unknown-component",
+                              "unresolved-reference",
+                              "patch-out-of-scope",
+                              "patch-too-large",
+                              "wrong-parent",
+                              "blob-mismatch",
+                              "bad-mode",
+                              "patch-incomplete"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "node",
+                          "hash",
+                          "type",
+                          "reason"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "component",
+                    "state",
+                    "viewVersion",
+                    "lag",
+                    "organizations",
+                    "nodes",
+                    "claims",
+                    "findings",
+                    "hosts",
+                    "patches",
+                    "recipes",
+                    "pending",
+                    "rejected"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/components/{component}/criteria": {
+      "get": {
+        "operationId": "criteria",
+        "parameters": [
+          {
+            "name": "component",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "const": "1"
+                    },
+                    "component": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "state": {
+                      "enum": [
+                        "importing",
+                        "ready",
+                        "failed"
+                      ]
+                    },
+                    "viewVersion": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "confirmed": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "criterion": {
+                            "enum": [
+                              "safe-to-read",
+                              "safe-to-run-sandboxed",
+                              "safe-to-run-with-access",
+                              "works-as-documented"
+                            ]
+                          },
+                          "host": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+                            "maxLength": 253
+                          },
+                          "organizations": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "criterion",
+                          "organizations"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "component",
+                    "state",
+                    "viewVersion",
+                    "confirmed"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/components/{component}/findings/{finding}/lines": {
+      "get": {
+        "operationId": "lines",
+        "parameters": [
+          {
+            "name": "component",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            }
+          },
+          {
+            "name": "finding",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "const": "1"
+                    },
+                    "finding": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "path": {
+                      "type": "string",
+                      "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+)*$",
+                      "maxLength": 200
+                    },
+                    "start": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000
+                    },
+                    "end": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 65536
+                      },
+                      "maxItems": 1000000
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "finding",
+                    "path",
+                    "start",
+                    "end",
+                    "lines"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reset": {
+      "post": {
+        "operationId": "reset",
+        "security": [
+          {
+            "resetKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "const": "1"
+                    }
+                  },
+                  "required": [
+                    "version"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "registrationKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-cairnfield-registration-key"
+      },
+      "resetKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-cairnfield-reset-key"
+      }
+    },
+    "schemas": {
+      "claim": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "type": {
+            "const": "claim"
+          },
+          "component": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "kind": {
+            "enum": [
+              "review",
+              "patch"
+            ]
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "check": {
+            "enum": [
+              "code",
+              "instructions",
+              "permissions"
+            ]
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "minItems": 1,
+            "maxItems": 8,
+            "uniqueItems": true,
+            "x-sorted": true
+          },
+          "intent": {
+            "enum": [
+              "new",
+              "competing",
+              "adopt"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "type",
+          "component",
+          "kind",
+          "number"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "review"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "check"
+              ]
+            },
+            "else": {
+              "properties": {
+                "check": false
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "patch"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "findings"
+              ]
+            },
+            "else": {
+              "properties": {
+                "findings": false
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "patch"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "intent"
+              ]
+            },
+            "else": {
+              "properties": {
+                "intent": false
+              }
+            }
+          }
+        ]
+      },
+      "finding": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "type": {
+            "const": "finding"
+          },
+          "component": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+)*$",
+                "maxLength": 200
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "path",
+              "start",
+              "end"
+            ],
+            "additionalProperties": false,
+            "x-ordered": [
+              "start",
+              "end"
+            ]
+          },
+          "criterion": {
+            "enum": [
+              "safe-to-read",
+              "safe-to-run-sandboxed",
+              "safe-to-run-with-access",
+              "works-as-documented"
+            ]
+          },
+          "observation": {
+            "enum": [
+              "sends-data-to-host",
+              "fetches-instructions-from-host",
+              "loads-resource-from-host",
+              "network-access-any-host",
+              "environment-access-all-variables",
+              "reads-outside-workspace",
+              "writes-outside-workspace",
+              "runs-shell-command",
+              "runs-with-permissions-bypassed",
+              "runs-install-script",
+              "hidden-instruction",
+              "overrides-host-instructions",
+              "requests-broad-credential-scope",
+              "stores-credential-in-plain-text",
+              "installs-unpinned-dependency",
+              "documented-control-not-read",
+              "fails-on-documented-input"
+            ]
+          },
+          "host": {
+            "type": "string",
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+            "maxLength": 253
+          },
+          "contradicts": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+)*$",
+                "maxLength": 200
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "path",
+              "start",
+              "end"
+            ],
+            "additionalProperties": false,
+            "x-ordered": [
+              "start",
+              "end"
+            ]
+          },
+          "check": {
+            "enum": [
+              "code",
+              "instructions",
+              "permissions"
+            ]
+          },
+          "model": {
+            "enum": [
+              "claude-sonnet-5-5",
+              "claude-haiku-4-5-20251001",
+              "other",
+              "none"
+            ]
+          },
+          "claim": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "version",
+          "type",
+          "component",
+          "location",
+          "criterion",
+          "observation",
+          "check",
+          "model"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "observation": {
+                  "enum": [
+                    "sends-data-to-host",
+                    "fetches-instructions-from-host",
+                    "loads-resource-from-host"
+                  ]
+                }
+              },
+              "required": [
+                "observation"
+              ]
+            },
+            "then": {
+              "required": [
+                "host"
+              ]
+            },
+            "else": {
+              "properties": {
+                "host": false
+              }
+            }
+          }
+        ]
+      },
+      "re-check": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "type": {
+            "const": "re-check"
+          },
+          "component": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "finding": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "model": {
+            "enum": [
+              "claude-sonnet-5-5",
+              "claude-haiku-4-5-20251001",
+              "other",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "type",
+          "component",
+          "finding",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "counter-finding": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "type": {
+            "const": "counter-finding"
+          },
+          "component": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "finding": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "reason": {
+            "enum": [
+              "documented-behavior",
+              "not-present-at-lines",
+              "not-reachable",
+              "required-by-documented-feature"
+            ]
+          },
+          "cites": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+)*$",
+                "maxLength": 200
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "path",
+              "start",
+              "end"
+            ],
+            "additionalProperties": false,
+            "x-ordered": [
+              "start",
+              "end"
+            ]
+          },
+          "model": {
+            "enum": [
+              "claude-sonnet-5-5",
+              "claude-haiku-4-5-20251001",
+              "other",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "type",
+          "component",
+          "finding",
+          "reason",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "patch": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "type": {
+            "const": "patch"
+          },
+          "component": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "minItems": 1,
+            "maxItems": 8,
+            "uniqueItems": true,
+            "x-sorted": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "minItems": 2,
+            "maxItems": 4,
+            "uniqueItems": true,
+            "x-sorted": true
+          },
+          "claim": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "model": {
+            "enum": [
+              "claude-sonnet-5-5",
+              "claude-haiku-4-5-20251001",
+              "other",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "type",
+          "component",
+          "commit",
+          "findings",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "patch-re-check": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "type": {
+            "const": "patch-re-check"
+          },
+          "component": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "patch": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "verdict": {
+            "enum": [
+              "resolves",
+              "does-not-resolve",
+              "does-more"
+            ]
+          },
+          "model": {
+            "enum": [
+              "claude-sonnet-5-5",
+              "claude-haiku-4-5-20251001",
+              "other",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "type",
+          "component",
+          "patch",
+          "verdict",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "recipe": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "type": {
+            "const": "recipe"
+          },
+          "component": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "patches": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "x-sorted": true
+          },
+          "tree": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          }
+        },
+        "required": [
+          "version",
+          "type",
+          "component",
+          "patches",
+          "tree"
+        ],
+        "additionalProperties": false
+      },
+      "refusal": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "error": {
+            "enum": [
+              "bad-request",
+              "unauthorized",
+              "not-found",
+              "not-allowed",
+              "limit-reached",
+              "already-registered"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "error"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

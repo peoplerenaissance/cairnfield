@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cairnfield:schema:1:re-check",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": "1"
+    },
+    "type": {
+      "const": "re-check"
+    },
+    "component": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "finding": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "model": {
+      "enum": [
+        "claude-sonnet-5-5",
+        "claude-haiku-4-5-20251001",
+        "other",
+        "none"
+      ]
+    }
+  },
+  "required": [
+    "version",
+    "type",
+    "component",
+    "finding",
+    "model"
+  ],
+  "additionalProperties": false
+}

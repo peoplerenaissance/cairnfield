@@ -1,0 +1,18 @@
+{
+  "name": "@cairnfield/index",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Index Worker: builds one validated view per component commit.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@cairnfield/protocol": "*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "wrangler": "^4.147.0"
+  }
+}

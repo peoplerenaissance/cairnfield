@@ -1,0 +1,20 @@
+{
+  "name": "cairnfield-node",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cairnfield team node: a Cloudflare Worker that holds a team's repos on Artifacts and serves the node contract.",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11",
+    "wrangler": "4.147.0"
+  }
+}

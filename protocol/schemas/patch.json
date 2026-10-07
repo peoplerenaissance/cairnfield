@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cairnfield:schema:1:patch",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": "1"
+    },
+    "type": {
+      "const": "patch"
+    },
+    "component": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "x-sorted": true
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "minItems": 2,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "x-sorted": true
+    },
+    "claim": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "model": {
+      "enum": [
+        "claude-sonnet-5-5",
+        "claude-haiku-4-5-20251001",
+        "other",
+        "none"
+      ]
+    }
+  },
+  "required": [
+    "version",
+    "type",
+    "component",
+    "commit",
+    "findings",
+    "model"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cairnfield:schema:1:finding",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": "1"
+    },
+    "type": {
+      "const": "finding"
+    },
+    "component": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+)*$",
+          "maxLength": 200
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "path",
+        "start",
+        "end"
+      ],
+      "additionalProperties": false,
+      "x-ordered": [
+        "start",
+        "end"
+      ]
+    },
+    "criterion": {
+      "enum": [
+        "safe-to-read",
+        "safe-to-run-sandboxed",
+        "safe-to-run-with-access",
+        "works-as-documented"
+      ]
+    },
+    "observation": {
+      "enum": [
+        "sends-data-to-host",
+        "fetches-instructions-from-host",
+        "loads-resource-from-host",
+        "network-access-any-host",
+        "environment-access-all-variables",
+        "reads-outside-workspace",
+        "writes-outside-workspace",
+        "runs-shell-command",
+        "runs-with-permissions-bypassed",
+        "runs-install-script",
+        "hidden-instruction",
+        "overrides-host-instructions",
+        "requests-broad-credential-scope",
+        "stores-credential-in-plain-text",
+        "installs-unpinned-dependency",
+        "documented-control-not-read",
+        "fails-on-documented-input"
+      ]
+    },
+    "host": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+      "maxLength": 253
+    },
+    "contradicts": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+)*$",
+          "maxLength": 200
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "path",
+        "start",
+        "end"
+      ],
+      "additionalProperties": false,
+      "x-ordered": [
+        "start",
+        "end"
+      ]
+    },
+    "check": {
+      "enum": [
+        "code",
+        "instructions",
+        "permissions"
+      ]
+    },
+    "model": {
+      "enum": [
+        "claude-sonnet-5-5",
+        "claude-haiku-4-5-20251001",
+        "other",
+        "none"
+      ]
+    },
+    "claim": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "version",
+    "type",
+    "component",
+    "location",
+    "criterion",
+    "observation",
+    "check",
+    "model"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "observation": {
+            "enum": [
+              "sends-data-to-host",
+              "fetches-instructions-from-host",
+              "loads-resource-from-host"
+            ]
+          }
+        },
+        "required": [
+          "observation"
+        ]
+      },
+      "then": {
+        "required": [
+          "host"
+        ]
+      },
+      "else": {
+        "properties": {
+          "host": false
+        }
+      }
+    }
+  ]
+}
