@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { countsAgainstLens } from "../src/criteria.ts";
+import type { Criterion } from "../src/enums.ts";
 import type { FileListing } from "../src/files.ts";
 import {
   citedBlob,
@@ -8,7 +10,7 @@ import {
   patchConfirmations,
   rangesOverlap,
 } from "../src/match.ts";
-import type { Sourced } from "../src/match.ts";
+import type { MatchGroup, Sourced } from "../src/match.ts";
 import type { AnyRecord, Finding } from "../src/schemas.ts";
 import {
   HOST,
@@ -257,6 +259,78 @@ describe("match groups and confirmation", () => {
   it("is confirmed at two organizations", () => {
     expect(isConfirmed([NODE_A])).toBe(false);
     expect(isConfirmed([NODE_A, NODE_B])).toBe(true);
+  });
+});
+
+describe("confirmation per criterion (R10)", () => {
+  const under = (criterion: Criterion): Finding => at("scripts/export.sh", 10, 20, { criterion });
+  const groupOf = (records: readonly Sourced[]): MatchGroup | undefined => {
+    const groups = matchGroups(records, LISTING);
+    expect(groups).toHaveLength(1);
+    return groups[0];
+  };
+  /** Whether the early rejection check rejects for a lens that requires these criteria. */
+  const rejects = (group: MatchGroup | undefined, required: readonly Criterion[]): boolean =>
+    (group?.criteria ?? []).some(
+      (count) => count.confirmed && countsAgainstLens({ criterion: count.criterion }, { required, approvedHosts: [] }),
+    );
+
+  it("covers AE12: confirms what two nodes saw, and no criterion, when they name unrelated criteria", () => {
+    const group = groupOf([from(NODE_A, under("works-as-documented")), from(NODE_B, under("safe-to-read"))]);
+    expect(group).toMatchObject({ nodes: [NODE_A, NODE_B], confirmed: true });
+    expect(group?.criteria).toEqual([
+      { criterion: "safe-to-read", nodes: [NODE_B], confirmed: false },
+      { criterion: "safe-to-run-sandboxed", nodes: [NODE_B], confirmed: false },
+      { criterion: "safe-to-run-with-access", nodes: [NODE_B], confirmed: false },
+      { criterion: "works-as-documented", nodes: [NODE_A], confirmed: false },
+    ]);
+    expect(rejects(group, ["safe-to-read"])).toBe(false);
+    expect(rejects(group, ["safe-to-run-with-access", "works-as-documented"])).toBe(false);
+  });
+
+  it("covers AE12: counts a finding against a weaker criterion toward every stricter one", () => {
+    const group = groupOf([from(NODE_A, under("safe-to-read")), from(NODE_B, under("safe-to-run-with-access"))]);
+    expect(group?.criteria).toEqual([
+      { criterion: "safe-to-read", nodes: [NODE_A], confirmed: false },
+      { criterion: "safe-to-run-sandboxed", nodes: [NODE_A], confirmed: false },
+      { criterion: "safe-to-run-with-access", nodes: [NODE_A, NODE_B], confirmed: true },
+    ]);
+    expect(rejects(group, ["safe-to-run-with-access"])).toBe(true);
+    expect(rejects(group, ["safe-to-run-sandboxed"])).toBe(false);
+    expect(rejects(group, ["safe-to-read"])).toBe(false);
+  });
+
+  it("confirms the criterion that two nodes both name", () => {
+    const group = groupOf([from(NODE_A, under("works-as-documented")), from(NODE_B, under("works-as-documented"))]);
+    expect(group?.criteria).toEqual([{ criterion: "works-as-documented", nodes: [NODE_A, NODE_B], confirmed: true }]);
+    expect(rejects(group, ["works-as-documented"])).toBe(true);
+    expect(rejects(group, ["safe-to-run-with-access"])).toBe(false);
+  });
+
+  it("counts a re-check under the criterion of the finding it confirms", () => {
+    const first = from(NODE_A, under("safe-to-run-sandboxed"));
+    const second = from(NODE_B, under("works-as-documented"));
+    const group = groupOf([first, second, from(NODE_C, recheck({ finding: first.id }))]);
+    expect(group?.nodes).toEqual([NODE_A, NODE_B, NODE_C]);
+    expect(group?.criteria).toEqual([
+      { criterion: "safe-to-run-sandboxed", nodes: [NODE_A, NODE_C], confirmed: true },
+      { criterion: "safe-to-run-with-access", nodes: [NODE_A, NODE_C], confirmed: true },
+      { criterion: "works-as-documented", nodes: [NODE_B], confirmed: false },
+    ]);
+  });
+
+  it("counts an organization once under a criterion, whatever it publishes", () => {
+    const first = from(NODE_A, under("safe-to-read"));
+    const group = groupOf([
+      first,
+      from(NODE_A, under("safe-to-run-sandboxed")),
+      from(NODE_A, recheck({ finding: first.id })),
+    ]);
+    expect(group?.criteria.map((count) => [count.criterion, count.nodes, count.confirmed])).toEqual([
+      ["safe-to-read", [NODE_A], false],
+      ["safe-to-run-sandboxed", [NODE_A], false],
+      ["safe-to-run-with-access", [NODE_A], false],
+    ]);
   });
 });
 

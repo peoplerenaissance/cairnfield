@@ -12,6 +12,7 @@ import {
   NOTICE,
   PROJECTION,
   REGISTER_COMPONENT_REQUEST,
+  REGISTER_NODE_REQUEST,
   REGISTRATION_KEY_HEADER,
   REPO_TOKEN,
   RESET_KEY_HEADER,
@@ -21,17 +22,21 @@ import type { Projection, Route, View } from "../src/contracts.ts";
 import { DELETED_BLOB, DELETED_MODE } from "../src/enums.ts";
 import { object, sha256, shape, text, url } from "../src/fields.ts";
 import type { ContractKind } from "../src/fields.ts";
+import { jsonSchemaOf } from "../src/json-schema.ts";
 import { MAX_LISTING_ENTRIES } from "../src/limits.ts";
 import { matchGroups } from "../src/match.ts";
 import { RECORD_SHAPES } from "../src/schemas.ts";
 import { conforms } from "../src/validate.ts";
 import {
   COMPONENT,
+  GOOD_NODE_URLS,
   GOOD_URLS,
   HOST,
   NODE_A,
   NODE_B,
   PATCH_COMMIT,
+  NODE_URLS_NOT_SERIALIZED,
+  NODE_URLS_OFF_PATTERN,
   URLS_NOT_SERIALIZED,
   URLS_OFF_PATTERN,
   finding,
@@ -155,6 +160,20 @@ describe("node contract (KTD7, KTD10)", () => {
       "unknown-value",
     );
   });
+
+  it("asks for no write token for a component copy (R8)", () => {
+    expect(reasonOf(ADMIN_TOKEN_REQUEST, { repo: "copy", component: COMPONENT, scope: "read" })).toBe("ok");
+    expect(reasonOf(ADMIN_TOKEN_REQUEST, { repo: "copy", component: COMPONENT, scope: "write" })).toBe(
+      "unknown-value",
+    );
+    const schema = jsonSchemaOf(ADMIN_TOKEN_REQUEST);
+    expect(JSON.stringify(schema["allOf"])).toContain(
+      JSON.stringify({
+        if: { properties: { repo: { enum: ["copy"] } }, required: ["repo"] },
+        then: { properties: { scope: { enum: ["read"] } } },
+      }),
+    );
+  });
 });
 
 describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
@@ -189,6 +208,7 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
         counterFindings: [],
         nodes: [NODE_A, NODE_B],
         confirmed: true,
+        criteria: [{ criterion: "safe-to-run-with-access", nodes: [NODE_A, NODE_B], confirmed: true }],
       },
     ],
     hosts: [{ host: HOST, count: 1 }],
@@ -224,6 +244,12 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
     ]);
     expect(groups).toHaveLength(1);
     expect(groups[0]?.nodes).toEqual([NODE_A, NODE_B]);
+    expect(groups[0]?.criteria).toEqual(view.findings[0]?.criteria);
+  });
+
+  it("refuses a view whose findings carry no count per criterion (R10)", () => {
+    const { criteria: _criteria, ...group } = view.findings[0] ?? {};
+    expect(reasonOf(VIEW, { ...view, findings: [group] })).toBe("unknown-value");
   });
 
   it("refuses a view in which a record listed as valid fails validation", () => {
@@ -327,14 +353,52 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
     expect(reasonOf(NOTICE, { node: "http://node.team-a.example" })).toBe("unknown-value");
   });
 
+  const component = (url: string) => ({ url, branch: "main", commit: COMPONENT });
+
   it("accepts a URL field that holds one HTTPS URL in serialized form", () => {
     for (const value of GOOD_URLS) {
-      expect(reasonOf(NOTICE, { node: value }), value).toBe("ok");
+      expect(reasonOf(REGISTER_COMPONENT_REQUEST, component(value)), value).toBe("ok");
     }
   });
 
   it.each([...URLS_OFF_PATTERN, ...URLS_NOT_SERIALIZED])("refuses a URL field that holds %s", (_why, value) => {
-    expect(reasonOf(NOTICE, { node: value })).toBe("unknown-value");
+    expect(reasonOf(REGISTER_COMPONENT_REQUEST, component(value))).toBe("unknown-value");
+  });
+
+  it("names a node by its base URL in the one accepted spelling (KTD8)", () => {
+    for (const value of GOOD_NODE_URLS) {
+      expect(reasonOf(REGISTER_NODE_REQUEST, { url: value }), value).toBe("ok");
+      expect(reasonOf(NOTICE, { node: value }), value).toBe("ok");
+    }
+  });
+
+  it.each([...NODE_URLS_OFF_PATTERN, ...NODE_URLS_NOT_SERIALIZED])(
+    "refuses a node named with %s",
+    (_why, value) => {
+      expect(reasonOf(REGISTER_NODE_REQUEST, { url: value })).toBe("unknown-value");
+      expect(reasonOf(NOTICE, { node: value })).toBe("unknown-value");
+    },
+  );
+
+  it("uses the node URL kind wherever an index body names a node", () => {
+    const fieldsIn = (kind: ContractKind): [string, ContractKind][] => {
+      if (kind.kind === "object") {
+        return Object.entries(kind.fields).flatMap(([name, field]) => [[name, field], ...fieldsIn(field)]);
+      }
+      return kind.kind === "list" || kind.kind === "set" ? fieldsIn(kind.items) : [];
+    };
+    const bodies = routes(INDEX_ROUTES).flatMap((route) => [
+      ...(route.request ? [route.request] : []),
+      ...("media" in route.response ? [] : [route.response]),
+    ]);
+    const named = bodies.flatMap(fieldsIn).filter(([name]) => name === "node" || name === "nodes");
+    expect(named.length).toBeGreaterThan(8);
+    for (const [name, kind] of named) {
+      const held = kind.kind === "list" ? kind.items : kind;
+      // The view's own list of nodes holds one object per node, and that object names the node.
+      expect(held.kind === "node-url" || (name === "nodes" && held.kind === "object"), name).toBe(true);
+    }
+    expect(REGISTER_NODE_REQUEST.fields.url.kind).toBe("node-url");
   });
 
   it("guards registration and reset with separate keys, and leaves reading open", () => {

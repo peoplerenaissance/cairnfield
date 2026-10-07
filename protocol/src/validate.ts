@@ -12,6 +12,7 @@ import {
   isGitHash,
   isHostname,
   isHttpsUrl,
+  isNodeUrl,
   isNamespaceName,
   isPath,
   isRepoName,
@@ -83,6 +84,8 @@ function check(kind: ContractKind, value: unknown, at: string): Rejection | unde
       return checkObject(kind, value, at);
     case "url":
       return unless(isHttpsUrl(value));
+    case "node-url":
+      return unless(isNodeUrl(value));
     case "token":
       return unless(isToken(value));
     case "text":
@@ -173,6 +176,11 @@ function checkRule(rule: Rule, value: Members, at: string): Rejection | undefine
   const on = value[rule.on];
   const wanted = typeof on === "string" && rule.in.includes(on);
   const present = Object.hasOwn(value, rule.field);
+  if (rule.rule === "one-of-when") {
+    const held = value[rule.field];
+    const allowed = typeof held === "string" && rule.values.includes(held);
+    return wanted && present && !allowed ? reject("unknown-value", join(at, rule.field)) : undefined;
+  }
   if (wanted && !present) return reject("unknown-value", join(at, rule.field));
   if (!wanted && present) return reject("unknown-field", join(at, rule.field));
   return undefined;
@@ -314,53 +322,99 @@ function lower(byte: number): number {
   return byte >= 65 && byte <= 90 ? byte + 32 : byte;
 }
 
-/**
- * Whether a URL parser reads the byte as part of a hostname: a letter, a digit, a hyphen,
- * an underscore, a percent sign, or any byte outside ASCII.
- */
-function isHostnameByte(byte: number | undefined): boolean {
-  if (byte === undefined) return false;
+function encoded(characters: string): Uint8Array[] {
+  const encoder = new TextEncoder();
+  return [...characters].map((character) => encoder.encode(character));
+}
+
+// The spaces, dashes, quotes and brackets that prose puts beside a hostname: a no-break
+// space, guillemets, an en dash and an em dash, curly quotes, and the ideographic space,
+// comma and corner brackets. None is a letter or a digit, so none can be part of a name
+// that someone registers.
+const TYPOGRAPHIC = encoded("\u00a0\u00ab\u00bb\u2013\u2014\u2018\u2019\u201c\u201d\u3000\u3001\u300c\u300d\u300e\u300f");
+// The full stops that a URL parser reads as the dot between two labels: the ASCII one,
+// the ideographic one, the fullwidth one and the halfwidth ideographic one.
+const DOTS = encoded(".\u3002\uff0e\uff61");
+
+/** The length of the sequence that starts at `at`, or 0 when none does. */
+function lengthAt(cited: Uint8Array, at: number, sequences: readonly Uint8Array[]): number {
+  for (const sequence of sequences) {
+    if (sequence.every((byte, i) => cited[at + i] === byte)) return sequence.length;
+  }
+  return 0;
+}
+
+function isLabelByte(byte: number): boolean {
   const b = lower(byte);
   if ((b >= 97 && b <= 122) || (b >= 48 && b <= 57)) return true;
-  return byte === HYPHEN || byte === UNDERSCORE || byte === PERCENT || byte >= 0x80;
+  return byte === HYPHEN || byte === UNDERSCORE || byte === PERCENT;
+}
+
+/**
+ * Whether a label of a hostname goes on at `at`: a letter, a digit, a hyphen, an
+ * underscore, a percent sign, or a character outside ASCII that is neither typographic
+ * nor a full stop.
+ */
+function labelGoesOnAt(cited: Uint8Array, at: number): boolean {
+  const byte = cited[at];
+  if (byte === undefined) return false;
+  if (byte < 0x80) return isLabelByte(byte);
+  return lengthAt(cited, at, TYPOGRAPHIC) === 0 && lengthAt(cited, at, DOTS) === 0;
+}
+
+/** Whether the character before `at` joins what follows to a longer hostname: a dot, or the end of a label. */
+function joinsBefore(cited: Uint8Array, at: number): boolean {
+  const byte = cited[at - 1];
+  if (byte === undefined) return false;
+  if (byte < 0x80) return byte === DOT || isLabelByte(byte);
+  return !TYPOGRAPHIC.some((sequence) => sequence.every((b, i) => cited[at - sequence.length + i] === b));
+}
+
+// The bytes that end the authority part of a URL, or the URL itself in the file that
+// holds it: a quote, a hash, a slash, an angle bracket, a question mark or a backtick.
+// White space ends it too.
+const AUTHORITY_END = new Set([34, 35, 39, 47, 60, 62, 63, 96]);
+
+/**
+ * Whether the bytes from `from` make what comes before them part of something else. A
+ * URL parser reads everything up to the end of the authority as one unit, so two things
+ * count. An at sign makes what comes before it userinfo, and the real host follows. A
+ * full stop in front of a label makes a longer hostname. A colon ends the hostname, so
+ * after one only the at sign counts.
+ */
+function goesOn(cited: Uint8Array, from: number): boolean {
+  if (labelGoesOnAt(cited, from)) return true;
+  let inHostname = true;
+  for (let i = from; i < cited.length; i++) {
+    const byte = cited[i] ?? 0;
+    if (byte === AT) return true;
+    if (byte <= 0x20 || AUTHORITY_END.has(byte)) return false;
+    if (byte === COLON) inHostname = false;
+    if (!inHostname) continue;
+    const dot = lengthAt(cited, i, DOTS);
+    if (dot > 0 && labelGoesOnAt(cited, i + dot)) return true;
+  }
+  return false;
 }
 
 /**
  * Whether the hostname appears in the cited bytes as a whole hostname. Letter case in the
  * file is ignored. A match inside a longer hostname does not count, so `metrics.example`
- * is not found in `collect.metrics.example` or in `metrics.example_.evil.example`. A match
- * before `@` or before `:password@` does not count either, because it is userinfo. A
- * port and a full stop that ends a sentence are allowed.
+ * is not found in `collect.metrics.example`, in `metrics.example_.evil.example` or in
+ * `metrics.example!x.evil.example`. A match in front of an at sign does not count either,
+ * because it is userinfo. A port, a full stop that ends a sentence, and the punctuation
+ * of prose are allowed.
+ *
+ * This reads the text as a URL parser would. It does not follow a shell or a program, so
+ * it cannot tell where a line that builds its hostname from parts sends data.
  */
-// The bytes that end the authority part of a URL, or the URL itself: white space, a
-// quote, a hash, a slash, an angle bracket, a question mark or a backtick.
-const AUTHORITY_END = new Set([34, 35, 39, 47, 60, 62, 63, 96]);
-
-/**
- * Whether the bytes from `from` reach an at sign before the authority ends. A hostname
- * in front of `:password@` is userinfo, and the real host comes after the at sign.
- */
-function reachesAtSign(cited: Uint8Array, from: number): boolean {
-  for (let i = from; i < cited.length; i++) {
-    const byte = cited[i] ?? 0;
-    if (byte === AT) return true;
-    if (byte <= 0x20 || AUTHORITY_END.has(byte)) return false;
-  }
-  return false;
-}
-
 function hostAppears(host: string, cited: Uint8Array): boolean {
   const wanted = new TextEncoder().encode(host);
   search: for (let at = 0; at + wanted.length <= cited.length; at++) {
     for (let i = 0; i < wanted.length; i++) {
       if (lower(cited[at + i] ?? 0) !== wanted[i]) continue search;
     }
-    const before = at > 0 ? cited[at - 1] : undefined;
-    if (before === DOT || isHostnameByte(before)) continue;
-    const after = cited[at + wanted.length];
-    if (after === AT || isHostnameByte(after)) continue;
-    if (after === DOT && isHostnameByte(cited[at + wanted.length + 1])) continue;
-    if (after === COLON && reachesAtSign(cited, at + wanted.length + 1)) continue;
+    if (joinsBefore(cited, at) || goesOn(cited, at + wanted.length)) continue;
     return true;
   }
   return false;

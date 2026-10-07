@@ -14,12 +14,21 @@ import {
   isCommit,
   isHostname,
   isHttpsUrl,
+  isNodeUrl,
   isNamespaceName,
   isPath,
   isRepoName,
   isSha256,
 } from "../src/limits.ts";
-import { GOOD_URLS, NODE_A, URLS_NOT_SERIALIZED, URLS_OFF_PATTERN } from "./fixtures.ts";
+import {
+  GOOD_NODE_URLS,
+  GOOD_URLS,
+  NODE_A,
+  NODE_URLS_NOT_SERIALIZED,
+  NODE_URLS_OFF_PATTERN,
+  URLS_NOT_SERIALIZED,
+  URLS_OFF_PATTERN,
+} from "./fixtures.ts";
 
 describe("limits of KTD6", () => {
   it("holds the plan's numbers", () => {
@@ -145,6 +154,23 @@ describe("path", () => {
     expect(isPath("skills/..")).toBe(false);
   });
 
+  it("rejects a part that starts with a hyphen, which a command reads as an option", () => {
+    expect(isPath("-rf")).toBe(false);
+    expect(isPath("--force")).toBe(false);
+    expect(isPath("a/-b")).toBe(false);
+    expect(isPath("a-b/c-d.md")).toBe(true);
+  });
+
+  it("rejects a `.git` part in any letter case", () => {
+    expect(isPath(".git/config")).toBe(false);
+    expect(isPath("a/.git/hooks/pre-commit")).toBe(false);
+    expect(isPath("a/.git")).toBe(false);
+    expect(isPath(".GIT/config")).toBe(false);
+    expect(isPath(".gitignore")).toBe(true);
+    expect(isPath(".github/workflows/ci.yml")).toBe(true);
+    expect(isPath("a.git/b")).toBe(true);
+  });
+
   it("rejects an absolute path", () => {
     expect(isPath("/etc/passwd")).toBe(false);
   });
@@ -214,7 +240,6 @@ describe("https url", () => {
     expect(isHttpsUrl(value)).toBe(false);
   });
 
-  // A second spelling of one node would count as a second organization.
   it.each(URLS_NOT_SERIALIZED)("rejects %s, which is not the serialized form", (_why, value) => {
     expect(isHttpsUrl(value)).toBe(false);
   });
@@ -226,5 +251,32 @@ describe("https url", () => {
     expect(isHttpsUrl(longest)).toBe(true);
     expect(isHttpsUrl(`${longest}a`)).toBe(false);
     expect(isHttpsUrl(new URL(NODE_A))).toBe(false);
+  });
+});
+
+describe("node url (KTD8)", () => {
+  it("accepts an origin, an origin with a port and a node under a path", () => {
+    for (const value of GOOD_NODE_URLS) {
+      expect(isNodeUrl(value), value).toBe(true);
+    }
+  });
+
+  // A second spelling of one node would count as a second organization.
+  it.each([...NODE_URLS_OFF_PATTERN, ...NODE_URLS_NOT_SERIALIZED, ...URLS_OFF_PATTERN])("rejects %s", (_why, value) => {
+    expect(isNodeUrl(value)).toBe(false);
+  });
+
+  it("accepts a URL only as a URL parser writes it, less the last slash of a bare origin", () => {
+    for (const value of GOOD_NODE_URLS) {
+      const { href } = new URL(value);
+      expect(href === value || (href === `${value}/` && new URL(value).pathname === "/"), value).toBe(true);
+    }
+  });
+
+  it("rejects more than 2,048 characters and other types", () => {
+    const longest = `${NODE_A}/${"a".repeat(MAX_URL_LENGTH - NODE_A.length - 1)}`;
+    expect(isNodeUrl(longest)).toBe(true);
+    expect(isNodeUrl(`${longest}a`)).toBe(false);
+    expect(isNodeUrl(new URL(NODE_A))).toBe(false);
   });
 });

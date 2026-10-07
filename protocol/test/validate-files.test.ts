@@ -206,9 +206,54 @@ describe("a hostname must appear in the cited lines", () => {
     expect(verdictFor(line)).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
   });
 
+  // A URL parser reads the decoy in each of these as userinfo, and the host as `evil.example`.
+  it.each([";x", ".", ",a", "!", "&a=b", "~", "=", "|x", ":a.b", "”", "—x"])(
+    "does not take a decoy that %j and an at sign make userinfo",
+    (join) => {
+      const line = `curl https://${HOST}${join}@evil.example/x`;
+      expect(new URL(line.slice(5)).hostname).toBe("evil.example");
+      expect(verdictFor(line)).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+    },
+  );
+
+  // A URL parser reads each of these as one hostname under `evil.example`.
+  it.each(["!x.", "(x.", ",.", ".!x.", "$x.", "*.", "+x.", ";.", "{x}.", "”.", "—x.", "。", "．", "｡", "」。evil。"])(
+    "does not take a decoy that %j joins to a longer hostname",
+    (join) => {
+      const line = `https://${HOST}${join}evil.example/`;
+      expect(new URL(line).hostname.endsWith(".evil.example")).toBe(true);
+      expect(verdictFor(line)).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+    },
+  );
+
+  it("does not take a decoy that a letter outside ASCII makes longer", () => {
+    expect(inLine(`https://${HOST}é/`)).toBe(false);
+    expect(inLine(`https://${HOST}ｓ/`)).toBe(false);
+    expect(inLine(`送信先は${HOST}です`)).toBe(false);
+  });
+
+  it("finds a hostname beside the quotes, dashes, spaces and brackets of prose", () => {
+    expect(inLine(`Sends your notes to “${HOST}”.`)).toBe(true);
+    expect(inLine(`Sends your notes to ‘${HOST}’, then stops.`)).toBe(true);
+    expect(inLine(`It calls ${HOST}—always.`)).toBe(true);
+    expect(inLine(`It calls ${HOST} – once.`)).toBe(true);
+    expect(inLine(`to\u00a0${HOST}\u00a0only`)).toBe(true);
+    expect(inLine(`«${HOST}»`)).toBe(true);
+    expect(inLine(`「${HOST}」に送信します`)).toBe(true);
+    expect(inLine(`送信先: ${HOST}。`)).toBe(true);
+  });
+
+  it("finds a hostname beside punctuation that joins it to nothing", () => {
+    expect(inLine(`(it calls ${HOST}.)`)).toBe(true);
+    expect(inLine(`hosts: ${HOST}, status.example`)).toBe(true);
+    expect(inLine(`for h in ${HOST};do curl "$h";done`)).toBe(true);
+    expect(inLine(`fetch("https://${HOST}").then((r) => r.json())`)).toBe(true);
+  });
+
   it("finds the hostname in front of a port", () => {
     expect(inLine(`https://${HOST}:8443/ingest`)).toBe(true);
     expect(inLine(`connect ${HOST}:8443 then mail ops@status.example`)).toBe(true);
+    expect(inLine(`scp out.tar ${HOST}:backup.tar`)).toBe(true);
   });
 
   it("finds the hostname in a later place when an earlier one is part of a longer name", () => {

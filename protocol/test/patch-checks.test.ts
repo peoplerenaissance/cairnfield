@@ -118,6 +118,18 @@ describe("size (KTD6)", () => {
     expect(three.ok && three.replacements).toHaveLength(3);
   });
 
+  it("counts a content change once when its copies have two modes", async () => {
+    const base: Tree = { "bin/run.sh": { text: lines(50), mode: "100755" }, "docs/run.sh": lines(50) };
+    const patched: Tree = { "bin/run.sh": { text: lines(10), mode: "100755" }, "docs/run.sh": lines(10) };
+    const verdict = await check(base, patched, ["bin/run.sh"]);
+    expect(verdict).toMatchObject({ ok: true, size: 40, kind: "removes-only" });
+    expect(verdict.ok && verdict.replacements).toHaveLength(2);
+    expect(verdict.ok && verdict.changes.map((change) => change.hunks)).toEqual([
+      [{ oldStart: 11, removed: 40, newStart: 11, added: 0 }],
+      [{ oldStart: 11, removed: 40, newStart: 11, added: 0 }],
+    ]);
+  });
+
   it("counts a replacement once, however many copies it rewrites", async () => {
     const base: Tree = { "one/run.sh": lines(50), "two/run.sh": lines(50), "three/run.sh": lines(50) };
     const patched: Tree = { "one/run.sh": lines(10), "two/run.sh": lines(10), "three/run.sh": lines(10) };
@@ -136,6 +148,20 @@ describe("kind, computed from the diff (KTD5)", () => {
 
   it("is removes-only for a patch that only deletes lines", async () => {
     expect(await kindOf(SKILL_FIXED)).toBe("removes-only");
+  });
+
+  it("is removes-only when the last line goes and the file had no line feed at its end", async () => {
+    const base: Tree = { "run.sh": "echo one\necho two\ncurl evil.example" };
+    const kept = await check(base, { "run.sh": "echo one\necho two" }, ["run.sh"]);
+    expect(kept).toMatchObject({ ok: true, kind: "removes-only", size: 3 });
+    const ended = await check(base, { "run.sh": "echo one\necho two\n" }, ["run.sh"]);
+    expect(ended).toMatchObject({ ok: true, kind: "removes-only", size: 1 });
+  });
+
+  it("is adds-or-changes when a kept line moves ahead of another", async () => {
+    const base: Tree = { "run.sh": "echo one\necho two\necho three\n" };
+    const moved = await check(base, { "run.sh": "echo two\necho one\n" }, ["run.sh"]);
+    expect(moved).toMatchObject({ ok: true, kind: "adds-or-changes" });
   });
 
   it("is adds-or-changes for a patch that changes one line", async () => {
@@ -284,6 +310,20 @@ describe("completeness (R24)", () => {
     const mixed: Tree = { ...base, "vendor/export.sh": { text: SCRIPT, mode: "100755" } };
     const patched = { ...mixed, "scripts/export.sh": SCRIPT_FIXED };
     expect(reasonOf(await check(mixed, patched, ["scripts/export.sh"]))).toBe("patch-incomplete");
+  });
+
+  it("passes a patch that only changes the mode when a copy already has the new mode", async () => {
+    const mixed: Tree = { "run.sh": { text: SCRIPT, mode: "100755" }, "docs/run.sh": SCRIPT };
+    const verdict = await check(mixed, { ...mixed, "run.sh": SCRIPT }, ["run.sh"]);
+    expect(verdict).toMatchObject({ ok: true, size: 0, kind: "adds-or-changes", paths: ["run.sh"] });
+    expect(verdict.ok && verdict.replacements).toEqual([
+      { oldBlob: await blobOf(SCRIPT), oldMode: "100755", newBlob: await blobOf(SCRIPT), newMode: "100644" },
+    ]);
+  });
+
+  it("fails a patch that changes the mode of one copy and leaves a copy with the same mode", async () => {
+    const twice: Tree = { "run.sh": { text: SCRIPT, mode: "100755" }, "bin/run.sh": { text: SCRIPT, mode: "100755" } };
+    expect(reasonOf(await check(twice, { ...twice, "run.sh": SCRIPT }, ["run.sh"]))).toBe("patch-incomplete");
   });
 
   it("holds one replacement per mode when copies with two modes are rewritten the same way", async () => {

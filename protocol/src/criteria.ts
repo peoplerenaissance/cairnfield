@@ -45,7 +45,8 @@ export interface CountedFinding {
 /**
  * Whether a finding counts against a lens. A destination finding whose host is on the
  * approved list does not count. Any other finding counts when it counts against a
- * criterion the lens requires. The early rejection check passes confirmed findings only.
+ * criterion the lens requires. The early rejection check passes only a criterion that a
+ * group of findings is confirmed against (R10).
  */
 export function countsAgainstLens(finding: CountedFinding, lens: LensRule): boolean {
   if (finding.host !== undefined && lens.approvedHosts.includes(finding.host)) return false;

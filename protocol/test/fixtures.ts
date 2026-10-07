@@ -50,6 +50,41 @@ export const GOOD_URLS: readonly string[] = [NODE_A, `${NODE_A}/`, "https://git.
 
 type Spelling = readonly [why: string, value: string];
 
+/** Node base URLs in the one accepted spelling: an origin, an origin with a port, and a node under a path (KTD8). */
+export const GOOD_NODE_URLS: readonly string[] = [
+  NODE_A,
+  "https://node.team-a.example:8443",
+  "https://sim.cairnfield.example/nodes/7",
+];
+
+/** Other spellings of a node URL, which the node URL pattern refuses. */
+export const NODE_URLS_OFF_PATTERN: readonly Spelling[] = [
+  ["a last slash", `${NODE_A}/`],
+  ["a dot after the hostname", "https://node.team-a.example."],
+  ["a query", `${NODE_A}?x`],
+  ["a query after a slash", `${NODE_A}/?x`],
+  ["a fragment", `${NODE_A}#x`],
+  ["a query and a fragment", `${NODE_A}/?x#y`],
+  ["an upper-case letter in the hostname", "https://Node.Team-A.example"],
+  ["a last slash after a path", "https://sim.cairnfield.example/nodes/7/"],
+  ["a one-dot part in the path", "https://sim.cairnfield.example/nodes/./7"],
+  ["a two-dot part in the path", "https://sim.cairnfield.example/x/../nodes/7"],
+  ["an empty part in the path", "https://sim.cairnfield.example//nodes/7"],
+  ["a percent-encoded character", "https://sim.cairnfield.example/nodes/%37"],
+  ["an upper-case letter in the path", "https://sim.cairnfield.example/Nodes/7"],
+  ["a hostname outside ASCII", "https://nöde.team-a.example"],
+  ["an address in brackets", "https://[::1]"],
+  ["another scheme", "http://node.team-a.example"],
+];
+
+/** Node URL spellings the pattern admits and the validator refuses, because they are not in serialized form. */
+export const NODE_URLS_NOT_SERIALIZED: readonly Spelling[] = [
+  ["a port of 443", "https://node.team-a.example:443"],
+  ["a port with a zero in front", "https://node.team-a.example:08443"],
+  ["a port past 65535", "https://node.team-a.example:99999"],
+  ["a numeric host in short form", "https://127.1"],
+];
+
 /** Spellings the URL pattern refuses, so the validator and the generated schema refuse them alike. */
 export const URLS_OFF_PATTERN: readonly Spelling[] = [
   ["a leading space", ` ${NODE_A}`],

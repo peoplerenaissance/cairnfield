@@ -11,6 +11,7 @@ import type { PatchKind, RejectionReason } from "./enums.ts";
 import type { FileEntry, FileListing } from "./files.ts";
 import { gitBlobHash, sha256Hex } from "./hash.ts";
 import { MAX_BLOB_BYTES, MAX_PATCH_LINES, MAX_PATCH_REPLACEMENTS } from "./limits.ts";
+import { splitLines } from "./lines.ts";
 
 /** The files of one commit, with the content of the blobs a check must read, by blob hash. */
 export interface FileSet {
@@ -53,7 +54,7 @@ export interface PatchFacts {
   /** In sorted order. */
   readonly replacements: readonly Replacement[];
   readonly kind: PatchKind;
-  /** Lines removed plus lines added, summed over the replacements. */
+  /** Lines removed plus lines added, summed over the replaced contents. */
   readonly size: number;
   /** One entry per replacement, in the same order. */
   readonly changes: readonly ContentChange[];
@@ -126,8 +127,10 @@ function serialize(replacement: Replacement): string {
 /**
  * The replacements a set of changes amounts to, in sorted order, or nothing when the
  * patch is incomplete (R24). A patch is complete when every path that holds a replaced
- * content is rewritten, and every copy is rewritten the same way. An added path has no
- * old side and replaces nothing, so it also gives nothing. The scope check names it first.
+ * content is rewritten, and every copy is rewritten the same way. A replacement that
+ * changes only the mode covers the copies with that mode, because a copy with another
+ * mode has nothing to change. An added path has no old side and replaces nothing, so it
+ * also gives nothing. The scope check names it first.
  */
 export function replacementsOf(base: FileListing, changes: readonly PathChange[]): Replacement[] | undefined {
   const byOld = new Map<string, Replacement>();
@@ -152,9 +155,12 @@ export function replacementsOf(base: FileListing, changes: readonly PathChange[]
     if (newBlob !== undefined && newBlob !== replacement.newBlob) return undefined;
     newBlobOf.set(replacement.oldBlob, replacement.newBlob);
   }
-  // No byte-identical copy of a replaced content is left unchanged.
+  // No path is left unchanged when its content is replaced, or when its blob and mode are.
   for (const entry of base) {
-    if (newBlobOf.has(entry.blob) && !changed.has(entry.path)) return undefined;
+    if (changed.has(entry.path)) continue;
+    const newBlob = newBlobOf.get(entry.blob);
+    if (newBlob !== undefined && newBlob !== entry.blob) return undefined;
+    if (byOld.has(`${entry.blob} ${entry.mode}`)) return undefined;
   }
   // A patch that changes nothing replaces nothing.
   if (byOld.size === 0) return undefined;
@@ -184,10 +190,37 @@ async function verified(set: FileSet, blob: string): Promise<Uint8Array | undefi
   return content;
 }
 
+const LINE_FEED = 10;
+
+// A line without the line feed that ends it.
+function body(line: Uint8Array): Uint8Array {
+  return line[line.length - 1] === LINE_FEED ? line.subarray(0, -1) : line;
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((byte, i) => byte === b[i]);
+}
+
+/**
+ * Whether every line of the new content is a line of the old content, in the same order.
+ * The line feed that ends a line is left out of the comparison, so a patch that deletes
+ * the last line of a file with no line feed at its end adds no line.
+ */
+function addsNoLine(before: Uint8Array, after: Uint8Array): boolean {
+  const old = splitLines(before).map(body);
+  let at = 0;
+  for (const line of splitLines(after).map(body)) {
+    while (at < old.length && !sameBytes(old[at] ?? line, line)) at += 1;
+    if (at === old.length) return false;
+    at += 1;
+  }
+  return true;
+}
+
 /**
  * Size, kind and changed lines. Size is lines removed plus lines added, summed over the
- * replacements. A replacement counts once, however many copies it rewrites. Kind is
- * `removes-only` when the patch adds no line and changes no mode.
+ * replaced contents. A content counts once, however many copies it rewrites and whatever
+ * their modes. Kind is `removes-only` when the patch adds no line and changes no mode.
  */
 export async function measurePatch(
   base: FileSet,
@@ -198,14 +231,22 @@ export async function measurePatch(
   | { readonly ok: false; readonly reason: RejectionReason }
 > {
   const changes: ContentChange[] = [];
+  // Copies with two modes give two replacements and one content change.
+  const measured = new Map<string, readonly Hunk[]>();
   let size = 0;
-  let added = 0;
+  let addsLine = false;
   let modeChanged = false;
   for (const replacement of replacements) {
     const deleted = replacement.newMode === DELETED_MODE;
     if (!deleted && replacement.newMode !== replacement.oldMode) modeChanged = true;
     if (replacement.newBlob === replacement.oldBlob) {
       changes.push({ blob: replacement.oldBlob, hunks: [] });
+      continue;
+    }
+    const content = `${replacement.oldBlob} ${replacement.newBlob}`;
+    const known = measured.get(content);
+    if (known !== undefined) {
+      changes.push({ blob: replacement.oldBlob, hunks: known });
       continue;
     }
     const before = await verified(base, replacement.oldBlob);
@@ -222,10 +263,11 @@ export async function measurePatch(
     const diff = diffLines(before, after, MAX_PATCH_LINES - size);
     if (diff === undefined) return refuse("patch-too-large");
     size += diff.removed + diff.added;
-    added += diff.added;
+    if (diff.added > 0 && !addsNoLine(before, after)) addsLine = true;
+    measured.set(content, diff.hunks);
     changes.push({ blob: replacement.oldBlob, hunks: diff.hunks });
   }
-  const kind: PatchKind = added === 0 && !modeChanged ? "removes-only" : "adds-or-changes";
+  const kind: PatchKind = !addsLine && !modeChanged ? "removes-only" : "adds-or-changes";
   return { ok: true, kind, size, changes };
 }
 

@@ -51,10 +51,18 @@ export interface SetKind<I extends SetItemKind = SetItemKind> {
 /**
  * A rule across the fields of one object.
  * `present-when`: the field is required when the `on` field holds one of the values, and refused otherwise.
+ * `one-of-when`: the field holds one of the `values` when the `on` field holds one of the `in` values.
  * `ordered`: the `low` field is not greater than the `high` field. Used for line ranges.
  */
 export type Rule<N extends string = string> =
   | { readonly rule: "present-when"; readonly field: N; readonly on: N; readonly in: readonly string[] }
+  | {
+      readonly rule: "one-of-when";
+      readonly field: N;
+      readonly values: readonly string[];
+      readonly on: N;
+      readonly in: readonly string[];
+    }
   | { readonly rule: "ordered"; readonly low: N; readonly high: N };
 
 export interface ObjectKind<F extends RecordFields = RecordFields> {
@@ -84,6 +92,10 @@ export interface RecordFields {
 /** An HTTPS URL with no credentials. */
 export interface UrlKind {
   readonly kind: "url";
+}
+/** A node's base URL in its one accepted spelling, which is the node's identity (KTD8). */
+export interface NodeUrlKind {
+  readonly kind: "node-url";
 }
 /** An opaque token. Never logged and never stored in a record. */
 export interface TokenKind {
@@ -124,6 +136,7 @@ export interface ShapeKind<F extends ContractFields = ContractFields> {
 
 export type ContractOnlyKind =
   | UrlKind
+  | NodeUrlKind
   | TokenKind
   | TextKind
   | BooleanKind
@@ -168,6 +181,7 @@ export function optional<K extends ContractKind>(kind: K): K & { readonly option
 }
 
 export const url = (): UrlKind => ({ kind: "url" });
+export const nodeUrl = (): NodeUrlKind => ({ kind: "node-url" });
 export const token = (): TokenKind => ({ kind: "token" });
 export const text = (max: number): TextKind => ({ kind: "text", max });
 export const boolean = (): BooleanKind => ({ kind: "boolean" });

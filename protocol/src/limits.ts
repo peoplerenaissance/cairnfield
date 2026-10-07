@@ -50,8 +50,12 @@ export const NAME_PATTERN = "^[a-z0-9][a-z0-9._-]*$";
 /** Letters, digits, dots, underscores, hyphens and slashes. Never starts with a hyphen. No empty part and no `..`. */
 export const BRANCH_NAME_PATTERN = "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$";
 
-const PATH_PART = "(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+";
-/** A relative path. Each part holds letters, digits, dots, underscores or hyphens, and is neither `.` nor `..`. */
+const PATH_PART = "(?!-)(?!\\.{1,2}(?:/|$))(?!\\.[Gg][Ii][Tt](?:/|$))[A-Za-z0-9._-]+";
+/**
+ * A relative path. Each part holds letters, digits, dots, underscores or hyphens. No part
+ * starts with a hyphen, which a command reads as an option, and none is `.`, `..` or
+ * `.git` in any letter case (KTD33).
+ */
 export const PATH_PATTERN = `^${PATH_PART}(?:/${PATH_PART})*$`;
 
 const HOST_LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
@@ -85,15 +89,38 @@ export const isToken = matches(TOKEN_PATTERN, MAX_TOKEN_LENGTH);
 const matchesUrlPattern = matches(URL_PATTERN, MAX_URL_LENGTH);
 
 /**
- * An HTTPS URL with no credentials, in serialized form (KTD8, KTD12). That form is the
- * one spelling of a URL, so an upper-case host or a default port is refused. A bare
- * origin may leave out its last slash.
+ * An HTTPS URL with no credentials, in serialized form (KTD12). It is the rule for a Git
+ * URL and for a link. An upper-case host or a default port is refused, and a bare origin
+ * may leave out its last slash. A node's base URL has the stricter rule of `isNodeUrl`.
  */
 export function isHttpsUrl(value: unknown): value is string {
   if (!matchesUrlPattern(value) || !URL.canParse(value)) return false;
   const parsed = new URL(value);
   if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") return false;
   return parsed.href === value || parsed.href === `${value}/`;
+}
+
+const NODE_PATH_PART = "[a-z0-9][a-z0-9._-]*";
+/**
+ * A node's base URL in its one accepted spelling (KTD8): lower-case `https://`, a
+ * hostname, a port, and a path for a node that lives under one. Each path part starts
+ * with a lower-case letter or a digit and continues with lower-case letters, digits,
+ * dots, underscores or hyphens. No credentials, query, fragment, percent sign or last slash.
+ */
+export const NODE_URL_PATTERN = `^https://${HOST_LABEL}(?:\\.${HOST_LABEL})*(?::[0-9]{1,5})?(?:/${NODE_PATH_PART})*$`;
+
+const matchesNodeUrlPattern = matches(NODE_URL_PATTERN, MAX_URL_LENGTH);
+
+/**
+ * A node's base URL, which is the node's identity (KTD8). Organizations are counted by
+ * this string, so it has one spelling and every other one is refused, never rewritten.
+ * The serialized form rules out what the pattern cannot: a port of 443, a zero in front
+ * of a port, and a numeric host written in short form.
+ */
+export function isNodeUrl(value: unknown): value is string {
+  if (!matchesNodeUrlPattern(value) || !URL.canParse(value)) return false;
+  const { href } = new URL(value);
+  return href === value || href === `${value}/`;
 }
 
 const isName = matches(NAME_PATTERN, MAX_NAMESPACE_NAME_LENGTH);
