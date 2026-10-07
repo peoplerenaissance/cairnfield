@@ -50,9 +50,16 @@ export const GOOD_URLS: readonly string[] = [NODE_A, `${NODE_A}/`, "https://git.
 
 type Spelling = readonly [why: string, value: string];
 
+const LONGEST_LABEL = "a".repeat(63);
+// Three labels of 63 characters and their dots make 192 characters.
+const hostnameOfLength = (length: number): string =>
+  `${LONGEST_LABEL}.${LONGEST_LABEL}.${LONGEST_LABEL}.${"a".repeat(length - 192)}`;
+
 /** Node base URLs in the one accepted spelling: an origin, an origin with a port, and a node under a path (KTD8). */
 export const GOOD_NODE_URLS: readonly string[] = [
   NODE_A,
+  `https://${hostnameOfLength(253)}`,
+  `https://${hostnameOfLength(253)}:8443/nodes/7`,
   "https://node.team-a.example:8443",
   "https://node.team-a.example:4430",
   "https://node.team-a.example:65535",
@@ -87,6 +94,9 @@ export const NODE_URLS_OFF_PATTERN: readonly Spelling[] = [
   ["a numeric host in hexadecimal", "https://0x7f.1"],
   ["an address in place of a hostname", "https://127.0.0.1"],
   ["a last label that is a number", "https://node.123"],
+  ["a hostname of 254 characters", `https://${hostnameOfLength(254)}`],
+  ["a hostname of 254 characters before a port", `https://${hostnameOfLength(254)}:8443`],
+  ["a hostname of 254 characters before a path", `https://${hostnameOfLength(254)}/nodes/7`],
 ];
 
 /** A node URL the pattern admits and the validator refuses, because a URL parser cannot read it. */

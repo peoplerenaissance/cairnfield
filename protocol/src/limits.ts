@@ -109,13 +109,14 @@ const NODE_PORT =
   "(?!443(?:/|$))(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])";
 /**
  * A node's base URL in its one accepted spelling (KTD8): lower-case `https://`, a
- * hostname that is not an address, a port, and a path for a node that lives under one.
+ * hostname of at most 253 characters that is not an address, a port, and a path for a
+ * node that lives under one.
  * Each path part starts with a lower-case letter or a digit and continues with lower-case
  * letters, digits, dots, underscores or hyphens. No credentials, query, fragment, percent
  * sign or last slash. The pattern states the whole rule, so a JSON Schema validator
  * admits no second spelling either.
  */
-export const NODE_URL_PATTERN = `^https://(?:${HOST_LABEL}\\.)*(?!${NUMBER_LABEL}(?:[:/]|$))${HOST_LABEL}(?::${NODE_PORT})?(?:/${NODE_PATH_PART})*$`;
+export const NODE_URL_PATTERN = `^https://(?=[a-z0-9.-]{1,${MAX_HOSTNAME_LENGTH}}(?:[:/]|$))(?:${HOST_LABEL}\\.)*(?!${NUMBER_LABEL}(?:[:/]|$))${HOST_LABEL}(?::${NODE_PORT})?(?:/${NODE_PATH_PART})*$`;
 
 const matchesNodeUrlPattern = matches(NODE_URL_PATTERN, MAX_URL_LENGTH);
 
