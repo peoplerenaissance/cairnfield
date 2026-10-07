@@ -1,0 +1,13 @@
+# Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
+version: v1.25.1
+# ignores vulnerabilities until expiry date; change duration by modifying expiry date
+ignore:
+  SNYK-JS-BRACES-19963945:
+    - '*':
+        reason: >-
+          No fixed version exists. Development dependency of the secret scan,
+          which uses it on glob patterns from this repo's own config. No
+          untrusted input reaches it.
+        expires: 2026-11-06T00:00:00.000Z
+        created: 2026-10-07T22:15:00.000Z
+patch: {}
