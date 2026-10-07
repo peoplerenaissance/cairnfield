@@ -276,7 +276,11 @@ describe("a hostname must appear in the cited lines", () => {
   // For an explicit URL the platform URL parser is the judge. Each line puts the claimed
   // name inside the authority, so the verdict must be the parser's, whatever the form.
   it("gives an explicit URL the verdict of the URL parser", () => {
-    const schemes = ["https://", "https:", "https:/", "https:///", "https:\\\\", "HTTPS://", "http://", "ws:", "wss://", "ftp://"];
+    const schemes = [
+      ...["https://", "https:", "https:/", "https:///", "https:\\\\", "HTTPS://", "http://", "ws:", "wss://", "ftp://"],
+      // Text in front that cannot be part of a scheme, or that makes no scheme with two slashes.
+      ...[".https://", "+https:", "-https:/", "1https://", "x+https:", "xhttps:", "(https://", "=https:"],
+    ];
     const leads = ["", "user@", "user:pw@", "evil.example@", "evil.example:80@", "“", "evil“", "evil!", "(", "x.", "x-"];
     const tails = [
       ...["", "/", "/x", ":8443/x", "?q", "#f", ".", "./x", "x/", "-x/"],
@@ -291,7 +295,9 @@ describe("a hostname must appear in the cited lines", () => {
       for (const lead of leads) {
         for (const tail of tails) {
           const line = `${scheme}${lead}${HOST}${tail}`;
-          const parsed = URL.canParse(line) ? new URL(line).hostname.replace(/\.$/, "") : undefined;
+          // The URL starts at its scheme, wherever that is in the line.
+          const url = line.slice(line.search(/https?:|wss?:|ftp:/i));
+          const parsed = URL.canParse(url) ? new URL(url).hostname.replace(/\.$/, "") : undefined;
           expect(inLine(line), line).toBe(parsed === HOST);
           if (parsed === HOST) found += 1;
         }
@@ -300,6 +306,17 @@ describe("a hostname must appear in the cited lines", () => {
     // Both verdicts occur, so the comparison is not empty.
     expect(found).toBeGreaterThan(100);
     expect(found).toBeLessThan(schemes.length * leads.length * tails.length - 100);
+  });
+
+  it("finds the start of a URL after text that is not part of its scheme", () => {
+    for (const lead of [".", "+", "-", "1", "x", "x+", "v1."]) {
+      expect(inLine(`${lead}https://${HOST}@evil.example/`), lead).toBe(false);
+      expect(inLine(`${lead}https:${HOST}@evil.example/`), lead).toBe(false);
+      expect(inLine(`${lead}https://${HOST}/ingest`), lead).toBe(true);
+    }
+    expect(inLine(`x.custom://${HOST}@evil.example/`)).toBe(false);
+    expect(inLine(`.custom://${HOST}@evil.example/`)).toBe(false);
+    expect(inLine(`1.custom://${HOST}/x`)).toBe(true);
   });
 
   it("reads an authority with no paired slashes as the URL parser does", () => {
@@ -368,6 +385,8 @@ describe("a hostname must appear in the cited lines", () => {
     ["a short name many times over", "a.b,".repeat(60_000)],
     ["many small URLs", "https://x.example ".repeat(14_000)],
     ["a long run of scheme characters", `${"a".repeat(240_000)}://x`],
+    ["a long run of characters that cannot start a scheme", `${"1.".repeat(120_000)}https:x`],
+    ["a long run of scheme characters with no colon", "a1.".repeat(80_000)],
   ])("checks %s in a short time", (_what, line) => {
     const started = performance.now();
     expect(inLine(line, "nowhere.example")).toBe(false);

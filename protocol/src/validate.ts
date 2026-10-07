@@ -313,9 +313,12 @@ export function citedPaths(record: AnyRecord): string[] {
 }
 
 // The start of an explicit URL. A URL parser gives `http`, `https`, `ws`, `wss` and `ftp`
-// an authority whatever slashes follow the colon, even none. Any other scheme has one
-// only after two slashes.
-const EXPLICIT_URL = /(?<![a-z0-9+.-])(?:(?<special>https?|wss?|ftp):[/\\]*|(?<other>[a-z][a-z0-9+.-]*):\/\/)/giu;
+// an authority whatever slashes follow the colon, even none, so those five count wherever
+// they stand, even at the end of a longer word. Any other scheme has an authority only
+// after two slashes. A scheme starts with a letter, so the digits and marks in front of
+// its first letter are not part of it.
+const EXPLICIT_URL =
+  /(?<special>https?|wss?|ftp):[/\\]*|(?<![a-z0-9+.-])[0-9+.-]*(?<other>[a-z][a-z0-9+.-]*):\/\//giu;
 // Where the authority of a URL stops: at the path, the query or the fragment, or where
 // the URL itself stops in the file that holds it, at white space, a quote, a backtick or
 // an angle bracket. A backslash starts the path only for the five schemes above.
