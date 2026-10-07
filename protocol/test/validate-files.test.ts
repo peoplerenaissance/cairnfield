@@ -281,6 +281,8 @@ describe("a hostname must appear in the cited lines", () => {
     const tails = [
       ...["", "/", "/x", ":8443/x", "?q", "#f", ".", "./x", "x/", "-x/"],
       ...["!/", ")/x", ",?q", ";#f", "”/x", "!\\x", "./", "../", "-/"],
+      // At the end of the line, a mark that is not the punctuation of a sentence stays in the URL.
+      ...["-", "@", "%", "_", "~", "=", "&", "+", "*", "$", ".-", "!-"],
       ...["@evil.example/", ":pw@evil.example/", ";x@evil.example/", "\\@evil.example/"],
       ...[".evil.example/", "!x.evil.example/", "”.evil.example/", "。evil.example/", "%2eevil.example/"],
     ];
@@ -318,6 +320,16 @@ describe("a hostname must appear in the cited lines", () => {
     },
   );
 
+  // Only the punctuation of a sentence is dropped from the end of a URL. Any other mark
+  // stays, and the parser then reads another hostname or none.
+  it.each(["-", "@", "%", "_", "~", "=", "&", "*"])("keeps %j at the end of a URL that white space follows", (mark) => {
+    const url = `https://${HOST}${mark}`;
+    expect(URL.canParse(url) ? new URL(url).hostname : undefined, url).not.toBe(HOST);
+    for (const line of [`${url} `, `See ${url} for more.`, url]) {
+      expect(verdictFor(line), line).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+    }
+  });
+
   it("finds the hostname of an explicit URL that the punctuation of prose follows", () => {
     for (const line of [
       `[site](https://${HOST})`,
@@ -327,6 +339,10 @@ describe("a hostname must appear in the cited lines", () => {
       `It calls https://${HOST}.`,
       `“https://${HOST}”`,
       `(https://${HOST}/ingest)`,
+      `Is it https://${HOST}?`,
+      `Never https://${HOST}!`,
+      `(see https://${HOST};)`,
+      `「https://${HOST}」`,
     ]) {
       expect(inLine(line), line).toBe(true);
     }

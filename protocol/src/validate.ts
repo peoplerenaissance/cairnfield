@@ -321,7 +321,6 @@ const EXPLICIT_URL = /(?<![a-z0-9+.-])(?:(?<special>https?|wss?|ftp):[/\\]*|(?<o
 // an angle bracket. A backslash starts the path only for the five schemes above.
 const SPECIAL_AUTHORITY_END = /[/\\?#\s"'`<>]/gu;
 const AUTHORITY_END = /[/?#\s"'`<>]/gu;
-const LETTER_OR_DIGIT = /^[\p{L}\p{N}]$/u;
 const WHITE_SPACE = /^\s$/u;
 
 /**
@@ -341,16 +340,15 @@ function finder(text: string, pattern: RegExp): (from: number) => number {
   };
 }
 
-// Drops what prose puts after a URL that is not part of it: a full stop, a comma, a closing
-// bracket. What it drops holds no letter and no digit, so it names no other host.
-function withoutTrailingPunctuation(text: string): string {
+// The punctuation of a sentence that may follow a URL in prose and is not part of it: a
+// full stop, a comma, a semicolon, a colon, an exclamation mark, a question mark, a
+// closing bracket and a closing quote. No other mark is dropped, so a hyphen, a percent
+// sign or an at sign stays in the URL and the parser reads it.
+const SENTENCE_PUNCTUATION = new Set(".,;:!?)]}\u201d\u2019\u00bb\u300d\u300f");
+
+function withoutSentencePunctuation(text: string): string {
   let end = text.length;
-  while (end > 0) {
-    const last = text.charCodeAt(end - 1);
-    const size = last >= 0xdc00 && last <= 0xdfff && end > 1 ? 2 : 1;
-    if (LETTER_OR_DIGIT.test(text.slice(end - size, end))) break;
-    end -= size;
-  }
+  while (end > 0 && SENTENCE_PUNCTUATION.has(text.charAt(end - 1))) end -= 1;
   return text.slice(0, end);
 }
 
@@ -378,7 +376,8 @@ const JOINS_AFTER = /^(?:[\p{L}\p{N}-]|\.[\p{L}\p{N}])/u;
  *
  * The parser gets the authority as the file holds it. The one exception is an authority
  * that runs to white space or to the end of the lines: nothing shows where that URL
- * stops, so the punctuation at its end is read as the sentence's and dropped.
+ * stops, so the punctuation of a sentence at its end is read as the sentence's and
+ * dropped. Those marks hold no letter, no digit and no at sign, so they name no other host.
  *
  * All other text is prose, and so is the path of a URL. There the name counts unless it
  * is part of a longer name. Letter case is ignored. A port, a full stop that ends a
@@ -401,7 +400,7 @@ function hostAppears(host: string, cited: Uint8Array): boolean {
       const scheme = special ?? match.groups?.["other"] ?? "";
       const authority = text.slice(from, end);
       const inProse = end === text.length || WHITE_SPACE.test(text.charAt(end));
-      if (hostnameOf(scheme, inProse ? withoutTrailingPunctuation(authority) : authority) === host) return true;
+      if (hostnameOf(scheme, inProse ? withoutSentencePunctuation(authority) : authority) === host) return true;
     }
     authorities.push([match.index, end]);
   }
