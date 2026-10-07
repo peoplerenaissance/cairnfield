@@ -322,6 +322,7 @@ const EXPLICIT_URL = /(?<![a-z0-9+.-])(?:(?<special>https?|wss?|ftp):[/\\]*|(?<o
 const SPECIAL_AUTHORITY_END = /[/\\?#\s"'`<>]/gu;
 const AUTHORITY_END = /[/?#\s"'`<>]/gu;
 const LETTER_OR_DIGIT = /^[\p{L}\p{N}]$/u;
+const WHITE_SPACE = /^\s$/u;
 
 /**
  * Gives the first place at or after `from` where the pattern matches, or the end of the
@@ -340,7 +341,8 @@ function finder(text: string, pattern: RegExp): (from: number) => number {
   };
 }
 
-// Drops what prose puts after a URL that is not part of it: a full stop, a comma, a closing bracket.
+// Drops what prose puts after a URL that is not part of it: a full stop, a comma, a closing
+// bracket. What it drops holds no letter and no digit, so it names no other host.
 function withoutTrailingPunctuation(text: string): string {
   let end = text.length;
   while (end > 0) {
@@ -354,7 +356,7 @@ function withoutTrailingPunctuation(text: string): string {
 
 /** The hostname a URL parser reads from a scheme and an authority, or nothing when it reads none. */
 function hostnameOf(scheme: string, authority: string): string | undefined {
-  const url = `${scheme}://${withoutTrailingPunctuation(authority)}`;
+  const url = `${scheme}://${authority}`;
   if (!URL.canParse(url)) return undefined;
   // A dot after the last label names the same host.
   return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
@@ -373,6 +375,10 @@ const JOINS_AFTER = /^(?:[\p{L}\p{N}-]|\.[\p{L}\p{N}])/u;
  * `https://metrics.example@evil.example/` or of `https://evil“metrics.example/`, and no
  * rule here has to say why. A name inside the authority of a URL counts in no other way.
  * An authority longer than a URL may be is not parsed, and no name inside it counts.
+ *
+ * The parser gets the authority as the file holds it. The one exception is an authority
+ * that runs to white space or to the end of the lines: nothing shows where that URL
+ * stops, so the punctuation at its end is read as the sentence's and dropped.
  *
  * All other text is prose, and so is the path of a URL. There the name counts unless it
  * is part of a longer name. Letter case is ignored. A port, a full stop that ends a
@@ -393,7 +399,9 @@ function hostAppears(host: string, cited: Uint8Array): boolean {
     const end = special === undefined ? endOfOther(from) : endOfSpecial(from);
     if (end - from <= MAX_URL_LENGTH) {
       const scheme = special ?? match.groups?.["other"] ?? "";
-      if (hostnameOf(scheme, text.slice(from, end)) === host) return true;
+      const authority = text.slice(from, end);
+      const inProse = end === text.length || WHITE_SPACE.test(text.charAt(end));
+      if (hostnameOf(scheme, inProse ? withoutTrailingPunctuation(authority) : authority) === host) return true;
     }
     authorities.push([match.index, end]);
   }

@@ -280,6 +280,7 @@ describe("a hostname must appear in the cited lines", () => {
     const leads = ["", "user@", "user:pw@", "evil.example@", "evil.example:80@", "“", "evil“", "evil!", "(", "x.", "x-"];
     const tails = [
       ...["", "/", "/x", ":8443/x", "?q", "#f", ".", "./x", "x/", "-x/"],
+      ...["!/", ")/x", ",?q", ";#f", "”/x", "!\\x", "./", "../", "-/"],
       ...["@evil.example/", ":pw@evil.example/", ";x@evil.example/", "\\@evil.example/"],
       ...[".evil.example/", "!x.evil.example/", "”.evil.example/", "。evil.example/", "%2eevil.example/"],
     ];
@@ -304,6 +305,18 @@ describe("a hostname must appear in the cited lines", () => {
     expect(inLine(`https:/“${HOST}/`)).toBe(false);
     expect(inLine(`https:${HOST}/`)).toBe(true);
   });
+
+  // A quote, a backtick or an angle bracket shows where the URL ends, so what stands in
+  // front of it is part of the URL, and the parser reads it as part of the hostname.
+  it.each(['fetch("https://HOST!")', "fetch('https://HOST)')", "`https://HOST,`", "<https://HOST;>", '"https://HOST”"'])(
+    "does not drop punctuation that a delimiter puts inside the URL: %s",
+    (template) => {
+      const line = template.replace("HOST", HOST);
+      const url = line.slice(line.indexOf("https"), -1).replace(/["'`>]\)?$/, "");
+      expect(new URL(url).hostname, url).not.toBe(HOST);
+      expect(verdictFor(line), line).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+    },
+  );
 
   it("finds the hostname of an explicit URL that the punctuation of prose follows", () => {
     for (const line of [
