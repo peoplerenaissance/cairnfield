@@ -380,15 +380,21 @@ const JOINS_AFTER = /^(?:[\p{L}\p{N}-]|\.[\p{L}\p{N}])/u;
  * The parser gets the authority as the file holds it. The one exception is an authority
  * that runs to white space or to the end of the lines: nothing shows where that URL
  * stops, so the punctuation of a sentence at its end is read as the sentence's and
- * dropped. Those marks hold no letter, no digit and no at sign, so they name no other host.
+ * dropped. A dropped mark sits after the last label. It can change only the top-level
+ * label of the hostname the parser reads, to one that does not exist and that nobody
+ * can register, so no data reaches another host.
  *
  * All other text is prose, and so is the path of a URL. There the name counts unless it
  * is part of a longer name. Letter case is ignored. A port, a full stop that ends a
  * sentence and any other punctuation are allowed.
  *
- * Text with no scheme is prose even when a tool would read it as a URL, so
- * `curl metrics.example,x@evil.example` counts. The check shows that the name is in the
- * cited lines. It does not show where a shell or a program sends data.
+ * Two limits follow from reading a file and not running it. Text with no scheme is prose
+ * even when a tool would read it as a URL, so `curl metrics.example,x@evil.example`
+ * counts. And a URL ends at white space, though a URL parser strips a tab or a line
+ * break and reads a space as part of the userinfo. So a URL that a string literal
+ * splits with white space is read as two pieces, and the second piece is prose. The
+ * check shows that the name is in the cited lines. It does not show where a shell or a
+ * program sends data.
  */
 function hostAppears(host: string, cited: Uint8Array): boolean {
   const text = new TextDecoder().decode(cited);

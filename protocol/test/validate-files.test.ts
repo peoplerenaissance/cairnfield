@@ -399,6 +399,16 @@ describe("a hostname must appear in the cited lines", () => {
     expect(inLine(`https://${"x!".repeat(1_100)}@${HOST}/`)).toBe(false);
   });
 
+  // A stated limit: a URL ends at white space in the file. A URL parser strips a tab and
+  // reads a space as part of the userinfo, so it reads another hostname in each of these.
+  it("reads a URL that white space splits as two pieces", () => {
+    const split = [`https://evil.\t${HOST}/`, `https://${HOST} x@evil.example/`];
+    for (const url of split) {
+      expect(new URL(url).hostname, url).not.toBe(HOST);
+      expect(inLine(`fetch("${url}")`), url).toBe(true);
+    }
+  });
+
   // The stated limit: with no scheme there is no URL to parse, so the text is prose.
   it("reads text with no scheme as prose", () => {
     expect(inLine(`curl ${HOST},x@evil.example`)).toBe(true);
