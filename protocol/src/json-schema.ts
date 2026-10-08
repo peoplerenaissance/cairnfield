@@ -4,7 +4,8 @@
 // Two rules have no JSON Schema keyword, so they travel as annotations that a plain
 // validator ignores: `x-sorted` on a set, and `x-ordered` on an object whose first named
 // field must not be greater than its second. The 4 KB record limit is not in the schema.
-// Nor is the rule that a URL is in serialized form, which a pattern cannot state.
+// Nor is the rule that a URL is in serialized form, which a pattern cannot state. The
+// node URL pattern does state the one accepted spelling of a node URL in full.
 
 import { SCHEMA_VERSION } from "./enums.ts";
 import type { RecordType } from "./enums.ts";
@@ -18,6 +19,7 @@ import {
   MAX_NAMESPACE_NAME_LENGTH,
   MAX_PATH_LENGTH,
   MAX_REPO_NAME_LENGTH,
+  NODE_URL_PATTERN,
   MAX_URL_LENGTH,
   MIN_NAMESPACE_NAME_LENGTH,
   NAME_PATTERN,
@@ -70,6 +72,11 @@ function objectSchema(kind: ObjectKind | ShapeKind, refOf: (type: RecordType) =>
   for (const rule of kind.rules) {
     if (rule.rule === "ordered") {
       ordered.push(rule);
+    } else if (rule.rule === "one-of-when") {
+      conditions.push({
+        if: { properties: { [rule.on]: { enum: rule.in } }, required: [rule.on] },
+        then: { properties: { [rule.field]: { enum: rule.values } } },
+      });
     } else {
       // Required when the `on` field holds one of the values, and refused otherwise.
       conditions.push({
@@ -126,6 +133,8 @@ export function jsonSchemaOf(kind: ContractKind, refOf: (type: RecordType) => st
       return objectSchema(kind, refOf);
     case "url":
       return { type: "string", format: "uri", pattern: URL_PATTERN, maxLength: MAX_URL_LENGTH };
+    case "node-url":
+      return { type: "string", format: "uri", pattern: NODE_URL_PATTERN, maxLength: MAX_URL_LENGTH };
     case "token":
       return { type: "string", pattern: TOKEN_PATTERN };
     case "text":

@@ -50,6 +50,59 @@ export const GOOD_URLS: readonly string[] = [NODE_A, `${NODE_A}/`, "https://git.
 
 type Spelling = readonly [why: string, value: string];
 
+const LONGEST_LABEL = "a".repeat(63);
+// Three labels of 63 characters and their dots make 192 characters.
+const hostnameOfLength = (length: number): string =>
+  `${LONGEST_LABEL}.${LONGEST_LABEL}.${LONGEST_LABEL}.${"a".repeat(length - 192)}`;
+
+/** Node base URLs in the one accepted spelling: an origin, an origin with a port, and a node under a path (KTD8). */
+export const GOOD_NODE_URLS: readonly string[] = [
+  NODE_A,
+  `https://${hostnameOfLength(253)}`,
+  `https://${hostnameOfLength(253)}:8443/nodes/7`,
+  "https://node.team-a.example:8443",
+  "https://node.team-a.example:4430",
+  "https://node.team-a.example:65535",
+  "https://4node.team-a.example",
+  "https://xn.ab--c.team-a.example",
+  "https://sim.cairnfield.example/nodes/7",
+];
+
+/** Other spellings of a node URL, which the node URL pattern refuses. */
+export const NODE_URLS_OFF_PATTERN: readonly Spelling[] = [
+  ["a last slash", `${NODE_A}/`],
+  ["a dot after the hostname", "https://node.team-a.example."],
+  ["a query", `${NODE_A}?x`],
+  ["a query after a slash", `${NODE_A}/?x`],
+  ["a fragment", `${NODE_A}#x`],
+  ["a query and a fragment", `${NODE_A}/?x#y`],
+  ["an upper-case letter in the hostname", "https://Node.Team-A.example"],
+  ["a last slash after a path", "https://sim.cairnfield.example/nodes/7/"],
+  ["a one-dot part in the path", "https://sim.cairnfield.example/nodes/./7"],
+  ["a two-dot part in the path", "https://sim.cairnfield.example/x/../nodes/7"],
+  ["an empty part in the path", "https://sim.cairnfield.example//nodes/7"],
+  ["a percent-encoded character", "https://sim.cairnfield.example/nodes/%37"],
+  ["an upper-case letter in the path", "https://sim.cairnfield.example/Nodes/7"],
+  ["a hostname outside ASCII", "https://nöde.team-a.example"],
+  ["an address in brackets", "https://[::1]"],
+  ["another scheme", "http://node.team-a.example"],
+  ["a port of 443", "https://node.team-a.example:443"],
+  ["a port of 443 before a path", "https://sim.cairnfield.example:443/nodes/7"],
+  ["a port with a zero in front", "https://node.team-a.example:08443"],
+  ["a port of 0", "https://node.team-a.example:0"],
+  ["a port past 65535", "https://node.team-a.example:65536"],
+  ["a numeric host in short form", "https://127.1"],
+  ["a numeric host in hexadecimal", "https://0x7f.1"],
+  ["an address in place of a hostname", "https://127.0.0.1"],
+  ["a last label that is a number", "https://node.123"],
+  ["a hostname of 254 characters", `https://${hostnameOfLength(254)}`],
+  ["a hostname of 254 characters before a port", `https://${hostnameOfLength(254)}:8443`],
+  ["a hostname of 254 characters before a path", `https://${hostnameOfLength(254)}/nodes/7`],
+  ["a label that is not valid Punycode", "https://xn--a.example"],
+  ["a Punycode label", "https://xn--bcher-kva.example"],
+  ["a Punycode label at the end", "https://node.xn--80ak6aa92e"],
+];
+
 /** Spellings the URL pattern refuses, so the validator and the generated schema refuse them alike. */
 export const URLS_OFF_PATTERN: readonly Spelling[] = [
   ["a leading space", ` ${NODE_A}`],

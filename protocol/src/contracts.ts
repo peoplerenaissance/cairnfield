@@ -22,6 +22,7 @@ import {
   int,
   listOf,
   name,
+  nodeUrl,
   oneOf,
   optional,
   path,
@@ -113,7 +114,10 @@ export const ADMIN_FORK_REQUEST = shape({ component: gitHash() });
 /** A copy and a fork belong to a component. No write token is issued for a copy (R8). */
 export const ADMIN_TOKEN_REQUEST = shape(
   { repo: oneOf(REPO_ROLES), component: optional(gitHash()), scope: oneOf(TOKEN_SCOPES) },
-  [{ rule: "present-when", field: "component", on: "repo", in: ["copy", "fork"] }],
+  [
+    { rule: "present-when", field: "component", on: "repo", in: ["copy", "fork"] },
+    { rule: "one-of-when", field: "scope", values: ["read"], on: "repo", in: ["copy"] },
+  ],
 );
 /** A repo and whether it is ready. An import or a fork takes time (KTD36). */
 export const ADMIN_REPO = shape({ repo: name("repo"), ready: boolean() });
@@ -188,9 +192,9 @@ export type IndexRefusal = Infer<typeof INDEX_REFUSAL>;
 export const ACCEPTED = shape({ version: version() });
 
 /** A node is registered by its base URL, which is its identity (KTD8). */
-export const REGISTER_NODE_REQUEST = shape({ url: url() });
-/** The node's identity in the index's canonical form. */
-export const NODE_REGISTERED = shape({ version: version(), node: url() });
+export const REGISTER_NODE_REQUEST = shape({ url: nodeUrl() });
+/** The node's identity, as it was sent. The index stores no other spelling (KTD8). */
+export const NODE_REGISTERED = shape({ version: version(), node: nodeUrl() });
 
 /** A component is registered with its Git URL, branch and commit (KTD12). */
 export const REGISTER_COMPONENT_REQUEST = shape({ url: url(), branch: name("branch"), commit: gitHash() });
@@ -210,13 +214,13 @@ export const COMPONENT_LOOKUP = shape({
 });
 
 /** A notice is an unauthenticated hint that names one node. The index always pulls from the registered URL (KTD11). */
-export const NOTICE = shape({ node: url() });
+export const NOTICE = shape({ node: nodeUrl() });
 
 // A valid record in the view, with its node, repo, commit and path (U7). The node and
 // the ID are the fields that the match rule reads.
 function published<S extends ObjectKind>(record: S) {
   return {
-    node: url(),
+    node: nodeUrl(),
     repo: name("repo"),
     commit: gitHash(),
     path: recordFile(),
@@ -241,8 +245,14 @@ const VIEW_FINDINGS = shape({
   findings: listOf(shape(published(FINDING)), MAX_VIEW_ENTRIES),
   rechecks: listOf(shape(published(RECHECK)), MAX_VIEW_ENTRIES),
   counterFindings: listOf(shape(published(COUNTER_FINDING)), MAX_VIEW_ENTRIES),
-  nodes: listOf(url(), MAX_VIEW_ENTRIES),
+  /** The organizations that saw the same thing, and whether there are two of them. */
+  nodes: listOf(nodeUrl(), MAX_VIEW_ENTRIES),
   confirmed: boolean(),
+  /** The organizations that say the content breaks each criterion, counted apart (R10). */
+  criteria: listOf(
+    shape({ criterion: oneOf(CRITERIA), nodes: listOf(nodeUrl(), MAX_VIEW_ENTRIES), confirmed: boolean() }),
+    CRITERIA.length,
+  ),
 });
 
 /** One patch identity (R24): identical patches collapse into one entry that lists its organizations (R16). */
@@ -257,7 +267,7 @@ const VIEW_PATCH = shape({
   paths: listOf(path(), MAX_VIEW_ENTRIES),
   records: listOf(shape(published(PATCH)), MAX_VIEW_ENTRIES),
   rechecks: listOf(shape(published(PATCH_RECHECK)), MAX_VIEW_ENTRIES),
-  nodes: listOf(url(), MAX_VIEW_ENTRIES),
+  nodes: listOf(nodeUrl(), MAX_VIEW_ENTRIES),
   confirmed: boolean(),
 });
 
@@ -274,7 +284,7 @@ export const VIEW = shape({
   lag: count(),
   organizations: count(),
   nodes: listOf(
-    shape({ node: url(), processed: optional(gitHash()), simulated: boolean(), historyRewritten: boolean() }),
+    shape({ node: nodeUrl(), processed: optional(gitHash()), simulated: boolean(), historyRewritten: boolean() }),
     MAX_VIEW_ENTRIES,
   ),
   claims: listOf(shape({ ...published(CLAIM), state: oneOf(CLAIM_STATES) }), MAX_VIEW_ENTRIES),
@@ -288,21 +298,22 @@ export const VIEW = shape({
     shape({
       tree: gitHash(),
       records: listOf(shape(published(RECIPE)), MAX_VIEW_ENTRIES),
-      nodes: listOf(url(), MAX_VIEW_ENTRIES),
+      nodes: listOf(nodeUrl(), MAX_VIEW_ENTRIES),
     }),
     MAX_VIEW_ENTRIES,
   ),
-  pending: listOf(shape({ node: url(), hash: sha256(), type: oneOf(RECORD_TYPES) }), MAX_VIEW_ENTRIES),
+  pending: listOf(shape({ node: nodeUrl(), hash: sha256(), type: oneOf(RECORD_TYPES) }), MAX_VIEW_ENTRIES),
   rejected: listOf(
-    shape({ node: url(), hash: sha256(), type: oneOf(RECORD_TYPES), reason: oneOf(REJECTION_REASONS) }),
+    shape({ node: nodeUrl(), hash: sha256(), type: oneOf(RECORD_TYPES), reason: oneOf(REJECTION_REASONS) }),
     MAX_VIEW_ENTRIES,
   ),
 });
 export type View = Infer<typeof VIEW>;
 
 /**
- * The projection for the early rejection check (R13): the criterion and host of each
- * confirmed finding, with a count of organizations. No file and no line.
+ * The projection for the early rejection check (R13): each criterion that a group of
+ * matching findings is confirmed against (R10), with the group's host and the count of
+ * organizations behind that criterion. No file and no line.
  */
 export const PROJECTION = shape({
   version: version(),

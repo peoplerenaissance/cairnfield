@@ -11,7 +11,9 @@ import {
   isBranchName,
   isGitHash,
   isHostname,
+  MAX_URL_LENGTH,
   isHttpsUrl,
+  isNodeUrl,
   isNamespaceName,
   isPath,
   isRepoName,
@@ -83,6 +85,8 @@ function check(kind: ContractKind, value: unknown, at: string): Rejection | unde
       return checkObject(kind, value, at);
     case "url":
       return unless(isHttpsUrl(value));
+    case "node-url":
+      return unless(isNodeUrl(value));
     case "token":
       return unless(isToken(value));
     case "text":
@@ -173,6 +177,11 @@ function checkRule(rule: Rule, value: Members, at: string): Rejection | undefine
   const on = value[rule.on];
   const wanted = typeof on === "string" && rule.in.includes(on);
   const present = Object.hasOwn(value, rule.field);
+  if (rule.rule === "one-of-when") {
+    const held = value[rule.field];
+    const allowed = typeof held === "string" && rule.values.includes(held);
+    return wanted && present && !allowed ? reject("unknown-value", join(at, rule.field)) : undefined;
+  }
   if (wanted && !present) return reject("unknown-value", join(at, rule.field));
   if (!wanted && present) return reject("unknown-field", join(at, rule.field));
   return undefined;
@@ -303,64 +312,121 @@ export function citedPaths(record: AnyRecord): string[] {
   return [...new Set(locationsOf(record).map(([, location]) => location.path))];
 }
 
-const PERCENT = 37;
-const HYPHEN = 45;
-const DOT = 46;
-const COLON = 58;
-const AT = 64;
-const UNDERSCORE = 95;
-
-function lower(byte: number): number {
-  return byte >= 65 && byte <= 90 ? byte + 32 : byte;
-}
-
-/**
- * Whether a URL parser reads the byte as part of a hostname: a letter, a digit, a hyphen,
- * an underscore, a percent sign, or any byte outside ASCII.
- */
-function isHostnameByte(byte: number | undefined): boolean {
-  if (byte === undefined) return false;
-  const b = lower(byte);
-  if ((b >= 97 && b <= 122) || (b >= 48 && b <= 57)) return true;
-  return byte === HYPHEN || byte === UNDERSCORE || byte === PERCENT || byte >= 0x80;
-}
+// The start of an explicit URL. A URL parser gives `http`, `https`, `ws`, `wss` and `ftp`
+// an authority whatever slashes follow the colon, even none, so those five count wherever
+// they stand, even at the end of a longer word. Any other scheme has an authority only
+// after two slashes. A scheme starts with a letter, so the digits and marks in front of
+// its first letter are not part of it.
+const EXPLICIT_URL =
+  /(?<special>https?|wss?|ftp):[/\\]*|(?<![a-z0-9+.-])[0-9+.-]*(?<other>[a-z][a-z0-9+.-]*):\/\//giu;
+// Where the authority of a URL stops: at the path, the query or the fragment, or where
+// the URL itself stops in the file that holds it, at white space, a quote, a backtick or
+// an angle bracket. A backslash starts the path only for the five schemes above.
+const SPECIAL_AUTHORITY_END = /[/\\?#\s"'`<>]/gu;
+const AUTHORITY_END = /[/?#\s"'`<>]/gu;
+const WHITE_SPACE = /^\s$/u;
 
 /**
- * Whether the hostname appears in the cited bytes as a whole hostname. Letter case in the
- * file is ignored. A match inside a longer hostname does not count, so `metrics.example`
- * is not found in `collect.metrics.example` or in `metrics.example_.evil.example`. A match
- * before `@` or before `:password@` does not count either, because it is userinfo. A
- * port and a full stop that ends a sentence are allowed.
+ * Gives the first place at or after `from` where the pattern matches, or the end of the
+ * text. Each call must pass a `from` no smaller than the last, so all the calls together
+ * read the text once. The cited lines come from a file that may be hostile.
  */
-// The bytes that end the authority part of a URL, or the URL itself: white space, a
-// quote, a hash, a slash, an angle bracket, a question mark or a backtick.
-const AUTHORITY_END = new Set([34, 35, 39, 47, 60, 62, 63, 96]);
-
-/**
- * Whether the bytes from `from` reach an at sign before the authority ends. A hostname
- * in front of `:password@` is userinfo, and the real host comes after the at sign.
- */
-function reachesAtSign(cited: Uint8Array, from: number): boolean {
-  for (let i = from; i < cited.length; i++) {
-    const byte = cited[i] ?? 0;
-    if (byte === AT) return true;
-    if (byte <= 0x20 || AUTHORITY_END.has(byte)) return false;
-  }
-  return false;
-}
-
-function hostAppears(host: string, cited: Uint8Array): boolean {
-  const wanted = new TextEncoder().encode(host);
-  search: for (let at = 0; at + wanted.length <= cited.length; at++) {
-    for (let i = 0; i < wanted.length; i++) {
-      if (lower(cited[at + i] ?? 0) !== wanted[i]) continue search;
+function finder(text: string, pattern: RegExp): (from: number) => number {
+  const search = new RegExp(pattern);
+  let found = -1;
+  return (from) => {
+    if (found < from) {
+      search.lastIndex = from;
+      found = search.exec(text)?.index ?? text.length;
     }
-    const before = at > 0 ? cited[at - 1] : undefined;
-    if (before === DOT || isHostnameByte(before)) continue;
-    const after = cited[at + wanted.length];
-    if (after === AT || isHostnameByte(after)) continue;
-    if (after === DOT && isHostnameByte(cited[at + wanted.length + 1])) continue;
-    if (after === COLON && reachesAtSign(cited, at + wanted.length + 1)) continue;
+    return found;
+  };
+}
+
+// The punctuation of a sentence that may follow a URL in prose and is not part of it: a
+// full stop, a comma, a semicolon, a colon, an exclamation mark, a question mark, a
+// closing bracket and a closing quote. No other mark is dropped, so a hyphen, a percent
+// sign or an at sign stays in the URL and the parser reads it.
+const SENTENCE_PUNCTUATION = new Set(".,;:!?)]}\u201d\u2019\u00bb\u300d\u300f");
+
+function withoutSentencePunctuation(text: string): string {
+  let end = text.length;
+  while (end > 0 && SENTENCE_PUNCTUATION.has(text.charAt(end - 1))) end -= 1;
+  return text.slice(0, end);
+}
+
+/** The hostname a URL parser reads from a scheme and an authority, or nothing when it reads none. */
+function hostnameOf(scheme: string, authority: string): string | undefined {
+  const url = `${scheme}://${authority}`;
+  if (!URL.canParse(url)) return undefined;
+  // A dot after the last label names the same host.
+  return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+}
+
+// In prose a name is part of a longer one when a letter, a digit, a hyphen or a dot comes
+// before it, or when a letter, a digit, a hyphen or a further label comes after it.
+const JOINS_BEFORE = /[\p{L}\p{N}.-]$/u;
+const JOINS_AFTER = /^(?:[\p{L}\p{N}-]|\.[\p{L}\p{N}])/u;
+
+/**
+ * Whether the hostname appears in the cited bytes as a whole hostname (R2).
+ *
+ * An explicit URL goes to the platform URL parser, and the hostname the parser reads
+ * must be the finding's. So `metrics.example` is not the host of
+ * `https://metrics.example@evil.example/` or of `https://evil“metrics.example/`, and no
+ * rule here has to say why. A name inside the authority of a URL counts in no other way.
+ * An authority longer than a URL may be is not parsed, and no name inside it counts.
+ *
+ * The parser gets the authority as the file holds it. The one exception is an authority
+ * that runs to white space or to the end of the lines: nothing shows where that URL
+ * stops, so the punctuation of a sentence at its end is read as the sentence's and
+ * dropped. A dropped mark sits after the last label. It can change only the top-level
+ * label of the hostname the parser reads, to one that does not exist and that nobody
+ * can register, so no data reaches another host.
+ *
+ * All other text is prose, and so is the path of a URL. There the name counts unless it
+ * is part of a longer name. Letter case is ignored. A port, a full stop that ends a
+ * sentence and any other punctuation are allowed.
+ *
+ * Two limits follow from reading a file and not running it. Text with no scheme is prose
+ * even when a tool would read it as a URL, so `curl metrics.example,x@evil.example`
+ * counts. And a URL ends at white space, though a URL parser strips a tab or a line
+ * break and reads a space as part of the userinfo. So a URL that a string literal
+ * splits with white space is read as two pieces, and the second piece is prose. The
+ * check shows that the name is in the cited lines. It does not show where a shell or a
+ * program sends data.
+ */
+function hostAppears(host: string, cited: Uint8Array): boolean {
+  const text = new TextDecoder().decode(cited);
+  const endOfSpecial = finder(text, SPECIAL_AUTHORITY_END);
+  const endOfOther = finder(text, AUTHORITY_END);
+  const authorities: (readonly [start: number, end: number])[] = [];
+  for (const match of text.matchAll(EXPLICIT_URL)) {
+    const special = match.groups?.["special"];
+    const from = match.index + match[0].length;
+    const end = special === undefined ? endOfOther(from) : endOfSpecial(from);
+    if (end - from <= MAX_URL_LENGTH) {
+      const scheme = special ?? match.groups?.["other"] ?? "";
+      const authority = text.slice(from, end);
+      const inProse = end === text.length || WHITE_SPACE.test(text.charAt(end));
+      if (hostnameOf(scheme, inProse ? withoutSentencePunctuation(authority) : authority) === host) return true;
+    }
+    authorities.push([match.index, end]);
+  }
+  // Lower-casing ASCII alone keeps every position where it was.
+  const lowered = text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  let next = 0;
+  let authorityEnd = 0;
+  for (let at = lowered.indexOf(host); at >= 0; at = lowered.indexOf(host, at + 1)) {
+    // The authorities are in order of their start, so one pass finds whether one holds `at`.
+    for (let found = authorities[next]; found !== undefined && found[0] <= at; found = authorities[next]) {
+      authorityEnd = Math.max(authorityEnd, found[1]);
+      next += 1;
+    }
+    if (at < authorityEnd) continue;
+    const after = at + host.length;
+    if (JOINS_BEFORE.test(text.slice(Math.max(0, at - 2), at))) continue;
+    if (JOINS_AFTER.test(text.slice(after, after + 3))) continue;
     return true;
   }
   return false;

@@ -2,14 +2,17 @@
 // by an author. All of it is computed from records and the component's file listing (KTD5).
 
 import { compare } from "./compare.ts";
-import type { Observation } from "./enums.ts";
+import { countsAgainst } from "./criteria.ts";
+import { CRITERIA } from "./enums.ts";
+import type { Criterion, Observation } from "./enums.ts";
 import type { FileListing } from "./files.ts";
 import { CONFIRMED_AT } from "./limits.ts";
 import type { AnyRecord, CounterFinding, Finding, Recheck } from "./schemas.ts";
 
 /**
  * A record with the node it came from and its ID. A record does not name its own node.
- * The node is the node's identity: its base URL in canonical form (KTD8).
+ * The node is the node's identity: its base URL in the one accepted spelling (KTD8).
+ * Nodes are compared as strings, so the caller passes only a URL that `isNodeUrl` accepts.
  */
 export interface Sourced<R extends AnyRecord = AnyRecord> {
   readonly node: string;
@@ -70,6 +73,18 @@ export function isConfirmed(nodes: readonly string[]): boolean {
   return new Set(nodes).size >= CONFIRMED_AT;
 }
 
+/** The organizations that say a group breaks one criterion. */
+export interface CriterionCount {
+  readonly criterion: Criterion;
+  /**
+   * The authors of the group's findings that count against the criterion, and every node
+   * with a confirming re-check of one. A finding against a weaker criterion counts
+   * against every stricter one (R5).
+   */
+  readonly nodes: readonly string[];
+  readonly confirmed: boolean;
+}
+
 /** Findings that match, with what other nodes published about them. */
 export interface MatchGroup {
   /** The file content the findings cite. */
@@ -84,7 +99,13 @@ export interface MatchGroup {
   readonly counterFindings: readonly Sourced<CounterFinding>[];
   /** The organizations that stand behind the group: every author and every node with a confirming re-check. */
   readonly nodes: readonly string[];
+  /** Whether two organizations saw the same thing. It says nothing about a criterion. */
   readonly confirmed: boolean;
+  /**
+   * One entry for each criterion that an organization says the group breaks, in the order
+   * of `CRITERIA`. The early rejection check reads these, never `confirmed` (R10).
+   */
+  readonly criteria: readonly CriterionCount[];
 }
 
 function bySource(a: Sourced, b: Sourced): number {
@@ -121,6 +142,30 @@ function targeting<R extends Recheck | CounterFinding>(
   ids: ReadonlySet<string>,
 ): Sourced<R>[] {
   return [...ids].flatMap((id) => index.get(id) ?? []).sort(bySource);
+}
+
+/**
+ * R10: confirmation per criterion. What two organizations saw is a fact they share. Which
+ * criterion it breaks is a judgment, so each criterion needs its own two organizations.
+ * A re-check stands behind the criterion of the finding it confirms.
+ */
+function criteriaOf(
+  members: readonly Sourced<Finding>[],
+  confirming: readonly Sourced<Recheck>[],
+): CriterionCount[] {
+  const named = new Map(members.map((member) => [member.id, member.record.criterion]));
+  const stands = [
+    ...members.map((member) => ({ criterion: member.record.criterion, node: member.node })),
+    ...confirming.flatMap((recheck) => {
+      const criterion = named.get(recheck.record.finding);
+      return criterion === undefined ? [] : [{ criterion, node: recheck.node }];
+    }),
+  ];
+  return CRITERIA.flatMap((criterion) => {
+    const behind = stands.filter((stand) => countsAgainst(stand.criterion, criterion));
+    const nodes = [...new Set(behind.map((stand) => stand.node))].sort();
+    return nodes.length === 0 ? [] : [{ criterion, nodes, confirmed: isConfirmed(nodes) }];
+  });
 }
 
 /**
@@ -168,6 +213,7 @@ export function matchGroups(records: readonly Sourced[], listing: FileListing): 
         counterFindings: targeting(counterFindings, ids),
         nodes,
         confirmed: isConfirmed(nodes),
+        criteria: criteriaOf(members, confirming),
       });
     };
     for (const sourced of sorted) {

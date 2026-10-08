@@ -206,9 +206,221 @@ describe("a hostname must appear in the cited lines", () => {
     expect(verdictFor(line)).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
   });
 
+  // A URL parser reads the decoy in each of these as userinfo, and the host as `evil.example`.
+  it.each([";x", ".", ",a", "!", "&a=b", "~", "=", "|x", ":a.b", "”", "—x"])(
+    "does not take a decoy that %j and an at sign make userinfo",
+    (join) => {
+      const line = `curl https://${HOST}${join}@evil.example/x`;
+      expect(new URL(line.slice(5)).hostname).toBe("evil.example");
+      expect(verdictFor(line)).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+    },
+  );
+
+  // A URL parser reads each of these as one hostname under `evil.example`.
+  it.each(["!x.", "(x.", ",.", ".!x.", "$x.", "*.", "+x.", ";.", "{x}.", "”.", "—x.", "。", "．", "｡", "」。evil。"])(
+    "does not take a decoy that %j joins to a longer hostname",
+    (join) => {
+      const line = `https://${HOST}${join}evil.example/`;
+      expect(new URL(line).hostname.endsWith(".evil.example")).toBe(true);
+      expect(verdictFor(line)).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+    },
+  );
+
+  // A URL parser reads everything between the two slashes, or an at sign, and the claimed
+  // name as part of the hostname, whatever the characters.
+  it.each(["evil“", "“", "evil.“", "evil—", "「", "evil!", "(", "x,"])(
+    "does not take a decoy that follows %j inside the authority of a URL",
+    (lead) => {
+      for (const line of [`https://${lead}${HOST}/`, `https://user@${lead}${HOST}/`, `https:\\\\${lead}${HOST}/`]) {
+        expect(new URL(line).hostname, line).not.toBe(HOST);
+        expect(verdictFor(line), line).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+      }
+    },
+  );
+
+  it("finds a hostname that starts the authority of a URL, or sits outside one", () => {
+    expect(inLine(`https://${HOST}/`)).toBe(true);
+    expect(inLine(`https://user:pw@${HOST}/`)).toBe(true);
+    expect(inLine(`//${HOST}/ingest`)).toBe(true);
+    expect(inLine(`https://cdn.status.example/mirror/${HOST}/x`)).toBe(true);
+    expect(inLine(`https://cdn.status.example/go?to=${HOST}`)).toBe(true);
+    expect(inLine(`HOST=${HOST}`)).toBe(true);
+    expect(inLine(`送信先は「${HOST}」です。`)).toBe(true);
+    expect(inLine(`${HOST}\u00a0status.example`)).toBe(true);
+  });
+
+  it("does not take a decoy that a letter outside ASCII makes longer", () => {
+    expect(inLine(`https://${HOST}é/`)).toBe(false);
+    expect(inLine(`https://${HOST}ｓ/`)).toBe(false);
+    expect(inLine(`送信先は${HOST}です`)).toBe(false);
+  });
+
+  it("finds a hostname beside the quotes, dashes, spaces and brackets of prose", () => {
+    expect(inLine(`Sends your notes to “${HOST}”.`)).toBe(true);
+    expect(inLine(`Sends your notes to ‘${HOST}’, then stops.`)).toBe(true);
+    expect(inLine(`It calls ${HOST}—always.`)).toBe(true);
+    expect(inLine(`It calls ${HOST} – once.`)).toBe(true);
+    expect(inLine(`to\u00a0${HOST}\u00a0only`)).toBe(true);
+    expect(inLine(`«${HOST}»`)).toBe(true);
+    expect(inLine(`「${HOST}」に送信します`)).toBe(true);
+    expect(inLine(`送信先: ${HOST}。`)).toBe(true);
+  });
+
+  it("finds a hostname beside punctuation that joins it to nothing", () => {
+    expect(inLine(`(it calls ${HOST}.)`)).toBe(true);
+    expect(inLine(`hosts: ${HOST}, status.example`)).toBe(true);
+    expect(inLine(`for h in ${HOST};do curl "$h";done`)).toBe(true);
+    expect(inLine(`fetch("https://${HOST}").then((r) => r.json())`)).toBe(true);
+  });
+
+  // For an explicit URL the platform URL parser is the judge. Each line puts the claimed
+  // name inside the authority, so the verdict must be the parser's, whatever the form.
+  it("gives an explicit URL the verdict of the URL parser", () => {
+    const schemes = [
+      ...["https://", "https:", "https:/", "https:///", "https:\\\\", "HTTPS://", "http://", "ws:", "wss://", "ftp://"],
+      // Text in front that cannot be part of a scheme, or that makes no scheme with two slashes.
+      ...[".https://", "+https:", "-https:/", "1https://", "x+https:", "xhttps:", "(https://", "=https:"],
+    ];
+    const leads = ["", "user@", "user:pw@", "evil.example@", "evil.example:80@", "“", "evil“", "evil!", "(", "x.", "x-"];
+    const tails = [
+      ...["", "/", "/x", ":8443/x", "?q", "#f", ".", "./x", "x/", "-x/"],
+      ...["!/", ")/x", ",?q", ";#f", "”/x", "!\\x", "./", "../", "-/"],
+      // At the end of the line, a mark that is not the punctuation of a sentence stays in the URL.
+      ...["-", "@", "%", "_", "~", "=", "&", "+", "*", "$", ".-", "!-"],
+      ...["@evil.example/", ":pw@evil.example/", ";x@evil.example/", "\\@evil.example/"],
+      ...[".evil.example/", "!x.evil.example/", "”.evil.example/", "。evil.example/", "%2eevil.example/"],
+    ];
+    let found = 0;
+    for (const scheme of schemes) {
+      for (const lead of leads) {
+        for (const tail of tails) {
+          const line = `${scheme}${lead}${HOST}${tail}`;
+          // The URL starts at its scheme, wherever that is in the line.
+          const url = line.slice(line.search(/https?:|wss?:|ftp:/i));
+          const parsed = URL.canParse(url) ? new URL(url).hostname.replace(/\.$/, "") : undefined;
+          expect(inLine(line), line).toBe(parsed === HOST);
+          if (parsed === HOST) found += 1;
+        }
+      }
+    }
+    // Both verdicts occur, so the comparison is not empty.
+    expect(found).toBeGreaterThan(100);
+    expect(found).toBeLessThan(schemes.length * leads.length * tails.length - 100);
+  });
+
+  it("finds the start of a URL after text that is not part of its scheme", () => {
+    for (const lead of [".", "+", "-", "1", "x", "x+", "v1."]) {
+      expect(inLine(`${lead}https://${HOST}@evil.example/`), lead).toBe(false);
+      expect(inLine(`${lead}https:${HOST}@evil.example/`), lead).toBe(false);
+      expect(inLine(`${lead}https://${HOST}/ingest`), lead).toBe(true);
+    }
+    expect(inLine(`x.custom://${HOST}@evil.example/`)).toBe(false);
+    expect(inLine(`.custom://${HOST}@evil.example/`)).toBe(false);
+    expect(inLine(`1.custom://${HOST}/x`)).toBe(true);
+  });
+
+  it("reads an authority with no paired slashes as the URL parser does", () => {
+    expect(inLine(`https:“${HOST}/`)).toBe(false);
+    expect(inLine(`https:/“${HOST}/`)).toBe(false);
+    expect(inLine(`https:${HOST}/`)).toBe(true);
+  });
+
+  // A quote, a backtick or an angle bracket shows where the URL ends, so what stands in
+  // front of it is part of the URL, and the parser reads it as part of the hostname.
+  it.each(['fetch("https://HOST!")', "fetch('https://HOST)')", "`https://HOST,`", "<https://HOST;>", '"https://HOST”"'])(
+    "does not drop punctuation that a delimiter puts inside the URL: %s",
+    (template) => {
+      const line = template.replace("HOST", HOST);
+      const url = line.slice(line.indexOf("https"), -1).replace(/["'`>]\)?$/, "");
+      expect(new URL(url).hostname, url).not.toBe(HOST);
+      expect(verdictFor(line), line).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+    },
+  );
+
+  // Only the punctuation of a sentence is dropped from the end of a URL. Any other mark
+  // stays, and the parser then reads another hostname or none.
+  it.each(["-", "@", "%", "_", "~", "=", "&", "*"])("keeps %j at the end of a URL that white space follows", (mark) => {
+    const url = `https://${HOST}${mark}`;
+    expect(URL.canParse(url) ? new URL(url).hostname : undefined, url).not.toBe(HOST);
+    for (const line of [`${url} `, `See ${url} for more.`, url]) {
+      expect(verdictFor(line), line).toEqual({ ok: false, reason: "host-not-in-lines", field: "host" });
+    }
+  });
+
+  it("finds the hostname of an explicit URL that the punctuation of prose follows", () => {
+    for (const line of [
+      `[site](https://${HOST})`,
+      `[site](https://${HOST}).`,
+      `<https://${HOST}>`,
+      `See https://${HOST}, then stop.`,
+      `It calls https://${HOST}.`,
+      `“https://${HOST}”`,
+      `(https://${HOST}/ingest)`,
+      `Is it https://${HOST}?`,
+      `Never https://${HOST}!`,
+      `(see https://${HOST};)`,
+      `「https://${HOST}」`,
+    ]) {
+      expect(inLine(line), line).toBe(true);
+    }
+  });
+
+  it("gives a URL with another scheme and two slashes to the parser too", () => {
+    expect(inLine(`git://${HOST}/plugin.git`)).toBe(true);
+    expect(inLine(`redis://user:pw@${HOST}:6379`)).toBe(true);
+    expect(inLine(`ssh://${HOST}@evil.example/`)).toBe(false);
+  });
+
+  it("finds a hostname in a compact list that also holds an at sign", () => {
+    expect(inLine(`targets: ${HOST},admin@status.example`)).toBe(true);
+    expect(inLine(`notify(${HOST},"ops@status.example")`)).toBe(true);
+    expect(inLine(`${HOST},status.example`)).toBe(true);
+  });
+
+  // The cited lines come from a file that may be hostile, so the work must grow with the
+  // size of the lines and no faster.
+  it.each([
+    ["scheme after scheme with nothing between", "https:".repeat(40_000)],
+    ["one URL with a very long authority", `https://${"!".repeat(240_000)}`],
+    ["a short name many times over", "a.b,".repeat(60_000)],
+    ["many small URLs", "https://x.example ".repeat(14_000)],
+    ["a long run of scheme characters", `${"a".repeat(240_000)}://x`],
+    ["a long run of characters that cannot start a scheme", `${"1.".repeat(120_000)}https:x`],
+    ["a long run of scheme characters with no colon", "a1.".repeat(80_000)],
+  ])("checks %s in a short time", (_what, line) => {
+    const started = performance.now();
+    expect(inLine(line, "nowhere.example")).toBe(false);
+    expect(inLine(`${line} a.b`, "a.b")).toBe(true);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
+  it("counts no name inside an authority that is too long to parse", () => {
+    expect(inLine(`https://${"x!".repeat(1_100)}${HOST}@evil.example/`)).toBe(false);
+    expect(inLine(`https://${"x!".repeat(1_100)}@${HOST}/`)).toBe(false);
+  });
+
+  // A stated limit: a URL ends at white space in the file. A URL parser strips a tab and
+  // reads a space as part of the userinfo, so it reads another hostname in each of these.
+  it("reads a URL that white space splits as two pieces", () => {
+    const split = [`https://evil.\t${HOST}/`, `https://${HOST} x@evil.example/`];
+    for (const url of split) {
+      expect(new URL(url).hostname, url).not.toBe(HOST);
+      expect(inLine(`fetch("${url}")`), url).toBe(true);
+    }
+  });
+
+  // The stated limit: with no scheme there is no URL to parse, so the text is prose.
+  it("reads text with no scheme as prose", () => {
+    expect(inLine(`curl ${HOST},x@evil.example`)).toBe(true);
+    expect(inLine(`//evil“${HOST}/`)).toBe(true);
+    expect(inLine(`api.${HOST}`)).toBe(false);
+    expect(inLine(`${HOST}.evil.example`)).toBe(false);
+  });
+
   it("finds the hostname in front of a port", () => {
     expect(inLine(`https://${HOST}:8443/ingest`)).toBe(true);
     expect(inLine(`connect ${HOST}:8443 then mail ops@status.example`)).toBe(true);
+    expect(inLine(`scp out.tar ${HOST}:backup.tar`)).toBe(true);
   });
 
   it("finds the hostname in a later place when an earlier one is part of a longer name", () => {

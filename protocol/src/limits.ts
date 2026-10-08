@@ -50,8 +50,12 @@ export const NAME_PATTERN = "^[a-z0-9][a-z0-9._-]*$";
 /** Letters, digits, dots, underscores, hyphens and slashes. Never starts with a hyphen. No empty part and no `..`. */
 export const BRANCH_NAME_PATTERN = "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$";
 
-const PATH_PART = "(?!\\.{1,2}(?:/|$))[A-Za-z0-9._-]+";
-/** A relative path. Each part holds letters, digits, dots, underscores or hyphens, and is neither `.` nor `..`. */
+const PATH_PART = "(?!-)(?!\\.{1,2}(?:/|$))(?!\\.[Gg][Ii][Tt](?:/|$))[A-Za-z0-9._-]+";
+/**
+ * A relative path. Each part holds letters, digits, dots, underscores or hyphens. No part
+ * starts with a hyphen, which a command reads as an option, and none is `.`, `..` or
+ * `.git` in any letter case (KTD33).
+ */
 export const PATH_PATTERN = `^${PATH_PART}(?:/${PATH_PART})*$`;
 
 const HOST_LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
@@ -85,15 +89,50 @@ export const isToken = matches(TOKEN_PATTERN, MAX_TOKEN_LENGTH);
 const matchesUrlPattern = matches(URL_PATTERN, MAX_URL_LENGTH);
 
 /**
- * An HTTPS URL with no credentials, in serialized form (KTD8, KTD12). That form is the
- * one spelling of a URL, so an upper-case host or a default port is refused. A bare
- * origin may leave out its last slash.
+ * An HTTPS URL with no credentials, in serialized form (KTD12). It is the rule for a Git
+ * URL and for a link. An upper-case host or a default port is refused, and a bare origin
+ * may leave out its last slash. A node's base URL has the stricter rule of `isNodeUrl`.
  */
 export function isHttpsUrl(value: unknown): value is string {
   if (!matchesUrlPattern(value) || !URL.canParse(value)) return false;
   const parsed = new URL(value);
   if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") return false;
   return parsed.href === value || parsed.href === `${value}/`;
+}
+
+const NODE_PATH_PART = "[a-z0-9][a-z0-9._-]*";
+// A label that starts with `xn--` is Punycode. A URL parser refuses one it cannot decode,
+// which a pattern cannot tell, so a node hostname holds none.
+const NODE_HOST_LABEL = `(?!xn--)${HOST_LABEL}`;
+// A last label that a URL parser reads as a number, which makes the host an address.
+// The parser rewrites an address, so `127.1` and `0x7f.1` are two spellings of `127.0.0.1`.
+const NUMBER_LABEL = "(?:[0-9]+|0x[0-9a-f]*)";
+// 1 to 65535 with no zero in front, and never 443, which a URL parser drops.
+const NODE_PORT =
+  "(?!443(?:/|$))(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])";
+/**
+ * A node's base URL in its one accepted spelling (KTD8): lower-case `https://`, a
+ * hostname of at most 253 characters that is not an address and holds no Punycode label,
+ * a port, and a path for a node that lives under one.
+ * Each path part starts with a lower-case letter or a digit and continues with lower-case
+ * letters, digits, dots, underscores or hyphens. No credentials, query, fragment, percent
+ * sign or last slash. The pattern states the whole rule, so a JSON Schema validator
+ * admits no second spelling either.
+ */
+export const NODE_URL_PATTERN = `^https://(?=[a-z0-9.-]{1,${MAX_HOSTNAME_LENGTH}}(?:[:/]|$))(?:${NODE_HOST_LABEL}\\.)*(?!${NUMBER_LABEL}(?:[:/]|$))${NODE_HOST_LABEL}(?::${NODE_PORT})?(?:/${NODE_PATH_PART})*$`;
+
+const matchesNodeUrlPattern = matches(NODE_URL_PATTERN, MAX_URL_LENGTH);
+
+/**
+ * A node's base URL, which is the node's identity (KTD8). Organizations are counted by
+ * this string, so it has one spelling and every other one is refused, never rewritten.
+ * The pattern states the whole rule, and a test holds it to this function's verdict. The
+ * serialized form stays as a second check.
+ */
+export function isNodeUrl(value: unknown): value is string {
+  if (!matchesNodeUrlPattern(value) || !URL.canParse(value)) return false;
+  const { href } = new URL(value);
+  return href === value || href === `${value}/`;
 }
 
 const isName = matches(NAME_PATTERN, MAX_NAMESPACE_NAME_LENGTH);

@@ -37,6 +37,10 @@ Later units add the Worker dry-run, demo and scale commands listed in the plan's
 
 `.npmrc` sets `legacy-peer-deps` in the repo root and in `node/`. npm 10 crashes while resolving the peer set of Vitest 4.1, and the Workers test pool needs Vitest 4.1. Keep the setting.
 
+The `overrides` in the root, `node/` and `site/` `package.json` files lift `undici` and `sharp` inside Miniflare to patched versions. Each entry names one Miniflare version, so it stops applying when the tooling moves to another. Remove the entry then and run the Snyk scan again.
+
+The `.snyk` files in the repo root, `index/`, `sim/` and `node/` ignore two advisories that have no fixed version. Snyk reads one policy file per package, so the same entry appears in three of them. Each entry gives its reason and an expiry date. Before you extend one, check whether a fixed version now exists.
+
 ## Layout the plan will create
 
 | Path | Holds | Note |

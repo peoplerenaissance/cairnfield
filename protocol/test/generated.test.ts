@@ -6,11 +6,13 @@ import type { Route } from "../src/contracts.ts";
 import { OBSERVATIONS, RECORD_TYPES, SCHEMA_VERSION } from "../src/enums.ts";
 import { generatedFiles } from "../src/generate.ts";
 import { recordJsonSchema } from "../src/json-schema.ts";
-import { isHttpsUrl } from "../src/limits.ts";
+import { isHttpsUrl, isNodeUrl } from "../src/limits.ts";
 import { openApiDescription } from "../src/openapi.ts";
 import { validateRecord } from "../src/validate.ts";
 import {
+  GOOD_NODE_URLS,
   GOOD_URLS,
+  NODE_URLS_OFF_PATTERN,
   URLS_OFF_PATTERN,
   counterFinding,
   finding,
@@ -341,10 +343,11 @@ describe("OpenAPI description of the index routes (R34)", () => {
   });
 
   it("gives a URL field the library's verdict, for every rule a pattern can state", () => {
-    const [schema] = valuesOf(valuesOf(paths["/notices"]?.["post"], "requestBody"), "schema");
+    const [schema] = valuesOf(valuesOf(paths["/components"]?.["post"], "requestBody"), "schema");
     const verdictOf = (value: string): boolean => {
       const verdict = isHttpsUrl(value);
-      expect(accepts(schema, { node: value }, description), JSON.stringify(value)).toBe(verdict);
+      const body = { url: value, branch: "main", commit: finding().component };
+      expect(accepts(schema, body, description), JSON.stringify(value)).toBe(verdict);
       return verdict;
     };
     for (const value of GOOD_URLS) {
@@ -352,6 +355,36 @@ describe("OpenAPI description of the index routes (R34)", () => {
     }
     for (const [why, value] of URLS_OFF_PATTERN) {
       expect(verdictOf(value), why).toBe(false);
+    }
+  });
+
+  it("gives a node URL field the library's verdict, for every rule a pattern can state", () => {
+    const [schema] = valuesOf(valuesOf(paths["/notices"]?.["post"], "requestBody"), "schema");
+    const verdictOf = (value: string): boolean => {
+      const verdict = isNodeUrl(value);
+      expect(accepts(schema, { node: value }, description), JSON.stringify(value)).toBe(verdict);
+      return verdict;
+    };
+    for (const value of GOOD_NODE_URLS) {
+      expect(verdictOf(value), value).toBe(true);
+    }
+    for (const [why, value] of [...NODE_URLS_OFF_PATTERN, ...URLS_OFF_PATTERN]) {
+      expect(verdictOf(value), why).toBe(false);
+    }
+  });
+
+  it("admits no second spelling of a node URL that the library refuses", () => {
+    const [schema] = valuesOf(valuesOf(paths["/notices"]?.["post"], "requestBody"), "schema");
+    const ports = ["0", "1", "80", "442", "443", "444", "0443", "4430", "8443", "65535", "65536", "99999"];
+    const hosts = [
+      ...["node.team-a.example", "127.0.0.1", "127.1", "0x7f.1", "1.2.3", "node.0x", "node.0xzz", "4node.example"],
+      // A label that starts with `xn--` is Punycode, which a parser may refuse.
+      ...["xn--a.example", "xn--.example", "xn--bcher-kva.example", "node.xn--80ak6aa92e", "ab--c.example", "xn.example"],
+    ];
+    for (const host of hosts) {
+      for (const value of [`https://${host}`, ...ports.map((port) => `https://${host}:${port}`)]) {
+        expect(accepts(schema, { node: value }, description), value).toBe(isNodeUrl(value));
+      }
     }
   });
 
