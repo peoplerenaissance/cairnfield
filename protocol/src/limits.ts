@@ -101,6 +101,9 @@ export function isHttpsUrl(value: unknown): value is string {
 }
 
 const NODE_PATH_PART = "[a-z0-9][a-z0-9._-]*";
+// A label that starts with `xn--` is Punycode. A URL parser refuses one it cannot decode,
+// which a pattern cannot tell, so a node hostname holds none.
+const NODE_HOST_LABEL = `(?!xn--)${HOST_LABEL}`;
 // A last label that a URL parser reads as a number, which makes the host an address.
 // The parser rewrites an address, so `127.1` and `0x7f.1` are two spellings of `127.0.0.1`.
 const NUMBER_LABEL = "(?:[0-9]+|0x[0-9a-f]*)";
@@ -109,22 +112,22 @@ const NODE_PORT =
   "(?!443(?:/|$))(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])";
 /**
  * A node's base URL in its one accepted spelling (KTD8): lower-case `https://`, a
- * hostname of at most 253 characters that is not an address, a port, and a path for a
- * node that lives under one.
+ * hostname of at most 253 characters that is not an address and holds no Punycode label,
+ * a port, and a path for a node that lives under one.
  * Each path part starts with a lower-case letter or a digit and continues with lower-case
  * letters, digits, dots, underscores or hyphens. No credentials, query, fragment, percent
  * sign or last slash. The pattern states the whole rule, so a JSON Schema validator
  * admits no second spelling either.
  */
-export const NODE_URL_PATTERN = `^https://(?=[a-z0-9.-]{1,${MAX_HOSTNAME_LENGTH}}(?:[:/]|$))(?:${HOST_LABEL}\\.)*(?!${NUMBER_LABEL}(?:[:/]|$))${HOST_LABEL}(?::${NODE_PORT})?(?:/${NODE_PATH_PART})*$`;
+export const NODE_URL_PATTERN = `^https://(?=[a-z0-9.-]{1,${MAX_HOSTNAME_LENGTH}}(?:[:/]|$))(?:${NODE_HOST_LABEL}\\.)*(?!${NUMBER_LABEL}(?:[:/]|$))${NODE_HOST_LABEL}(?::${NODE_PORT})?(?:/${NODE_PATH_PART})*$`;
 
 const matchesNodeUrlPattern = matches(NODE_URL_PATTERN, MAX_URL_LENGTH);
 
 /**
  * A node's base URL, which is the node's identity (KTD8). Organizations are counted by
  * this string, so it has one spelling and every other one is refused, never rewritten.
- * The pattern refuses every second spelling. The serialized form adds the one check a
- * pattern cannot make: that a URL parser can read each label.
+ * The pattern states the whole rule, and a test holds it to this function's verdict. The
+ * serialized form stays as a second check.
  */
 export function isNodeUrl(value: unknown): value is string {
   if (!matchesNodeUrlPattern(value) || !URL.canParse(value)) return false;

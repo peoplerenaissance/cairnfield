@@ -24,7 +24,6 @@ import {
   GOOD_NODE_URLS,
   GOOD_URLS,
   NODE_A,
-  NODE_URLS_NOT_SERIALIZED,
   NODE_URLS_OFF_PATTERN,
   URLS_NOT_SERIALIZED,
   URLS_OFF_PATTERN,
@@ -262,7 +261,7 @@ describe("node url (KTD8)", () => {
   });
 
   // A second spelling of one node would count as a second organization.
-  it.each([...NODE_URLS_OFF_PATTERN, ...NODE_URLS_NOT_SERIALIZED, ...URLS_OFF_PATTERN])("rejects %s", (_why, value) => {
+  it.each([...NODE_URLS_OFF_PATTERN, ...URLS_OFF_PATTERN])("rejects %s", (_why, value) => {
     expect(isNodeUrl(value)).toBe(false);
   });
 

@@ -35,7 +35,6 @@ import {
   NODE_A,
   NODE_B,
   PATCH_COMMIT,
-  NODE_URLS_NOT_SERIALIZED,
   NODE_URLS_OFF_PATTERN,
   URLS_NOT_SERIALIZED,
   URLS_OFF_PATTERN,
@@ -372,7 +371,7 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
     }
   });
 
-  it.each([...NODE_URLS_OFF_PATTERN, ...NODE_URLS_NOT_SERIALIZED])(
+  it.each(NODE_URLS_OFF_PATTERN)(
     "refuses a node named with %s",
     (_why, value) => {
       expect(reasonOf(REGISTER_NODE_REQUEST, { url: value })).toBe("unknown-value");

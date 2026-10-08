@@ -64,6 +64,7 @@ export const GOOD_NODE_URLS: readonly string[] = [
   "https://node.team-a.example:4430",
   "https://node.team-a.example:65535",
   "https://4node.team-a.example",
+  "https://xn.ab--c.team-a.example",
   "https://sim.cairnfield.example/nodes/7",
 ];
 
@@ -97,11 +98,9 @@ export const NODE_URLS_OFF_PATTERN: readonly Spelling[] = [
   ["a hostname of 254 characters", `https://${hostnameOfLength(254)}`],
   ["a hostname of 254 characters before a port", `https://${hostnameOfLength(254)}:8443`],
   ["a hostname of 254 characters before a path", `https://${hostnameOfLength(254)}/nodes/7`],
-];
-
-/** A node URL the pattern admits and the validator refuses, because a URL parser cannot read it. */
-export const NODE_URLS_NOT_SERIALIZED: readonly Spelling[] = [
   ["a label that is not valid Punycode", "https://xn--a.example"],
+  ["a Punycode label", "https://xn--bcher-kva.example"],
+  ["a Punycode label at the end", "https://node.xn--80ak6aa92e"],
 ];
 
 /** Spellings the URL pattern refuses, so the validator and the generated schema refuse them alike. */

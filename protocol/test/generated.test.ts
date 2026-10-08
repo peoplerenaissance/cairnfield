@@ -376,7 +376,11 @@ describe("OpenAPI description of the index routes (R34)", () => {
   it("admits no second spelling of a node URL that the library refuses", () => {
     const [schema] = valuesOf(valuesOf(paths["/notices"]?.["post"], "requestBody"), "schema");
     const ports = ["0", "1", "80", "442", "443", "444", "0443", "4430", "8443", "65535", "65536", "99999"];
-    const hosts = ["node.team-a.example", "127.0.0.1", "127.1", "0x7f.1", "1.2.3", "node.0x", "node.0xzz", "4node.example"];
+    const hosts = [
+      ...["node.team-a.example", "127.0.0.1", "127.1", "0x7f.1", "1.2.3", "node.0x", "node.0xzz", "4node.example"],
+      // A label that starts with `xn--` is Punycode, which a parser may refuse.
+      ...["xn--a.example", "xn--.example", "xn--bcher-kva.example", "node.xn--80ak6aa92e", "ab--c.example", "xn.example"],
+    ];
     for (const host of hosts) {
       for (const value of [`https://${host}`, ...ports.map((port) => `https://${host}:${port}`)]) {
         expect(accepts(schema, { node: value }, description), value).toBe(isNodeUrl(value));
