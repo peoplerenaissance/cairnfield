@@ -91,7 +91,8 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
   if (request.replay && !recorded) return stop(EXIT.failed, "no-recording", { recording });
   // Both keys are read before anything is published, so a run that lacks one leaves no claim behind.
   const key = adminKey(io);
-  const modelKey = recorded ? undefined : keyFrom(io, MODEL_KEY);
+  // Where the edits come from: a recording, or the model that the model key opens.
+  const from = recorded ? { recorded } : { key: keyFrom(io, MODEL_KEY), name: home.config.model ?? DEFAULT_MODEL };
 
   // The team's own repo must hold the finding: the patch record cites it, and a patch is
   // written for no finding but the team's own. The file's name is the hash of its content
@@ -114,15 +115,14 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
 
   // When a later step stops, the output still names the claim that was published.
   const { code, output } = await outcomeOf(async () => {
-    const model: Model = recorded?.model ?? home.config.model ?? DEFAULT_MODEL;
-    const drafted =
-      modelKey === undefined
-        ? await draftPatch(home, listing, finding, { edits: recorded?.edits })
-        : await writeEdits(io, home, listing, finding, { key: modelKey, name: model });
+    const model: Model = from.recorded ? from.recorded.model : from.name;
+    const drafted = from.recorded
+      ? await draftPatch(home, listing, finding, { edits: from.recorded.edits })
+      : await writeEdits(io, home, listing, finding, from);
     // Fail closed: edits that were refused publish nothing (KTD19).
     if (!drafted.ok) return stop(EXIT.invalid, "edits-refused", { reason: drafted.reason });
     // Saved before the push, so a run that stops after this can be finished with `--replay`.
-    if (!recorded) {
+    if (!from.recorded) {
       await saveRecording(file, { version: SCHEMA_VERSION, component, finding: id, claim: made.number, model, edits: [...drafted.edits] });
     }
 

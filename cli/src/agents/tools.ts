@@ -74,13 +74,13 @@ const DEFINITIONS = [
 const fine = (content: string): ToolAnswer => ({ content, isError: false });
 const failed = (code: string): ToolAnswer => ({ content: code, isError: true });
 
-const LINE_FEED = 10;
+const DECODER = new TextDecoder();
 
 /** A line as text, without the line feed that ends it and up to a fixed length. */
 function shown(line: Uint8Array): string {
-  const body = line[line.length - 1] === LINE_FEED ? line.subarray(0, -1) : line;
-  const text = new TextDecoder().decode(body);
-  return text.length > MAX_SHOWN_LINE ? `${text.slice(0, MAX_SHOWN_LINE)}[cut]` : text;
+  const text = DECODER.decode(line);
+  const body = text.endsWith("\n") ? text.slice(0, -1) : text;
+  return body.length > MAX_SHOWN_LINE ? `${body.slice(0, MAX_SHOWN_LINE)}[cut]` : body;
 }
 
 /** The tools over one checkout, for an agent whose target is one finding. */
@@ -105,7 +105,7 @@ export function checkoutTools(home: Home, listing: Listing, target: Target): Too
     if (real !== join(await realRoot, ...parts)) return "outside-checkout";
     const { size } = await stat(real);
     if (size > MAX_FILE_BYTES) return "too-large";
-    return new Uint8Array(await readFile(real));
+    return readFile(real);
   }
 
   async function readFrom(path: unknown, from: unknown): Promise<ToolAnswer> {

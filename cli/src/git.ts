@@ -233,9 +233,11 @@ export const inputLines = (all: readonly string[]): Uint8Array => new TextEncode
 export async function writeBlobs(scratch: Scratch, contents: readonly Uint8Array[]): Promise<string[]> {
   if (contents.length === 0) return [];
   const dir = await mkdtemp(join(scratch.dir, "blobs-"));
-  const files = contents.map((_, at) => join(dir, String(at)));
-  await Promise.all(contents.map((content, at) => writeFile(join(dir, String(at)), content)));
-  const hashed = await scratch.git("hash-object", ["hash-object", "-w", "--no-filters", "--stdin-paths"], { input: inputLines(files) });
+  const files = contents.map((content, at) => ({ file: join(dir, String(at)), content }));
+  await Promise.all(files.map(({ file, content }) => writeFile(file, content)));
+  const hashed = await scratch.git("hash-object", ["hash-object", "-w", "--no-filters", "--stdin-paths"], {
+    input: inputLines(files.map(({ file }) => file)),
+  });
   const blobs = said(hashed).split("\n");
   if (blobs.length !== contents.length) stop(EXIT.git, "git-failed", { step: "hash-object" });
   return blobs;
