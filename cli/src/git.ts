@@ -213,23 +213,28 @@ export async function fetchCommit(scratch: Scratch, access: Access, commit: stri
 export interface TreeEntry {
   readonly mode: string;
   readonly hash: string;
+  /** The size of a file in bytes. A submodule entry has none, and gives 0. */
+  readonly size: number;
   readonly path: Uint8Array;
 }
 
 const TAB = 9;
 const NUL = 0;
 
-/** Lists every entry under a commit's tree that is no folder. */
+/** Lists every entry under a commit's tree that is no folder, with the size of each file. */
 export async function listTree(scratch: Scratch, commit: string): Promise<TreeEntry[]> {
-  const { stdout } = await scratch.git("ls-tree", ["ls-tree", "-r", "-z", "--full-tree", commit]);
+  const { stdout } = await scratch.git("ls-tree", ["ls-tree", "-r", "-l", "-z", "--full-tree", commit]);
   const entries: TreeEntry[] = [];
   let start = 0;
   for (let end = stdout.indexOf(NUL, start); end >= 0; end = stdout.indexOf(NUL, start)) {
     const tab = stdout.indexOf(TAB, start);
-    // `<mode> <type> <hash>`, then a tab, then the path.
-    const [mode = "", , hash = ""] = new TextDecoder().decode(stdout.subarray(start, tab)).split(" ");
-    if (tab < 0 || tab > end || !isGitHash(hash)) stop(EXIT.git, "git-failed", { step: "ls-tree" });
-    entries.push({ mode, hash, path: stdout.subarray(tab + 1, end) });
+    // `<mode> <type> <hash> <size>`, then a tab, then the path. The size is padded with spaces, and is `-` for a submodule entry.
+    const [mode = "", , hash = "", size = ""] = new TextDecoder().decode(stdout.subarray(start, tab)).split(/ +/);
+    const bytes = size === "-" ? 0 : Number(size);
+    if (tab < 0 || tab > end || !isGitHash(hash) || !Number.isSafeInteger(bytes) || size === "") {
+      stop(EXIT.git, "git-failed", { step: "ls-tree" });
+    }
+    entries.push({ mode, hash, size: bytes, path: stdout.subarray(tab + 1, end) });
     start = end + 1;
   }
   return entries;

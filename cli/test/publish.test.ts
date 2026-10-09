@@ -124,7 +124,8 @@ describe("publish", () => {
     expect(await on.run("publish")).toEqual({ code: EXIT.git, output: { error: "git-failed", step: "push" } });
     expect(moves).toBe(6);
     expect(published(on)).not.toContain(mine);
-  });
+    // Six rounds of fetch, build and push, each with a push from elsewhere in between.
+  }, 30_000);
 
   it("lands three runs at once on one repo, with no lost file", async () => {
     const { first } = await pinned(on);

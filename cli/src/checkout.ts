@@ -24,6 +24,12 @@ const MAX_ENTRIES = 1_000_000;
 const MAX_SHOWN_PATH = 1024;
 /** How many files of a checkout are written at once. */
 const WRITES_AT_ONCE = 32;
+// First values for the size of a checkout: the largest file and the largest repo that
+// Artifacts says it holds. A component past either is not pinned.
+const MAX_FILE_BYTES = 32 * 1024 * 1024;
+const MAX_CHECKOUT_BYTES = 1024 * 1024 * 1024;
+/** Files are read from Git up to this many bytes at a time, so a large component is never held in memory whole. */
+const READ_AT_ONCE_BYTES = 64 * 1024 * 1024;
 
 const LISTING = field.shape({
   component: field.gitHash(),
@@ -103,7 +109,9 @@ function decoded(path: Uint8Array): string | undefined {
 export async function exportCheckout(home: Home, scratch: Scratch, commit: string): Promise<Listing> {
   const regular: Listing["files"][number][] = [];
   const leftOut: Listing["leftOut"][number][] = [];
+  const sizeOf = new Map<string, number>();
   for (const entry of await listTree(scratch, commit)) {
+    sizeOf.set(entry.hash, entry.size);
     const path = decoded(entry.path);
     const leave = (reason: (typeof LEFT_OUT_REASONS)[number]): void => {
       const shown = path ?? new TextDecoder().decode(entry.path);
@@ -118,9 +126,13 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   const colliding = collisions(regular.map(({ path }) => path));
   const files = regular.filter(({ path }) => !colliding.has(path));
   for (const path of colliding) leftOut.push({ path, reason: "path-collision" });
-  if (files.length > MAX_ENTRIES || leftOut.length > MAX_ENTRIES) stop(EXIT.failed, "component-too-large");
+  // The sizes come from Git before any file is read, so a component cannot fill the
+  // memory or the disk of the machine that pins it.
+  const bytes = (file: { readonly blob: string }): number => sizeOf.get(file.blob) ?? 0;
+  const total = files.reduce((sum, file) => sum + bytes(file), 0);
+  const tooLarge = total > MAX_CHECKOUT_BYTES || files.some((file) => bytes(file) > MAX_FILE_BYTES);
+  if (tooLarge || files.length > MAX_ENTRIES || leftOut.length > MAX_ENTRIES) stop(EXIT.failed, "component-too-large");
 
-  const blobs = await readBlobs(scratch, [...new Set(files.map((file) => file.blob))]);
   const dir = checkoutDir(home, commit);
   const partial = `${dir}.partial`;
   await rm(partial, { recursive: true, force: true });
@@ -128,14 +140,36 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   const targets = files.map((file) => ({ file, target: join(partial, ...file.path.split("/")) }));
   await mkdir(partial, { recursive: true });
   for (const dir of new Set(targets.map(({ target }) => dirname(target)))) await mkdir(dir, { recursive: true });
-  for (let at = 0; at < targets.length; at += WRITES_AT_ONCE) {
-    await Promise.all(
-      targets.slice(at, at + WRITES_AT_ONCE).map(async ({ file, target }) => {
-        await writeFile(target, blobs.get(file.blob) ?? new Uint8Array(0));
-        await chmod(target, file.mode === "100755" ? 0o755 : 0o644);
-      }),
-    );
+
+  // One blob may sit at many paths. Each blob is read once, in a batch of bounded size,
+  // and written to every path that holds it before the next batch is read.
+  const holders = new Map<string, typeof targets>();
+  for (const held of targets) holders.set(held.file.blob, [...(holders.get(held.file.blob) ?? []), held]);
+  const write = async (batch: readonly string[]): Promise<void> => {
+    const blobs = await readBlobs(scratch, batch);
+    const writes = batch.flatMap((blob) => holders.get(blob) ?? []);
+    for (let at = 0; at < writes.length; at += WRITES_AT_ONCE) {
+      await Promise.all(
+        writes.slice(at, at + WRITES_AT_ONCE).map(async ({ file, target }) => {
+          await writeFile(target, blobs.get(file.blob) ?? new Uint8Array(0));
+          await chmod(target, file.mode === "100755" ? 0o755 : 0o644);
+        }),
+      );
+    }
+  };
+  let batch: string[] = [];
+  let batched = 0;
+  for (const blob of holders.keys()) {
+    const size = sizeOf.get(blob) ?? 0;
+    if (batch.length > 0 && batched + size > READ_AT_ONCE_BYTES) {
+      await write(batch);
+      batch = [];
+      batched = 0;
+    }
+    batch.push(blob);
+    batched += size;
   }
+  await write(batch);
   await rm(dir, { recursive: true, force: true });
   await rename(partial, dir);
 

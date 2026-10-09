@@ -136,6 +136,28 @@ describe("pin", () => {
     expect(entries(checkout(commit))).toEqual(["README.md", "src/main.js"]);
   });
 
+  it("reads a large component from Git a part at a time", async () => {
+    const megabyte = 1024 * 1024;
+    const sizes = [22 * megabyte, 22 * megabyte + 1, 22 * megabyte + 2];
+    const { commit, outcome } = await pinTree(sizes.map((size, at) => ({ path: `assets/${at}.bin`, content: new Uint8Array(size) })));
+
+    expect(outcome).toMatchObject({ code: EXIT.ok, output: { files: 3 } });
+    for (const [at, size] of sizes.entries()) expect(statSync(join(checkout(commit), `assets/${at}.bin`)).size).toBe(size);
+    // 66 MB of files, read at most 64 MB at a time.
+    expect(on.gitCalls.filter(([command, flag]) => command === "cat-file" && flag === "--batch")).toHaveLength(2);
+  });
+
+  it("does not pin a component with a file larger than a checkout may hold", async () => {
+    const { commit, outcome } = await pinTree([
+      { path: "README.md", content: "# A plugin\n" },
+      { path: "assets/huge.bin", content: new Uint8Array(32 * 1024 * 1024 + 1) },
+    ]);
+
+    expect(outcome).toEqual({ code: EXIT.failed, output: { error: "component-too-large" } });
+    expect(existsSync(checkout(commit))).toBe(false);
+    expect(on.gitCalls.filter(([command]) => command === "cat-file")).toEqual([]);
+  });
+
   it("makes a checkout with no `.git` folder and no link", async () => {
     const { commit } = await pinTree([
       { path: "README.md", content: "# A plugin\n" },
