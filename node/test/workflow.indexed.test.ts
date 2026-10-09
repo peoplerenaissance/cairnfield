@@ -26,4 +26,36 @@ describe("the push Workflow of a node with an index address", () => {
     expect(request.headers.get("content-type")).toBe("application/json");
     expect(await request.json()).toEqual({ node: "https://node.team-a.example" });
   });
+
+  it("sends the notice again while the index is busy or failing, and stops once the index takes it", async () => {
+    const answers = [new Response(null, { status: 503 }), new Response(null, { status: 429 })];
+    const sent = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => answers.shift() ?? Response.json({ version: "1" }));
+
+    await using instance = await introspectWorkflowInstance(env.ON_PUSH, "push-2");
+    // Every attempt still runs. Only the wait between two attempts is left out.
+    await instance.modify(async (modifier) => {
+      await modifier.disableRetryDelays();
+    });
+    await env.ON_PUSH.create({ id: "push-2", params: PUSH });
+    await instance.waitForStatus("complete");
+
+    expect(sent).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not send again a notice the index refuses", async () => {
+    const sent = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => Response.json({ version: "1", error: "bad-request" }, { status: 400 }));
+
+    await using instance = await introspectWorkflowInstance(env.ON_PUSH, "push-3");
+    await instance.modify(async (modifier) => {
+      await modifier.disableRetryDelays();
+    });
+    await env.ON_PUSH.create({ id: "push-3", params: PUSH });
+    await instance.waitForStatus("complete");
+
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
 });

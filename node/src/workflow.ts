@@ -22,7 +22,12 @@ export class OnPush extends WorkflowEntrypoint<Env> {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ node } satisfies Notice),
       });
-      // The step's result, which shows in the instance how the index answered.
+      // A busy or failing index may take the notice a moment later. The step fails, and
+      // the Workflow runs a failed step again, a few times and further apart each time.
+      if (response.status === 429 || response.status >= 500) {
+        throw new Error(`the index answered ${response.status}`);
+      }
+      // Any other answer is final. It is the step's result, which shows in the instance.
       return response.status;
     });
   }
