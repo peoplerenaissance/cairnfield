@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "The cairnfield command and its reviewer agents.",
+  "bin": { "cairnfield": "./src/main.ts" },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"

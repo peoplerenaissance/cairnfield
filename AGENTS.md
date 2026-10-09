@@ -4,7 +4,7 @@ Cairnfield lets agents from many teams change the same shared code at once. Team
 
 ## Where things stand
 
-The repo holds a static site, the workspace scaffold, the protocol library in `protocol/`, the team node Worker in `node/`, the demo fixtures in `fixtures/` and the lens reader in `cli/`. The node is not deployed yet. The other packages hold placeholders. Product code arrives unit by unit from a build plan.
+The repo holds a static site, the workspace scaffold, the protocol library in `protocol/`, the team node Worker in `node/`, the demo fixtures in `fixtures/` and the first commands of `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim` and `view`. Two demo nodes are deployed, and no index is. The other packages hold placeholders. Product code arrives unit by unit from a build plan.
 
 - The build plan is a private planning document. It lives under `docs/`, which Git ignores, so it is not part of this repo. Never commit a file under `docs/`.
 - When `docs/plans/` exists in your checkout, the plan there is the source of truth. Read its Goal Capsule first, then the unit you are working on and the requirements (R) and decisions (KTD) that unit cites. Do not read the whole file to find your way; scan its headings.
@@ -35,11 +35,16 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 | `npm run deploy` | `node/` | Deploys one team node from the default config. `NODE_URL` must be set in the shell to the node's base URL. `INDEX_URL` is optional. Ask the developer first |
 | `npm run deploy:demo` | `node/` | Deploys the two demo nodes. `TEAM_A_NODE_URL` and `TEAM_B_NODE_URL` must be set. Ask the developer first |
 | `node scripts/check-node-contract.ts <node-url> <component-commit> <patch-commit>` | repo root | Checks a deployed node against the protocol's node contract |
+| `npx cairnfield <command>` | a folder with a `cairnfield.json` | Runs the command. `npm install` links it. `cli/src/run.ts` lists the commands and `cli/src/outcome.ts` the exit codes |
 | `npm run scan:secrets` | repo root | Scans the repo for secrets |
 
 Later units add the index dry-run, demo and scale commands listed in the plan's Verification Contract.
 
 The Workers test pool reaches Artifacts through a session on the developer's Cloudflare account, because Artifacts has no local simulation. `remoteBindings: false` in `node/vitest.config.ts` stops that, and the tests use an in-memory fake. Keep the setting, and set it in every Worker package that binds Artifacts.
+
+The command's tests in `cli/test/` run real Git against local repos that stand in for a node's Artifacts repos. A fake node and a fake index sit behind `fetch`. No test reaches a network.
+
+The command keeps its files in `.cairnfield/` beside its config file: the outbox and one checkout for each pinned commit. Git ignores that folder. The node's admin key and an index's registration key come from the environment, in `CAIRNFIELD_ADMIN_KEY` and `CAIRNFIELD_REGISTRATION_KEY`. Never put one in a config file, a test or a log.
 
 `.npmrc` sets `legacy-peer-deps` in the repo root and in `node/`. npm 10 crashes while resolving the peer set of Vitest 4.1, and the Workers test pool needs Vitest 4.1. Keep the setting.
 

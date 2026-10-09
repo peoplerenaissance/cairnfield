@@ -6,7 +6,7 @@ Cairnfield lets agents from many teams change the same shared code at once. Team
 
 It is an entry for Cloudflare's "Build the Next-Gen Git Platform" competition, due October 14, 2026.
 
-## Status, as of October 8, 2026
+## Status, as of October 9, 2026
 
 The site describes the launch. This table describes today.
 
@@ -15,10 +15,11 @@ The site describes the launch. This table describes today.
 | Platform behavior the design depends on | verified live | Scoped tokens, concurrent pushes, push triggers, file reads at a commit, forks, and fetching a patch with a read token. |
 | Concept, plan and interface sketches | written | The concept was reviewed by seven reviewer agents and the plan by five. |
 | Record formats and checks | built | The protocol library in `protocol/`: record schemas, limits, validation, matching and patch checks, with their tests. |
-| Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its public repo is not published yet. |
-| Team node | built, not deployed | The Worker in `node/`: the node contract, the admin routes and the push Workflow, tested against an in-memory stand-in for Artifacts. |
+| Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its two commits are public at https://github.com/peoplerenaissance/fellbeck-sync, so a node can import them. |
+| Team node | built and deployed | The Worker in `node/`: the node contract, the admin routes and the push Workflow. Two demo nodes run on Cloudflare. Each has imported the demo plugin and made its fork, and Artifacts refused a push made with a node's public read token. |
 | Index | planned |  |
-| Reviewer agents and the command | planned | Live, record and replay modes. |
+| The command | built in part | `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim` and `view`. It needs a node and no index. |
+| Patch agent | planned | Live, record and replay modes. |
 | Patches, merges and patched copies | planned |  |
 | Public page, demo script and scale run | planned |  |
 | One-click deploy button for the team node | waiting on the platform | To be switched on once Cloudflare's button supports Artifacts, Workflows and push triggers. A setup script deploys the node until then. |
@@ -56,11 +57,32 @@ A third idea needs no build step.
 | --- | --- |
 | `protocol/` | The protocol library: every record, limit and check, as pure functions with no platform dependency. |
 | `node/` | The team node: a Cloudflare Worker that holds a team's repos on Artifacts and serves its records and patch commits. |
+| `cli/` | The `cairnfield` command: it pins a component, validates the outbox of record files and publishes it to the team's node. |
 | `fixtures/` | The demo: an invented plugin with planted problems, the two demo teams' lens files and their saved findings. Not for installing. |
 | `site/` | The public site: the case for Cairnfield, the announcement with questions from teams and judges, and interface sketches. A Cloudflare Worker serving static files. |
 | `AGENTS.md` | Instructions and rules for coding agents working in this repo. |
 
-The rest of the product code arrives unit by unit from the plan, in `index/`, `cli/` and `sim/`. `cli/` holds only the lens reader so far, and the other two hold placeholders. The protocol, the threat model and the platform notes will be in `reference/`.
+The rest of the product code arrives unit by unit from the plan, in `index/`, `cli/` and `sim/`. `cli/` holds the first five commands, and the other two hold placeholders. The protocol, the threat model and the platform notes will be in `reference/`.
+
+## Running the command
+
+The command needs Node 22.22 and Git. It reads `cairnfield.json` in the working folder, which names the team's node and, for a team that shares, an index:
+
+```json
+{ "node": "https://node.team-a.example" }
+```
+
+The node's admin key comes from the environment, in `CAIRNFIELD_ADMIN_KEY`. No key is ever read from a file.
+
+```
+nvm use
+npm install
+npx cairnfield pin <git-url> --branch <branch> --commit <full-commit-hash>
+npx cairnfield validate
+npx cairnfield publish
+```
+
+`pin` has the node import the component and writes a plain checkout of that commit under `.cairnfield/checkouts/`. Record files go in `.cairnfield/outbox/`, at `records/<commit>/<type>/<id>.json`. `validate` checks them against the checkout and needs no key. `publish` validates and then pushes them to the team's repo on the node. Each command prints one line of JSON and returns an exit code, which `cli/src/outcome.ts` lists.
 
 ## Running the site locally
 

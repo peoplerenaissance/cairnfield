@@ -13,6 +13,8 @@ node_modules/
 
 # Local state of the cairnfield command: checkouts, outbox, decisions
 .cairnfield/
+# A config file for the command at the repo root names a deployed node
+/cairnfield.json
 
 # Planning documents. Private, and never part of this repo
 /docs/
