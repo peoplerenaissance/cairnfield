@@ -4,9 +4,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAgent } from "../../src/agents/live.ts";
 import type { Toolbox } from "../../src/agents/tools.ts";
+import type { Io } from "../../src/io.ts";
 import { EXIT, done, outcomeOf } from "../../src/outcome.ts";
 import type { Outcome } from "../../src/outcome.ts";
-import { MODEL_KEY, REFUSAL, answers, bench, calls } from "../support.ts";
+import { MODEL_API, MODEL_KEY, REFUSAL, answers, bench, calls } from "../support.ts";
 import type { Bench } from "../support.ts";
 
 const SYSTEM = "You write a patch.";
@@ -36,10 +37,10 @@ afterEach(() => {
 });
 
 /** Runs the agent. An answer is accepted when it says so. */
-function agent(model = "claude-sonnet-5-5", tools: Toolbox = TOOLS): Promise<Outcome> {
+function agent(model = "claude-sonnet-5-5", tools: Toolbox = TOOLS, io: Io = on.io): Promise<Outcome> {
   return outcomeOf(async () =>
     done({
-      result: await runAgent(on.io, {
+      result: await runAgent(io, {
         key: MODEL_KEY,
         model,
         system: SYSTEM,
@@ -149,6 +150,39 @@ describe("the live agent", () => {
 
     expect(await agent("claude-sonnet-5-5", slow)).toEqual({ code: EXIT.agent, output: { error: "agent-limit", limit: "deadline" } });
     expect(on.model.requests).toHaveLength(1);
+  });
+
+  it("makes one request for one turn, and does not try a failed request again", async () => {
+    on.respond = (seen) =>
+      seen.url.startsWith(MODEL_API) ? Response.json({ type: "error", error: { type: "api_error", message: "overloaded" } }, { status: 500 }) : undefined;
+
+    expect(await agent()).toEqual({ code: EXIT.agent, output: { error: "agent-failed", status: 500 } });
+    expect(on.requests.filter(({ url }) => url.startsWith(MODEL_API))).toHaveLength(1);
+  });
+
+  it("ends a request that is still open at the run's deadline", async () => {
+    on.model.answers.push(calls(["read_file", { path: FILE_PATH }]));
+    // The tool call leaves a tenth of a second of the run's ten minutes.
+    const slow: Toolbox = {
+      ...TOOLS,
+      call: async (name, input) => {
+        await on.io.sleep(10 * 60_000 - 100);
+        return TOOLS.call(name, input);
+      },
+    };
+    // The second request gets no answer until its signal ends it.
+    let requests = 0;
+    const fetch: Io["fetch"] = (input, init) =>
+      requests++ === 0
+        ? on.io.fetch(input, init)
+        : new Promise((_, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            });
+          });
+
+    expect(await agent("claude-sonnet-5-5", slow, { ...on.io, fetch })).toEqual({ code: EXIT.agent, output: { error: "agent-limit", limit: "deadline" } });
+    expect(requests).toBe(2);
   });
 
   it("sets an effort for the model that takes one, and none for the model that takes none", async () => {

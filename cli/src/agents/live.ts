@@ -74,7 +74,9 @@ export async function runAgent<T>(io: Io, run: AgentRun<T>): Promise<Checked<T>>
     // A redirect would carry the key's header to another address.
     fetchOptions: { redirect: "error" },
     logLevel: "off",
-    timeout: REQUEST_DEADLINE_MS,
+    // One turn is one request. The SDK would otherwise try a failed request twice more,
+    // which the turn limit and the deadline would not count.
+    maxRetries: 0,
   });
   const tools = run.tools.definitions.map((tool) => ({ ...tool, strict: true }));
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: START }];
@@ -86,19 +88,24 @@ export async function runAgent<T>(io: Io, run: AgentRun<T>): Promise<Checked<T>>
     if (io.now() >= deadline) return stop(EXIT.agent, "agent-limit", { limit: "deadline" });
     let response: Anthropic.Message;
     try {
-      response = await client.messages.create({
-        model: run.model,
-        max_tokens: MAX_ANSWER_TOKENS,
-        system: run.system,
-        tools,
-        messages,
-        output_config: {
-          ...(NO_EFFORT.has(run.model) ? {} : { effort: "medium" as const }),
-          format: { type: "json_schema", schema: run.answer },
+      response = await client.messages.create(
+        {
+          model: run.model,
+          max_tokens: MAX_ANSWER_TOKENS,
+          system: run.system,
+          tools,
+          messages,
+          output_config: {
+            ...(NO_EFFORT.has(run.model) ? {} : { effort: "medium" as const }),
+            format: { type: "json_schema", schema: run.answer },
+          },
         },
-      });
+        // A request ends at its own deadline or at the run's, whichever comes first.
+        { timeout: Math.min(REQUEST_DEADLINE_MS, deadline - io.now()) },
+      );
     } catch (error) {
       if (!(error instanceof Anthropic.APIError)) throw error;
+      if (error instanceof Anthropic.APIConnectionTimeoutError) return stop(EXIT.agent, "agent-limit", { limit: "deadline" });
       // The status says enough. The error's text may quote the request.
       return stop(EXIT.agent, "agent-failed", typeof error.status === "number" ? { status: error.status } : {});
     }
