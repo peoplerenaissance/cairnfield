@@ -19,7 +19,7 @@ async function carriesKey(request: Request, env: Env): Promise<boolean> {
   return crypto.subtle.timingSafeEqual(await sha256(env.ADMIN_KEY), await sha256(sent));
 }
 
-type Role = "team" | "copy" | "fork";
+type Role = TokenRequest["repo"];
 
 /**
  * Revokes every token of a repo that the node did not issue. Artifacts returns a token

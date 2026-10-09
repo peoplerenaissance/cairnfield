@@ -21,7 +21,7 @@ const LENS = field.shape({
 export type Lens = Infer<typeof LENS>;
 
 /** Why a lens file is refused. A code, never a sentence. */
-export const LENS_ERRORS = ["unknown-field", "unknown-value", "too-large", "level-3-not-built"] as const;
+const LENS_ERRORS = ["unknown-field", "unknown-value", "too-large", "level-3-not-built"] as const;
 export type LensError = (typeof LENS_ERRORS)[number];
 
 export type LensVerdict =

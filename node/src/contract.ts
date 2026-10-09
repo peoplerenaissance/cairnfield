@@ -20,7 +20,7 @@ export const PATHS = {
   repoToken: "admin/token",
 } as const;
 
-export const NODE_ERRORS = ["bad-request", "unauthorized", "not-found", "not-ready", "refused"] as const;
+const NODE_ERRORS = ["bad-request", "unauthorized", "not-found", "not-ready", "refused"] as const;
 export type NodeError = (typeof NODE_ERRORS)[number];
 
 // The contract names the codes and no status, so the statuses are a choice made here.
