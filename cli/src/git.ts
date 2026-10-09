@@ -31,9 +31,17 @@ export interface GitCall {
 /** Starts one Git process and waits for it. */
 export type GitRunner = (args: readonly string[], call: GitCall) => Promise<GitRun>;
 
+/** No Git call runs longer than this. A fetch or a push that stalls is also cut off sooner, by the settings below. */
+const GIT_DEADLINE_MS = 10 * 60_000;
+
 export const runGit: GitRunner = (args, call) =>
   new Promise((resolve, reject) => {
-    const child = spawn("git", [...args], { env: { ...call.env }, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn("git", [...args], {
+      env: { ...call.env },
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: GIT_DEADLINE_MS,
+      killSignal: "SIGKILL",
+    });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
@@ -102,6 +110,9 @@ function environment(io: Io, dir: string, access: Access | undefined, index: str
     ["core.hooksPath", devNull],
     ["gc.auto", "0"],
     ["maintenance.auto", "false"],
+    // A transfer that moves under 1,000 bytes a second for a minute has stalled.
+    ["http.lowSpeedLimit", "1000"],
+    ["http.lowSpeedTime", "60"],
   ];
   // The header is tied to the one remote the token opens, so no other fetch carries it.
   if (access) config.push([`http.${access.remote}.extraHeader`, `Authorization: Bearer ${access.token}`]);

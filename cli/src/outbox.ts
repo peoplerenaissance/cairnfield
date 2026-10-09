@@ -64,8 +64,11 @@ async function entries(outbox: string): Promise<{ readonly path: string; readonl
     .sort((a, b) => (a.path < b.path ? -1 : 1));
 }
 
-/** Validates every file of the outbox. Nothing is read from a node or an index. */
-export async function checkOutbox(home: Home): Promise<OutboxCheck> {
+/**
+ * Validates every file of the outbox, or the one file `only` names. Nothing is read from
+ * a node or an index.
+ */
+export async function checkOutbox(home: Home, only?: string): Promise<OutboxCheck> {
   const records: Checked[] = [];
   const rejected: Refused[] = [];
   // The reader of each component's checkout, or nothing for a component that is not pinned here.
@@ -79,6 +82,7 @@ export async function checkOutbox(home: Home): Promise<OutboxCheck> {
   };
 
   for (const { path, isFile } of await entries(home.outbox)) {
+    if (only !== undefined && path !== only) continue;
     const refuse = (reason: RejectionReason, more: Omit<Refused, "record" | "reason"> = {}): void => {
       rejected.push({ record: path, reason, ...more });
     };

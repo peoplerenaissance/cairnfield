@@ -8,7 +8,7 @@
 
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { FILE_MODES, LINK_MODE, SUBMODULE_MODE, conforms, field, isFileMode, isPath } from "@cairnfield/protocol";
+import { FILE_MODES, LINK_MODE, SUBMODULE_MODE, conforms, field, gitBlobHash, isFileMode, isPath } from "@cairnfield/protocol";
 import type { CitedFile, CitedFiles, Infer } from "@cairnfield/protocol";
 import type { Home } from "./config.ts";
 import { listTree, readBlobs } from "./git.ts";
@@ -16,7 +16,7 @@ import type { Scratch } from "./git.ts";
 import { EXIT, stop } from "./outcome.ts";
 
 /** Why an entry of the pinned tree is not in the checkout. */
-const LEFT_OUT_REASONS = ["symbolic-link", "submodule", "unsupported-mode", "refused-path"] as const;
+const LEFT_OUT_REASONS = ["symbolic-link", "submodule", "unsupported-mode", "refused-path", "path-collision"] as const;
 
 // First values for the sizes of a listing. A component with more entries is not pinned.
 const MAX_ENTRIES = 1_000_000;
@@ -62,6 +62,30 @@ export async function readListing(home: Home, component: string): Promise<Listin
   return listing as Listing;
 }
 
+/**
+ * The paths that a disk which ignores letter case could not hold apart: two that differ
+ * only in case, and a file where another path needs a folder. On such a disk one would
+ * be written over the other. They are found the same way on every disk, so every team
+ * gets the same checkout of a commit. A path here is ASCII, so lower case folds it fully.
+ */
+function collisions(paths: readonly string[]): ReadonlySet<string> {
+  const folded = new Map<string, string[]>();
+  for (const path of paths) {
+    const key = path.toLowerCase();
+    folded.set(key, [...(folded.get(key) ?? []), path]);
+  }
+  const colliding = new Set<string>();
+  for (const [key, same] of folded) {
+    if (same.length > 1) same.forEach((path) => colliding.add(path));
+    const parts = key.split("/");
+    for (let depth = 1; depth < parts.length; depth++) {
+      const asFile = folded.get(parts.slice(0, depth).join("/"));
+      if (asFile) [...asFile, ...same].forEach((path) => colliding.add(path));
+    }
+  }
+  return colliding;
+}
+
 function decoded(path: Uint8Array): string | undefined {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(path);
@@ -75,7 +99,7 @@ function decoded(path: Uint8Array): string | undefined {
  * written last, so a checkout that was cut short is made again.
  */
 export async function exportCheckout(home: Home, scratch: Scratch, commit: string): Promise<Listing> {
-  const files: Listing["files"][number][] = [];
+  const regular: Listing["files"][number][] = [];
   const leftOut: Listing["leftOut"][number][] = [];
   for (const entry of await listTree(scratch, commit)) {
     const path = decoded(entry.path);
@@ -87,8 +111,11 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
     else if (entry.mode === SUBMODULE_MODE) leave("submodule");
     else if (!isFileMode(entry.mode)) leave("unsupported-mode");
     else if (path === undefined || !isPath(path)) leave("refused-path");
-    else files.push({ path, mode: entry.mode, blob: entry.hash });
+    else regular.push({ path, mode: entry.mode, blob: entry.hash });
   }
+  const colliding = collisions(regular.map(({ path }) => path));
+  const files = regular.filter(({ path }) => !colliding.has(path));
+  for (const path of colliding) leftOut.push({ path, reason: "path-collision" });
   if (files.length > MAX_ENTRIES || leftOut.length > MAX_ENTRIES) stop(EXIT.failed, "component-too-large");
 
   const blobs = await readBlobs(scratch, [...new Set(files.map((file) => file.blob))]);
@@ -111,16 +138,22 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   await rename(partial, dir);
 
   const listing: Listing = { component: commit, files, leftOut };
-  await writeFile(listingFile(home, commit), `${JSON.stringify(listing, null, 2)}\n`);
+  // Written whole under another name first, so a run that is cut short leaves no listing.
+  const unfinished = `${listingFile(home, commit)}.partial`;
+  await writeFile(unfinished, `${JSON.stringify(listing, null, 2)}\n`);
+  await rename(unfinished, listingFile(home, commit));
   return listing;
 }
 
 /**
  * Gives a reader of the files that records cite in one checkout, for the second layer of
- * validation. A file is read once, however many records cite it.
+ * validation. A file is read once, however many records cite it. Its bytes must be the
+ * blob the listing names, so a record is never checked against a file that was changed
+ * after the export.
  */
 export function citedFileReader(home: Home, listing: Listing): (paths: readonly string[]) => Promise<CitedFiles> {
   const modes = new Map(listing.files.map((file) => [file.path, file.mode]));
+  const blobs = new Map(listing.files.map((file) => [file.path, file.blob]));
   const read = new Map<string, CitedFile>();
   return async (paths) => {
     const cited = new Map<string, CitedFile>();
@@ -129,8 +162,9 @@ export function citedFileReader(home: Home, listing: Listing): (paths: readonly 
       if (mode === undefined) continue;
       let file = read.get(path);
       if (!file) {
-        const content = await readFile(join(checkoutDir(home, listing.component), ...path.split("/")));
-        file = { mode, content: new Uint8Array(content) };
+        const content = new Uint8Array(await readFile(join(checkoutDir(home, listing.component), ...path.split("/"))));
+        if ((await gitBlobHash(content)) !== blobs.get(path)) stop(EXIT.failed, "bad-checkout", { component: listing.component });
+        file = { mode, content };
         read.set(path, file);
       }
       cited.set(path, file);

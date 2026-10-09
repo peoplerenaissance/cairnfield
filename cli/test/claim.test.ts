@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { recordId, validateRecordFile } from "@cairnfield/protocol";
 import { EXIT } from "../src/outcome.ts";
-import { OUTBOX, bench, pinned, published } from "./support.ts";
+import { NODE, OUTBOX, bench, finding, pinned, published, putFile, putRecord } from "./support.ts";
 import type { Bench } from "./support.ts";
 
 let on: Bench;
@@ -80,17 +80,62 @@ describe("claim", () => {
     expect(await on.run("validate")).toEqual({ code: EXIT.ok, output: { records: 0, rejected: [] } });
   });
 
-  it.each([
-    ["no kind", ["--check", "code"]],
-    ["a review claim with no check", ["--kind", "review"]],
-    ["a review claim that names findings", ["--kind", "review", "--check", "code", "--findings", sha("a")]],
-    ["a patch claim with no intent", ["--kind", "patch", "--findings", sha("a")]],
-    ["a check that is not on the list", ["--kind", "review", "--check", "vibes"]],
-    ["a number that is no whole number", ["--kind", "review", "--check", "code", "--number", "1.5"]],
-    ["a number below zero", ["--kind", "review", "--check", "code", "--number", "-1"]],
-  ])("refuses %s", async (_why, argv) => {
+  it("publishes its own record and leaves the rest of the outbox waiting", async () => {
     const { first } = await pinned(on);
-    expect(await on.run("claim", first, ...argv)).toEqual({ code: EXIT.usage, output: { error: "usage" } });
+    const waiting = await putRecord(on, finding(first));
+    putFile(on, "notes.txt", "not a record, and not this command's to refuse\n");
+
+    const outcome = await on.run("claim", first, "--kind", "review", "--check", "code");
+
+    const path = `records/${first}/claim/${String(outcome.output["claim"])}.json`;
+    expect(outcome).toMatchObject({ code: EXIT.ok, output: { records: 1, published: [path] } });
+    expect(published(on)).toEqual([path]);
+    expect(published(on)).not.toContain(waiting);
+  });
+
+  it("leaves nothing in the outbox when the admin key is not in the environment", async () => {
+    const { first } = await pinned(on);
+    delete on.env["CAIRNFIELD_ADMIN_KEY"];
+
+    const outcome = await on.run("claim", first, "--kind", "review", "--check", "code");
+
+    expect(outcome).toEqual({ code: EXIT.usage, output: { error: "no-key", key: "CAIRNFIELD_ADMIN_KEY" } });
+    expect(await on.run("validate")).toEqual({ code: EXIT.ok, output: { records: 0, rejected: [] } });
+  });
+
+  it("names the claim and its number when publishing stops, so the same claim can be published later", async () => {
+    const { first } = await pinned(on);
+    on.nextRandom = 12;
+    on.respond = (seen) => {
+      if (seen.url === `${NODE}/admin/team-repo`) throw new TypeError("fetch failed");
+      return undefined;
+    };
+
+    const stopped = await on.run("claim", first, "--kind", "review", "--check", "code");
+
+    const record = { version: "1", type: "claim", component: first, kind: "review", number: 12, check: "code" };
+    const id = await recordId(record);
+    expect(stopped).toEqual({ code: EXIT.node, output: { claim: id, number: 12, error: "node-unreachable" } });
+
+    on.respond = undefined;
+    expect(await on.run("publish")).toMatchObject({ code: EXIT.ok, output: { published: [`records/${first}/claim/${id}.json`] } });
+  });
+
+  it.each([
+    ["no kind", ["--check", "code"], { reason: "unknown-value", field: "kind" }],
+    ["a review claim with no check", ["--kind", "review"], { reason: "unknown-value", field: "check" }],
+    [
+      "a review claim that names findings",
+      ["--kind", "review", "--check", "code", "--findings", sha("a")],
+      { reason: "unknown-field", field: "findings" },
+    ],
+    ["a patch claim with no intent", ["--kind", "patch", "--findings", sha("a")], { reason: "unknown-value", field: "intent" }],
+    ["a check that is not on the list", ["--kind", "review", "--check", "vibes"], { reason: "unknown-value", field: "check" }],
+    ["a number that is no whole number", ["--kind", "review", "--check", "code", "--number", "1.5"], {}],
+    ["a number below zero", ["--kind", "review", "--check", "code", "--number", "-1"], {}],
+  ])("refuses %s, and says which field when the protocol names one", async (_why, argv, detail) => {
+    const { first } = await pinned(on);
+    expect(await on.run("claim", first, ...argv)).toEqual({ code: EXIT.usage, output: { error: "usage", ...detail } });
     expect(await on.run("validate")).toEqual({ code: EXIT.ok, output: { records: 0, rejected: [] } });
   });
 });

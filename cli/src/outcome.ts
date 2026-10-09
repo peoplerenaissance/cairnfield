@@ -1,6 +1,8 @@
 // What a command gives back: one JSON value for standard output and an exit code.
 // The codes are stable, so a person, a script or another agent can act on them. Every
-// string in an output is a code, a path or a hash. None is a sentence.
+// string the command writes itself is a code, a path or a hash, and none is a sentence.
+// One output holds text from outside: `pin` lists the paths of the pinned tree that its
+// checkout leaves out, and a component's author chose those.
 
 export const EXIT = {
   ok: 0,
@@ -44,6 +46,16 @@ export class Stop extends Error {
   constructor(outcome: Outcome) {
     super(String(outcome.output["error"]));
     this.outcome = outcome;
+  }
+}
+
+/** Runs work that may end the command, and gives its outcome either way. */
+export async function outcomeOf(work: () => Promise<Outcome>): Promise<Outcome> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof Stop) return error.outcome;
+    throw error;
   }
 }
 

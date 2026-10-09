@@ -22,7 +22,7 @@ import { view } from "./commands/view.ts";
 import { loadHome } from "./config.ts";
 import type { Home } from "./config.ts";
 import type { Io } from "./io.ts";
-import { EXIT, Stop, failure, stop } from "./outcome.ts";
+import { EXIT, failure, outcomeOf, stop } from "./outcome.ts";
 import type { Outcome } from "./outcome.ts";
 
 type Options = { readonly [name: string]: string | undefined };
@@ -79,9 +79,8 @@ async function dispatch(io: Io, argv: readonly string[]): Promise<Outcome> {
 /** Runs one command. It never throws: whatever happens comes back as an outcome. */
 export async function run(io: Io, argv: readonly string[]): Promise<Outcome> {
   try {
-    return await dispatch(io, argv);
+    return await outcomeOf(() => dispatch(io, argv));
   } catch (error) {
-    if (error instanceof Stop) return error.outcome;
     io.warn(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
     return failure(EXIT.failed, "failed");
   }

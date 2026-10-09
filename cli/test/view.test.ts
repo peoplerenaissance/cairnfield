@@ -2,7 +2,7 @@
 // from a node the lens does not name (R23, KTD38). The index is a fake that serves the
 // protocol's own view shape.
 
-import { cpSync } from "node:fs";
+import { cpSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SCHEMA_VERSION, VIEW, conforms, recordId, recordPath } from "@cairnfield/protocol";
@@ -202,6 +202,66 @@ describe("view", () => {
     expect(output["recipes"]).toEqual([]);
   });
 
+  it("takes a group apart when the finding that held it together came from a node the lens does not name", async () => {
+    on.configure({ node: NODE, index: INDEX, lens: "lenses/team-a-names-b.json" });
+    const at = (start: number, end: number) => ({ ...ANY_HOST, location: { path: "plugin.json", start, end } });
+    const mine = await from(NODE, at(1, 5));
+    const theirs = await from(OTHER_NODE, at(9, 15));
+    // The index saw one chain of overlapping findings, with three organizations behind it.
+    const bridged = {
+      blob: BLOB,
+      observation: "network-access-any-host",
+      paths: ["plugin.json"],
+      findings: [mine, await from(THIRD_NODE, at(4, 10)), theirs],
+      rechecks: [],
+      counterFindings: [],
+      nodes: [NODE, OTHER_NODE, THIRD_NODE],
+      confirmed: true,
+      criteria: [{ criterion: "safe-to-run-sandboxed", nodes: [NODE, OTHER_NODE, THIRD_NODE], confirmed: true }],
+    };
+    const other = "5b".repeat(20);
+    on.index.views.set(other, { ...(await served()), component: other, findings: [bridged], hosts: [] });
+
+    const { output } = await on.run("view", other);
+
+    expect(conforms(VIEW, output)).toBeUndefined();
+    expect(output["findings"]).toEqual([
+      expect.objectContaining({ findings: [mine], nodes: [NODE], confirmed: false }),
+      expect.objectContaining({ findings: [theirs], nodes: [OTHER_NODE], confirmed: false }),
+    ]);
+    for (const group of output["findings"] as { criteria: unknown }[]) {
+      expect(group.criteria).toEqual([
+        expect.objectContaining({ criterion: "safe-to-run-sandboxed", confirmed: false }),
+        expect.objectContaining({ criterion: "safe-to-run-with-access", confirmed: false }),
+      ]);
+    }
+  });
+
+  it("no longer shows two patches side by side when the patch between them is gone", async () => {
+    on.configure({ node: NODE, index: INDEX, lens: "lenses/team-a-names-b.json" });
+    const patch = async (node: string, id: string, oldStart: number, removed: number) => ({
+      patchId: id.repeat(64),
+      kind: "removes-only",
+      size: removed,
+      changes: [{ blob: BLOB, hunks: [{ oldStart, removed, newStart: oldStart, added: 0 }] }],
+      paths: ["plugin.json"],
+      records: [await from(node, { ...common, type: "patch", commit: HEAD, findings: [id.repeat(64)], model: "other" })],
+      rechecks: [],
+      nodes: [node],
+      confirmed: false,
+    });
+    const other = "5b".repeat(20);
+    const group = { patches: [await patch(NODE, "1", 1, 2), await patch(THIRD_NODE, "2", 3, 6), await patch(OTHER_NODE, "3", 9, 2)] };
+    on.index.views.set(other, { ...(await served()), component: other, patches: [group] });
+
+    const { output } = await on.run("view", other);
+
+    expect(output["patches"]).toEqual([
+      { patches: [expect.objectContaining({ patchId: "1".repeat(64) })] },
+      { patches: [expect.objectContaining({ patchId: "3".repeat(64) })] },
+    ]);
+  });
+
   it("fails with a code of its own when the config names no index", async () => {
     on.configure({ node: NODE, lens: "lenses/team-a-alone.json" });
     expect(await on.run("view", COMPONENT)).toEqual({ code: EXIT.noIndex, output: { error: "no-index" } });
@@ -214,6 +274,10 @@ describe("view", () => {
 
     on.configure({ node: NODE, index: INDEX, lens: "lenses/none.json" });
     expect(await on.run("view", COMPONENT)).toEqual({ code: EXIT.usage, output: { error: "no-lens" } });
+
+    writeFileSync(join(on.home, "lenses/level-3.json"), JSON.stringify({ patchLevel: 3, teams: [], patchKinds: [], publishRecipes: false }));
+    on.configure({ node: NODE, index: INDEX, lens: "lenses/level-3.json" });
+    expect(await on.run("view", COMPONENT)).toEqual({ code: EXIT.usage, output: { error: "bad-lens", reason: "level-3-not-built" } });
     expect(on.requests).toEqual([]);
   });
 

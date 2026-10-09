@@ -5,7 +5,7 @@
 // command keeps its own files in `.cairnfield/` beside the config file.
 
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { conforms, field, isIndexUrl, isToken } from "@cairnfield/protocol";
 import type { Infer } from "@cairnfield/protocol";
 import type { Io } from "./io.ts";
@@ -16,6 +16,9 @@ const CONFIG_FILE = "cairnfield.json";
 export const ADMIN_KEY = "CAIRNFIELD_ADMIN_KEY";
 /** The key an index asks for when a node or a component is registered. */
 export const REGISTRATION_KEY = "CAIRNFIELD_REGISTRATION_KEY";
+
+const STATE_FOLDER = ".cairnfield";
+const CHECKOUTS_FOLDER = "checkouts";
 
 const MAX_FILE_PATH_LENGTH = 4096;
 
@@ -43,6 +46,9 @@ export interface Home {
 /** Reads the config file: the one named on the command line, or `cairnfield.json` in the working folder. */
 export async function loadHome(io: Io, named: string | undefined): Promise<Home> {
   const file = resolve(io.cwd, named ?? CONFIG_FILE);
+  // A checkout holds a component's own files, under their own names. A config file found
+  // there is the component's, and it could name a node of its author's choosing.
+  if (file.includes(`${sep}${STATE_FOLDER}${sep}${CHECKOUTS_FOLDER}${sep}`)) return stop(EXIT.usage, "bad-config");
   let text: string;
   try {
     text = await readFile(file, "utf8");
@@ -60,8 +66,8 @@ export async function loadHome(io: Io, named: string | undefined): Promise<Home>
   // A route is joined to the index address, so it ends with no slash.
   if (index !== undefined && !isIndexUrl(index)) return stop(EXIT.usage, "bad-config");
   const root = dirname(file);
-  const state = join(root, ".cairnfield");
-  return { config: config as Config, root, outbox: join(state, "outbox"), checkouts: join(state, "checkouts") };
+  const state = join(root, STATE_FOLDER);
+  return { config: config as Config, root, outbox: join(state, "outbox"), checkouts: join(state, CHECKOUTS_FOLDER) };
 }
 
 /** Reads a key from the environment. It travels in a header, so it must be able to. */

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXIT } from "../src/outcome.ts";
 import { isArtifactsRemote, redact } from "../src/git.ts";
+import { run } from "../src/run.ts";
 import { ACCOUNT, INDEX, NODE, TOKEN, bench, remoteOf } from "./support.ts";
 import type { Bench } from "./support.ts";
 
@@ -26,6 +27,16 @@ describe("the config file", () => {
     mkdirSync(elsewhere);
     writeFileSync(join(elsewhere, "team-b.json"), JSON.stringify({ node: "https://node.team-b.example" }));
     expect(await on.run("validate", "--config", "team-b/team-b.json")).toMatchObject({ code: EXIT.ok });
+  });
+
+  it("is never read from inside a checkout, where a component could have put one", async () => {
+    const inside = join(on.home, ".cairnfield/checkouts", "1f".repeat(20));
+    mkdirSync(inside, { recursive: true });
+    writeFileSync(join(inside, "cairnfield.json"), JSON.stringify({ node: "https://node.elsewhere.example" }));
+
+    const named = await on.run("validate", "--config", join(inside, "cairnfield.json"));
+    expect(named).toEqual({ code: EXIT.usage, output: { error: "bad-config" } });
+    expect(await run({ ...on.io, cwd: inside }, ["validate"])).toEqual({ code: EXIT.usage, output: { error: "bad-config" } });
   });
 
   it("must be there", async () => {

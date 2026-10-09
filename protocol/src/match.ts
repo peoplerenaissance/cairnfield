@@ -148,10 +148,9 @@ function targeting<R extends Recheck | CounterFinding>(
 /**
  * R10: confirmation per criterion. What two organizations saw is a fact they share. Which
  * criterion it breaks is a judgment, so each criterion needs its own two organizations.
- * A re-check stands behind the criterion of the finding it confirms. Pass the findings of
- * one group with the re-checks that confirm them.
+ * A re-check stands behind the criterion of the finding it confirms.
  */
-export function criterionCounts(
+function criteriaOf(
   members: readonly Sourced<Finding>[],
   confirming: readonly Sourced<Recheck>[],
 ): CriterionCount[] {
@@ -215,7 +214,7 @@ export function matchGroups(records: readonly Sourced[], listing: FileListing): 
         counterFindings: targeting(counterFindings, ids),
         nodes,
         confirmed: isConfirmed(nodes),
-        criteria: criterionCounts(members, confirming),
+        criteria: criteriaOf(members, confirming),
       });
     };
     for (const sourced of sorted) {

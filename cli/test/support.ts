@@ -51,7 +51,9 @@ const GIT_ENV = {
 
 /** Runs Git for a test's own setup, with no user configuration. */
 export function git(dir: string, args: readonly string[], input?: string | Uint8Array): string {
-  return execFileSync("git", ["-C", dir, ...args], { env: GIT_ENV, encoding: "utf8", ...(input === undefined ? {} : { input }) }).trim();
+  // Letter case is kept apart, so a test can build a tree that a disk of this machine could not hold.
+  const all = ["-c", "core.ignorecase=false", "-C", dir, ...args];
+  return execFileSync("git", all, { env: GIT_ENV, encoding: "utf8", ...(input === undefined ? {} : { input }) }).trim();
 }
 
 /** One entry of a tree a test builds. Content gives a blob, and `hash` names an object the repo need not hold. */
@@ -124,6 +126,8 @@ export interface Bench {
   nextRandom: number;
   /** Called before each Git call, so a test can change the remote under the command. */
   beforeGit: ((args: readonly string[], call: GitCall) => void) | undefined;
+  /** Answers a request in place of the fake node and index, or throws as a network would. */
+  respond: ((seen: Seen) => Response | undefined) | undefined;
   /** Writes the config file. */
   configure(config: { readonly [field: string]: unknown }): void;
   run(...argv: string[]): Promise<Outcome>;
@@ -236,6 +240,8 @@ export function bench(sharing?: Bench): Bench {
       body: text === undefined ? undefined : (JSON.parse(text) as unknown),
     };
     requests.push(seen);
+    const given = made.respond?.(seen);
+    if (given) return given;
     if (url.origin === NODE) return nodeAnswer(seen, url.pathname.slice(1));
     if (url.origin === INDEX) return indexAnswer(seen, url.pathname);
     throw new TypeError(`no such host: ${url.host}`);
@@ -282,6 +288,7 @@ export function bench(sharing?: Bench): Bench {
     index,
     nextRandom: 7,
     beforeGit: undefined,
+    respond: undefined,
     io: {
       env,
       cwd: home,

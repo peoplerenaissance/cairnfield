@@ -1,6 +1,8 @@
 // `validate`: both layers of the protocol's validation on every file of the outbox,
 // against the checkout (R3, R21). It needs no key and makes no call.
 
+import { appendFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { recordId } from "@cairnfield/protocol";
 import { EXIT } from "../src/outcome.ts";
@@ -130,6 +132,22 @@ describe("validate", () => {
         ],
       },
     });
+  });
+
+  it("stops when a cited file of the checkout is no longer what was exported", async () => {
+    const { first } = await pinned(on);
+    await putRecord(on, finding(first));
+    appendFileSync(join(on.home, ".cairnfield/checkouts", first, "plugin.json"), "\n");
+
+    expect(await on.run("validate")).toEqual({ code: EXIT.failed, output: { error: "bad-checkout", component: first } });
+  });
+
+  it("stops when the listing of a checkout cannot be read", async () => {
+    const { first } = await pinned(on);
+    await putRecord(on, finding(first));
+    writeFileSync(join(on.home, ".cairnfield/checkouts", `${first}.json`), '{ "component": "');
+
+    expect(await on.run("validate")).toEqual({ code: EXIT.failed, output: { error: "bad-checkout", component: first } });
   });
 
   it("finds nothing wrong with an outbox that does not exist yet", async () => {

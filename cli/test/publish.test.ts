@@ -109,6 +109,23 @@ describe("publish", () => {
     expect(on.gitCalls.filter(([command]) => command === "push")).toHaveLength(3);
   });
 
+  it("gives up after six tries when the remote keeps moving", async () => {
+    const { first } = await pinned(on);
+    await putRecord(on, finding(first));
+    await on.run("publish");
+    const mine = await putRecord(on, finding(first, { location: { path: "README.md", start: 1, end: 1 } }));
+    let moves = 0;
+    on.beforeGit = ([command]) => {
+      if (command !== "push") return;
+      moves += 1;
+      pushFromElsewhere(`records/${first}/finding/${String(moves).repeat(64)}.json`);
+    };
+
+    expect(await on.run("publish")).toEqual({ code: EXIT.git, output: { error: "git-failed", step: "push" } });
+    expect(moves).toBe(6);
+    expect(published(on)).not.toContain(mine);
+  });
+
   it("lands three runs at once on one repo, with no lost file", async () => {
     const { first } = await pinned(on);
     const runs = [on, bench(on), bench(on)];

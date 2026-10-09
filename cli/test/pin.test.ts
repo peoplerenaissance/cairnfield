@@ -118,6 +118,24 @@ describe("pin", () => {
     expect(entries(checkout(commit))).toEqual(["README.md"]);
   });
 
+  it("leaves out paths that a disk without letter case could not hold apart, and writes none over another", async () => {
+    const { commit, outcome } = await pinTree([
+      { path: "README.md", content: "# A plugin\n" },
+      { path: "A/x.js", content: "one\n" },
+      { path: "a/x.js", content: "two\n" },
+      { path: "Docs", content: "a file\n" },
+      { path: "docs/guide.md", content: "under a folder of the same name\n" },
+      { path: "src/main.js", content: "kept\n" },
+    ]);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    const { files, leftOut } = outcome.output as { files: number; leftOut: { path: string; reason: string }[] };
+    expect(files).toBe(2);
+    expect(leftOut.map(({ path }) => path).sort()).toEqual(["A/x.js", "Docs", "a/x.js", "docs/guide.md"]);
+    expect(new Set(leftOut.map(({ reason }) => reason))).toEqual(new Set(["path-collision"]));
+    expect(entries(checkout(commit))).toEqual(["README.md", "src/main.js"]);
+  });
+
   it("makes a checkout with no `.git` folder and no link", async () => {
     const { commit } = await pinTree([
       { path: "README.md", content: "# A plugin\n" },
