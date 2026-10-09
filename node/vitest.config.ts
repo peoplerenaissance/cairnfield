@@ -26,13 +26,15 @@ const INDEXED = "test/**/*.indexed.test.ts";
 const NAMELESS = "test/**/*.nameless.test.ts";
 // A fourth has an index address and a base URL with a path. Its files end in `.pathed.test.ts`.
 const PATHED = "test/**/*.pathed.test.ts";
+// A fifth has its own base URL and an index address with a slash at its end. Its files end in `.slashed.test.ts`.
+const SLASHED = "test/**/*.slashed.test.ts";
 
 export default defineConfig({
   test: {
     projects: [
       {
         plugins: [workersPool()],
-        test: { name: "node", include: ["test/**/*.test.ts"], exclude: [INDEXED, NAMELESS, PATHED] },
+        test: { name: "node", include: ["test/**/*.test.ts"], exclude: [INDEXED, NAMELESS, PATHED, SLASHED] },
       },
       {
         plugins: [
@@ -49,6 +51,12 @@ export default defineConfig({
           workersPool({ NODE_URL: "https://nodes.cairnfield.example/team-a", INDEX_URL: "https://index.cairnfield.example" }),
         ],
         test: { name: "node with an index and an address with a path", include: [PATHED] },
+      },
+      {
+        plugins: [
+          workersPool({ NODE_URL: "https://node.team-a.example", INDEX_URL: "https://index.cairnfield.example/" }),
+        ],
+        test: { name: "node with an index address that ends in a slash", include: [SLASHED] },
       },
     ],
   },

@@ -204,6 +204,15 @@ export interface RepoToken {
 
 export const NOTICE_PATH = "/notices";
 
+/**
+ * The index address a node is deployed with. A route such as the notice path is joined
+ * to it, so it is an HTTPS URL with no credentials, no query, no fragment and no slash
+ * at its end.
+ */
+export function isIndexUrl(value: unknown): value is string {
+  return isHttpsUrl(value) && !/[?#]/.test(value) && !value.endsWith("/");
+}
+
 const MAX_HOSTNAME_LENGTH = 253;
 const HOST_LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
 // A label that starts with `xn--` is Punycode, which a node hostname never holds.

@@ -33,8 +33,9 @@
   // It is the origin the Worker answers at, with no path: this Worker serves its routes
   // from the root of its host. The deploy scripts refuse to run without it, and the
   // Workflow sends no notice for an address it cannot use.
-  // INDEX_URL is the index address with no slash at its end. It may be left out: a node
-  // with none sends no notice (KTD40). Both are set at deploy time. The admin key is a
+  // INDEX_URL is the index address: an HTTPS URL with no slash at its end and nothing
+  // after its path. The Workflow sends no notice to an address in another form. It may be
+  // left out: a node with none sends no notice (KTD40). Both are set at deploy time. The admin key is a
   // secret, never a variable: see `.dev.vars.example`.
   "vars": { "NODE_URL": "", "INDEX_URL": "" },
   // An environment inherits none of the bindings, variables or Workflows above, so each

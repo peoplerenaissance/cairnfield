@@ -4,7 +4,7 @@
 
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
-import { NOTICE_PATH, isNodeUrl } from "./contract.ts";
+import { NOTICE_PATH, isIndexUrl, isNodeUrl } from "./contract.ts";
 import type { Notice } from "./contract.ts";
 import type { Env } from "./env.ts";
 
@@ -15,6 +15,11 @@ export class OnPush extends WorkflowEntrypoint<Env> {
     const { INDEX_URL: index, NODE_URL: node } = this.env;
     // A node with no index address sends no notice (KTD40).
     if (!index) return;
+    // The notice route is joined to the index address, so one in another form would send
+    // the notice to the wrong place. The instance ends in an error that says why.
+    if (!isIndexUrl(index)) {
+      throw new Error("INDEX_URL is not an HTTPS address with no slash at its end, so this node cannot send a notice");
+    }
     // A notice names the node by its base URL in the one accepted spelling (KTD8), and
     // the index refuses any other. This Worker also answers at the root of its host, so
     // its address has no path. A node that was deployed without such an address cannot
