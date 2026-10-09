@@ -5,7 +5,7 @@
 // Every call runs under a deadline, follows no redirect and stops reading at a size
 // limit (KTD33). An answer is data. A refusal is a code from the service's closed list.
 
-import { ADMIN_REPO, INDEX_REFUSAL, NODE_REFUSAL, NODE_ROUTES, conforms } from "@cairnfield/protocol";
+import { ADMIN_REPO, INDEX_REFUSAL, MAX_RECORD_BYTES, NODE_REFUSAL, NODE_ROUTES, conforms } from "@cairnfield/protocol";
 import type { Infer, Route, ShapeKind } from "@cairnfield/protocol";
 import { ADMIN_KEY, keyFrom } from "./config.ts";
 import type { Home } from "./config.ts";
@@ -112,6 +112,25 @@ function failed(code: ExitCode, service: string, answer: Failed): never {
 export const nodeFailed = (answer: Failed): never => failed(EXIT.node, "node", answer);
 /** Ends the command for a call to the index that did not succeed. */
 export const indexFailed = (answer: Failed): never => failed(EXIT.index, "index", answer);
+
+/**
+ * Reads one record file of the team repo as the node serves it at a commit. The node
+ * validates nothing (KTD7), so the caller checks the bytes. Returns nothing for a file
+ * the node does not serve, or one too large to be a record.
+ */
+export async function readRecordFile(io: Io, home: Home, commit: string, path: string): Promise<Uint8Array | undefined> {
+  const query = new URLSearchParams({ commit, path });
+  let response: Response;
+  try {
+    response = await io.fetch(`${home.config.node}/${NODE_ROUTES.file.path}?${query}`, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(DEADLINE_MS),
+    });
+    return response.status === 200 ? await readUpTo(response, MAX_RECORD_BYTES) : undefined;
+  } catch {
+    return nodeFailed({ ok: false, error: "unreachable" });
+  }
+}
 
 /** The node's admin key, from the environment. */
 export const adminKey = (io: Io): string => keyFrom(io, ADMIN_KEY);

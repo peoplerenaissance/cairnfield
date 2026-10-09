@@ -13,6 +13,8 @@ import {
   REGISTRATION_KEY_HEADER,
   SCHEMA_VERSION,
   TEAM_BRANCH,
+  isCommit,
+  parseRecordPath,
   recordId,
   recordPath,
 } from "@cairnfield/protocol";
@@ -237,8 +239,22 @@ export function bench(sharing?: Bench): Bench {
     return Response.json({ head, records });
   }
 
-  function nodeAnswer(seen: Seen, path: string): Response {
+  /** One file of the team repo at a commit, as the node serves it: the bytes, unchecked. */
+  function file(query: URLSearchParams): Response {
+    const { commit, path } = Object.fromEntries(query);
+    // As on the node: only a commit hash and a record's path name a file.
+    if (!isCommit(commit) || path === undefined || !parseRecordPath(path)) return refuse("bad-request");
+    try {
+      const bytes = execFileSync("git", ["-C", repo("team"), "cat-file", "blob", `${commit}:${path}`], { env: GIT_ENV });
+      return new Response(bytes, { headers: { "content-type": "application/json" } });
+    } catch {
+      return refuse("not-found");
+    }
+  }
+
+  function nodeAnswer(seen: Seen, path: string, query: URLSearchParams): Response {
     if (seen.method === "GET" && path === "records") return listing();
+    if (seen.method === "GET" && path === "file") return file(query);
     if (!path.startsWith("admin/")) return refuse("not-found");
     if (seen.headers.get(ADMIN_KEY_HEADER) !== ADMIN_KEY) return refuse("unauthorized");
     const body = (seen.body ?? {}) as { readonly repo?: unknown; readonly component?: unknown; readonly commit?: unknown };
@@ -327,7 +343,7 @@ export function bench(sharing?: Bench): Bench {
     requests.push(seen);
     const given = made.respond?.(seen);
     if (given) return given;
-    if (url.origin === NODE) return nodeAnswer(seen, url.pathname.slice(1));
+    if (url.origin === NODE) return nodeAnswer(seen, url.pathname.slice(1), url.searchParams);
     if (url.origin === INDEX) return indexAnswer(seen, url.pathname);
     if (url.origin === MODEL_API && url.pathname === "/v1/messages") return modelAnswer(seen);
     throw new TypeError(`no such host: ${url.host}`);

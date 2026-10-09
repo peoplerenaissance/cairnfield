@@ -101,6 +101,25 @@ describe("the agent's tools", () => {
   });
 
   it.each([
+    ["as many files as a listing shows", 4999, "last.txt:1:the needle"],
+    ["more files than a listing shows", 5000, "[cut]"],
+  ])("searches a component of %s, and no further", async (_what, before, found) => {
+    const home = await loadHome(on.io, undefined);
+    // The files in front are not on disk, so each costs a search one failed read.
+    const files = [...Array.from({ length: before }, (_, at) => `gone/${at}.txt`), "last.txt"].map((path) => ({
+      path,
+      mode: "100644" as const,
+      blob: "0".repeat(40),
+    }));
+    const component = checkout.slice(checkout.lastIndexOf("/") + 1);
+    writeFileSync(join(checkout, "last.txt"), "the needle\n");
+
+    const answer = await checkoutTools(home, { component, files, leftOut: [] }, TARGET).call("search_files", { text: "the needle" });
+
+    expect(answer).toEqual({ isError: false, content: found });
+  });
+
+  it.each([
     ["a tool it does not have", "run_command", { command: "ls" }, "unknown-tool"],
     ["a path that is no text", "read_file", { path: 5, from: 1 }, "bad-input"],
     ["a line below the first", "read_file", { path: "plugin.json", from: 0 }, "bad-input"],

@@ -120,7 +120,11 @@ export function checkoutTools(home: Home, listing: Listing, target: Target): Too
     if (typeof text !== "string" || text === "" || text.length > MAX_SEARCH_TEXT || text.includes("\n")) return failed("bad-input");
     const matches: string[] = [];
     let scanned = 0;
-    for (const path of paths) {
+    // A search reads the files that `list_files` names and no more, so a component with
+    // a great many small files cannot hold one tool call past the run's deadline.
+    const searched = paths.slice(0, MAX_LISTED_FILES);
+    const cut = paths.length > searched.length;
+    for (const path of searched) {
       const content = await read(path);
       if (typeof content === "string") continue;
       scanned += content.length;
@@ -132,6 +136,7 @@ export function checkoutTools(home: Home, listing: Listing, target: Target): Too
         matches.push(`${path}:${at + 1}:${body}`);
       }
     }
+    if (cut) return fine([...matches, "[cut]"].join("\n"));
     return fine(matches.length === 0 ? "no-match" : matches.join("\n"));
   }
 

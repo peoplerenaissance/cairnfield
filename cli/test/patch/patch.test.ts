@@ -19,6 +19,7 @@ import {
   answers,
   bench,
   calls,
+  commitEntries,
   finding,
   git,
   pinTree,
@@ -289,6 +290,19 @@ describe("patch", () => {
     expect(await on.run("patch", first, "--finding", id)).toEqual({ code: EXIT.invalid, output: { error: "unknown-finding", finding: id } });
     expect(on.model.requests).toHaveLength(0);
     expect(existsSync(on.repo("team"))).toBe(false);
+  });
+
+  it("refuses a finding when the team repo holds something else at its path, before any agent runs", async () => {
+    on.configure({ node: NODE, team: "team-a" });
+    const { first } = await pinned(on);
+    const waiting = await putRecord(on, finding(first));
+    const id = waiting.slice(waiting.lastIndexOf("/") + 1, -".json".length);
+    // The node lists the path, and what it serves there is no record.
+    commitEntries(on.createRepo("team"), [{ path: waiting, content: '{"not":"the record"}\n' }]);
+
+    expect(await on.run("patch", first, "--finding", id)).toEqual({ code: EXIT.invalid, output: { error: "unknown-finding", finding: id } });
+    expect(on.model.requests).toHaveLength(0);
+    expect(recordsOf(on, "claim")).toEqual([]);
   });
 
   it("refuses a finding that another team published, before any agent runs", async () => {
