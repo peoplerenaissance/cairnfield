@@ -161,6 +161,8 @@ export class FakeArtifacts implements Store {
   /** Every `fork` call, as the node made it. */
   readonly forks: { readonly from: string; readonly name: string; readonly defaultBranchOnly: boolean | undefined }[] =
     [];
+  /** Set by a test: every import fails with this code, as when Artifacts refuses the remote. */
+  importFailure: ArtifactsErrorCode | undefined;
   readonly #repos = new Map<string, RepoState>();
   readonly #upstreams = new Map<string, RepoState>();
   #serial = 0;
@@ -190,6 +192,7 @@ export class FakeArtifacts implements Store {
     const { source, target } = params;
     this.imports.push({ name: target.name, url: source.url, branch: source.branch, depth: source.depth });
     if (this.#repos.has(target.name)) throw failure("ALREADY_EXISTS");
+    if (this.importFailure !== undefined) throw failure(this.importFailure);
     const upstream = this.#upstreams.get(source.url);
     const branch = source.branch ?? upstream?.defaultBranch;
     const head = branch === undefined ? undefined : upstream?.refs.get(branch);

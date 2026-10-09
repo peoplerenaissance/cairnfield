@@ -1,10 +1,10 @@
 // The admin routes (KTD10). The command calls them with the node's key to import a
 // component copy, create the team repo and a fork, and get repo tokens.
 
-import { LONGEST_TOKEN_LIFE, TEAM_BRANCH, TEAM_REPO, copyOf, forkOf, issueToken, open } from "./artifacts.ts";
+import { LONGEST_TOKEN_LIFE, TEAM_BRANCH, TEAM_REPO, codeOf, copyOf, forkOf, issueToken, open } from "./artifacts.ts";
 import type { Repo, Store, Unavailable } from "./artifacts.ts";
 import { ADMIN_KEY_HEADER, PATHS, forkRequest, importRequest, refusal, tokenRequest } from "./contract.ts";
-import type { AdminRepo, ForkRequest, ImportRequest, TokenRequest } from "./contract.ts";
+import type { AdminRepo, ForkRequest, ImportRequest, NodeError, TokenRequest } from "./contract.ts";
 import type { Env } from "./env.ts";
 
 async function sha256(text: string): Promise<ArrayBuffer> {
@@ -24,7 +24,8 @@ type Role = TokenRequest["repo"];
 /**
  * Revokes every token of a repo that the node did not issue. Artifacts returns a token
  * from each create, import and fork, with write scope and a life of 24 hours, and no
- * call can revoke it while the import or the fork runs. A token the node issues lives
+ * call can revoke it while the import or the fork runs. So every admin route does this
+ * before it uses a repo that is ready. A token the node issues lives
  * under an hour, and on a copy it only reads. So a token that lives longer, or that
  * writes to a copy, is not the node's, and revoking it is what keeps R8 and the limit of
  * one hour true (KTD10).
@@ -57,10 +58,34 @@ async function report(repo: Repo | Unavailable, name: string, role: Role, pinned
 // returns from the first call is dropped where it arrives: it is never returned, stored
 // or logged.
 
+// What the binding throws when another call made the repo, or is making it, between this
+// call's look for the repo and its own start. The repo is started either way.
+const STARTED_BEFORE: readonly unknown[] = ["ALREADY_EXISTS", "FORK_IN_PROGRESS"];
+
+/** Waits for a call that starts a repo. A repo that another call started first is no failure. */
+async function started(work: Promise<unknown>): Promise<void> {
+  try {
+    await work;
+  } catch (error) {
+    if (!STARTED_BEFORE.includes(codeOf(error))) throw error;
+  }
+}
+
+// The codes with which Artifacts refuses an import, and what the node answers for each.
+// The contract has no code of its own for a failed import. An upstream that cannot be
+// reached is worth another try, so it reads as not ready.
+const IMPORT_REFUSALS: ReadonlyMap<unknown, NodeError> = new Map([
+  ["INVALID_URL", "bad-request"],
+  ["REMOTE_AUTH_REQUIRED", "refused"],
+  ["NOT_FOUND", "not-found"],
+  ["UPSTREAM_UNAVAILABLE", "not-ready"],
+  ["MEMORY_LIMIT", "refused"],
+]);
+
 async function createTeamRepo(store: Store): Promise<Response> {
   let team = await open(store, TEAM_REPO);
   if (team === "not-found") {
-    await store.create(TEAM_REPO, { setDefaultBranch: TEAM_BRANCH });
+    await started(store.create(TEAM_REPO, { setDefaultBranch: TEAM_BRANCH }));
     team = await open(store, TEAM_REPO);
   }
   return report(team, TEAM_REPO, "team");
@@ -71,7 +96,13 @@ async function importCopy(store: Store, { url, branch, commit }: ImportRequest):
   let copy = await open(store, name);
   if (copy === "not-found") {
     // The branch is named and no depth is set, so every commit the branch reaches can be pinned (KTD12).
-    await store.import({ source: { url, branch }, target: { name } });
+    try {
+      await started(store.import({ source: { url, branch }, target: { name } }));
+    } catch (error) {
+      const refused = IMPORT_REFUSALS.get(codeOf(error));
+      if (refused === undefined) throw error;
+      return refusal(refused);
+    }
     copy = await open(store, name);
   }
   return report(copy, name, "copy", commit);
@@ -84,9 +115,12 @@ async function createFork(env: Env, { component }: ForkRequest): Promise<Respons
   if (fork === "not-found") {
     const copy = await open(store, copyOf(component));
     if (typeof copy === "string") return refusal(copy);
+    // The import call that started the copy may never have been made again, so the token
+    // Artifacts returned for the copy may still be active.
+    await revokeOtherTokens(copy, "copy");
     // A fork copies only the default branch unless told otherwise, and a copy can report
     // a default branch it does not have (KTD36).
-    await copy.fork(name, { defaultBranchOnly: false });
+    await started(copy.fork(name, { defaultBranchOnly: false }));
     // A read token kept under this name belongs to a fork that was deleted, and died with it.
     await env.READ_TOKENS.delete(name);
     fork = await open(store, name);
@@ -101,6 +135,8 @@ async function repoToken(store: Store, wanted: TokenRequest): Promise<Response> 
     wanted.repo === "team" ? TEAM_REPO : wanted.repo === "copy" ? copyOf(wanted.component) : forkOf(wanted.component);
   const repo = await open(store, name);
   if (typeof repo === "string") return refusal(repo);
+  // No token of the node's own is issued beside one the node did not issue.
+  await revokeOtherTokens(repo, wanted.repo);
   return Response.json(await issueToken(repo, wanted.scope));
 }
 

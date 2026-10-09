@@ -9,6 +9,17 @@ afterEach(reset);
 
 const COMPONENT = "1f".repeat(20);
 
+/** A namespace in which one look for a repo misses it, as when another call makes the repo at the same moment. */
+class RacedArtifacts extends FakeArtifacts {
+  missOnce: string | undefined;
+
+  override async get(name: string): Promise<ArtifactsRepo> {
+    if (name !== this.missOnce) return super.get(name);
+    this.missOnce = undefined;
+    throw Object.assign(new Error("NOT_FOUND"), { code: "NOT_FOUND" });
+  }
+}
+
 /** Every admin route, with a body the route accepts. */
 const ADMIN_CALLS: readonly (readonly [path: string, body?: unknown])[] = [
   ["team-repo"],
@@ -169,6 +180,76 @@ describe("the token Artifacts returns", () => {
     }
     const listed = await (await artifacts.get(copy)).listTokens();
     expect(listed.tokens.filter((token) => token.state === "active" && token.scope === "write")).toEqual([]);
+  });
+
+  it("is revoked on a copy that is forked with no second import call", async () => {
+    const artifacts = new FakeArtifacts();
+    const pinned = await artifacts.push(UPSTREAM, "main", { "README.md": "# Demo plugin\n" });
+    const node = nodeOver(artifacts);
+
+    // One import call, so no import call ever finds the copy ready.
+    const copy = await repoOf(node.admin("import", { url: UPSTREAM, branch: "main", commit: pinned }));
+    artifacts.finish();
+    await repoOf(node.admin("fork", { component: pinned }));
+    expect(artifacts.tokens(copy)).toEqual([returnedByArtifacts("revoked")]);
+  });
+
+  it("is revoked on a repo before the node issues a token for it", async () => {
+    const artifacts = new FakeArtifacts();
+    const pinned = await artifacts.push(UPSTREAM, "main", { "README.md": "# Demo plugin\n" });
+    const node = nodeOver(artifacts);
+
+    const copy = await repoOf(node.admin("import", { url: UPSTREAM, branch: "main", commit: pinned }));
+    artifacts.finish();
+    expect((await node.admin("token", { repo: "copy", component: pinned, scope: "read" })).status).toBe(200);
+    // The copy is left with the read token the node issued and nothing else.
+    const active = artifacts.tokens(copy).filter((token) => token.state === "active");
+    expect(active.map((token) => token.scope)).toEqual(["read"]);
+  });
+});
+
+describe("a call that Artifacts refuses or has seen before", () => {
+  it("answers an import that Artifacts refuses with a code of the contract", async () => {
+    const refusals = [
+      ["INVALID_URL", 400, "bad-request"],
+      ["REMOTE_AUTH_REQUIRED", 403, "refused"],
+      ["NOT_FOUND", 404, "not-found"],
+      ["UPSTREAM_UNAVAILABLE", 409, "not-ready"],
+      ["MEMORY_LIMIT", 403, "refused"],
+    ] as const;
+    for (const [code, status, error] of refusals) {
+      const artifacts = new FakeArtifacts();
+      artifacts.importFailure = code;
+      const node = nodeOver(artifacts);
+      const request = { url: UPSTREAM, branch: "main", commit: COMPONENT };
+      expect(await answer(node.admin("import", request)), code).toEqual({ status, body: { error } });
+      expect(artifacts.repos(), code).toEqual([]);
+    }
+  });
+
+  it("answers an import from a repo that does not exist with not found", async () => {
+    const node = nodeOver(new FakeArtifacts());
+    const request = { url: UPSTREAM, branch: "main", commit: COMPONENT };
+    expect(await answer(node.admin("import", request))).toEqual({ status: 404, body: { error: "not-found" } });
+  });
+
+  it("treats a repo that another call made first as started, on each of the three routes", async () => {
+    const artifacts = new RacedArtifacts();
+    const pinned = await artifacts.push(UPSTREAM, "main", { "README.md": "# Demo plugin\n" });
+    const node = nodeOver(artifacts);
+    const calls = [
+      ["team-repo", undefined, true],
+      ["import", { url: UPSTREAM, branch: "main", commit: pinned }, false],
+      ["fork", { component: pinned }, false],
+    ] as const;
+    for (const [path, body, ready] of calls) {
+      const repo = await repoOf(node.admin(path, body));
+      // This call looks for the repo, misses it, and then finds that it exists.
+      artifacts.missOnce = repo;
+      expect(await answer(node.admin(path, body)), path).toEqual({ status: 200, body: { repo, ready } });
+      artifacts.finish();
+    }
+    expect(artifacts.repos()).toHaveLength(3);
   });
 });
 

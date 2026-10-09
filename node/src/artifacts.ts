@@ -42,6 +42,11 @@ export type Unavailable = "not-found" | "not-ready";
 
 const IN_PROGRESS: readonly unknown[] = ["CREATE_IN_PROGRESS", "IMPORT_IN_PROGRESS", "FORK_IN_PROGRESS"];
 
+/** The code of an error the binding threw, or nothing for any other error. */
+export function codeOf(error: unknown): unknown {
+  return typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+}
+
 /**
  * Gets a repo. `get()` throws until an import or a fork has finished, and that is the
  * only sign of it: `list()` gives no status (KTD36).
@@ -50,7 +55,7 @@ export async function open(store: Store, name: string): Promise<Repo | Unavailab
   try {
     return await store.get(name);
   } catch (error) {
-    const code: unknown = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+    const code = codeOf(error);
     if (code === "NOT_FOUND") return "not-found";
     if (IN_PROGRESS.includes(code)) return "not-ready";
     throw error;
