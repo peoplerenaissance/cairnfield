@@ -10,7 +10,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { INDEX_ROUTES, NODE_ROUTES, TEAM_BRANCH, validateRecordFile } from "@cairnfield/protocol";
+import { INDEX_ROUTES, MAX_RECORD_BYTES, NODE_ROUTES, TEAM_BRANCH, validateRecordFile } from "@cairnfield/protocol";
 import type { FileMode } from "@cairnfield/protocol";
 import type { Home } from "../config.ts";
 import { fetchRef, readBlobs, said, withScratch } from "../git.ts";
@@ -76,12 +76,14 @@ async function notYetIn(scratch: Scratch, commit: string, files: readonly Stored
   const conflicts: string[] = [];
   const unlike: { readonly path: string; readonly hash: string }[] = [];
   files.forEach((file, at) => {
-    const [hash = "", type = ""] = (answers[at] ?? "").split(" ");
+    const [hash = "", type = "", size = ""] = (answers[at] ?? "").split(" ");
     if (answers[at]?.endsWith(" missing")) missing.push(file);
-    else if (type !== "blob") conflicts.push(file.path);
+    // A folder is no record, and neither is a file too large to be one. Such a file is not read.
+    else if (type !== "blob" || !(Number(size) <= MAX_RECORD_BYTES)) conflicts.push(file.path);
     else if (hash !== file.blob) unlike.push({ path: file.path, hash });
   });
-  const held = await readBlobs(scratch, [...new Set(unlike.map(({ hash }) => hash))]);
+  const hashes = [...new Set(unlike.map(({ hash }) => hash))];
+  const held = await readBlobs(scratch, hashes, hashes.length * MAX_RECORD_BYTES);
   for (const { path, hash } of unlike) {
     // The file name is the record's ID, so a valid record file at this path is this record.
     const there = await validateRecordFile(path, held.get(hash) ?? new Uint8Array(0));

@@ -20,12 +20,16 @@ export interface GitRun {
   readonly code: number;
   readonly stdout: Uint8Array;
   readonly stderr: string;
+  /** Git wrote more than the call allowed, and was stopped there. */
+  readonly overflowed: boolean;
 }
 
 export interface GitCall {
   readonly env: { readonly [name: string]: string };
   /** Bytes for Git's standard input. */
   readonly input?: Uint8Array;
+  /** The most standard output to keep. What Git lists and reads may come from a hostile repo, so none of it is unbounded. */
+  readonly maxOutput: number;
 }
 
 /** Starts one Git process and waits for it. */
@@ -33,6 +37,16 @@ export type GitRunner = (args: readonly string[], call: GitCall) => Promise<GitR
 
 /** No Git call runs longer than this. A fetch or a push that stalls is also cut off sooner, by the settings below. */
 const GIT_DEADLINE_MS = 10 * 60_000;
+/** What Git writes to standard error is kept up to this size. */
+const MAX_ERROR_BYTES = 1024 * 1024;
+/** The most standard output a Git call may give, unless the call sets a limit of its own. */
+const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
+
+/** How much standard output a Git call may give, and the code the command ends with when Git gives more. */
+export interface OutputLimit {
+  readonly bytes: number;
+  readonly error: string;
+}
 
 export const runGit: GitRunner = (args, call) =>
   new Promise((resolve, reject) => {
@@ -44,11 +58,24 @@ export const runGit: GitRunner = (args, call) =>
     });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
-    child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
+    let kept = 0;
+    let errorBytes = 0;
+    let overflowed = false;
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (overflowed) return;
+      kept += chunk.length;
+      if (kept > call.maxOutput) {
+        overflowed = true;
+        child.kill("SIGKILL");
+      } else out.push(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      errorBytes += chunk.length;
+      if (errorBytes <= MAX_ERROR_BYTES) err.push(chunk);
+    });
     child.on("error", reject);
     child.on("close", (code) => {
-      resolve({ code: code ?? 1, stdout: Buffer.concat(out), stderr: Buffer.concat(err).toString("utf8") });
+      resolve({ code: code ?? 1, stdout: Buffer.concat(out), stderr: Buffer.concat(err).toString("utf8"), overflowed });
     });
     // A Git that ends before it has read its input closes the pipe, which is no failure of its own.
     child.stdin.on("error", () => undefined);
@@ -144,6 +171,8 @@ export interface GitOptions {
   readonly index?: string;
   /** Gives the run back when Git fails, for a caller that reads why. */
   readonly mayFail?: boolean;
+  /** A limit on standard output other than the usual one. */
+  readonly limit?: OutputLimit;
 }
 
 /** A bare repo in a temporary folder. It lives for one command and is then deleted. */
@@ -168,10 +197,13 @@ export async function withScratch<T>(io: Io, work: (scratch: Scratch) => Promise
     },
     git: async (step, args, options = {}) => {
       if (options.access) tokens.add(options.access.token);
+      const limit = options.limit ?? { bytes: MAX_OUTPUT_BYTES, error: "git-output-too-large" };
       const run = await io.git(args, {
         env: environment(io, repo, options.access, options.index),
         ...(options.input === undefined ? {} : { input: options.input }),
+        maxOutput: limit.bytes,
       });
+      if (run.overflowed) return stop(EXIT.failed, limit.error);
       if (run.code !== 0 && options.mayFail !== true) {
         scratch.report(run);
         return stop(EXIT.git, "git-failed", { step });
@@ -221,9 +253,12 @@ export interface TreeEntry {
 const TAB = 9;
 const NUL = 0;
 
-/** Lists every entry under a commit's tree that is no folder, with the size of each file. */
-export async function listTree(scratch: Scratch, commit: string): Promise<TreeEntry[]> {
-  const { stdout } = await scratch.git("ls-tree", ["ls-tree", "-r", "-l", "-z", "--full-tree", commit]);
+/**
+ * Lists every entry under a commit's tree that is no folder, with the size of each file.
+ * The listing itself is as large as the tree's author made it, so the caller sets its limit.
+ */
+export async function listTree(scratch: Scratch, commit: string, limit: OutputLimit): Promise<TreeEntry[]> {
+  const { stdout } = await scratch.git("ls-tree", ["ls-tree", "-r", "-l", "-z", "--full-tree", commit], { limit });
   const entries: TreeEntry[] = [];
   let start = 0;
   for (let end = stdout.indexOf(NUL, start); end >= 0; end = stdout.indexOf(NUL, start)) {
@@ -242,12 +277,19 @@ export async function listTree(scratch: Scratch, commit: string): Promise<TreeEn
 
 const LINE_FEED = 10;
 
-/** Reads blobs by hash, as their stored bytes. */
-export async function readBlobs(scratch: Scratch, hashes: readonly string[]): Promise<Map<string, Uint8Array>> {
+/** Each blob that `cat-file --batch` gives comes with a line of its hash, type and size. */
+const BATCH_HEADER_BYTES = 128;
+
+/**
+ * Reads blobs by hash, as their stored bytes. The caller knows their sizes before it
+ * asks, and gives the sum as `bytes`, so Git is never asked for more than was counted.
+ */
+export async function readBlobs(scratch: Scratch, hashes: readonly string[], bytes: number): Promise<Map<string, Uint8Array>> {
   const blobs = new Map<string, Uint8Array>();
   if (hashes.length === 0) return blobs;
   const input = new TextEncoder().encode(hashes.map((hash) => `${hash}\n`).join(""));
-  const { stdout } = await scratch.git("cat-file", ["cat-file", "--batch"], { input });
+  const limit = { bytes: bytes + hashes.length * BATCH_HEADER_BYTES, error: "git-output-too-large" };
+  const { stdout } = await scratch.git("cat-file", ["cat-file", "--batch"], { input, limit });
   let at = 0;
   for (const hash of hashes) {
     // `<hash> blob <size>`, a line feed, the bytes, a line feed.

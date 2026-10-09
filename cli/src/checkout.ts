@@ -30,6 +30,8 @@ const MAX_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_CHECKOUT_BYTES = 1024 * 1024 * 1024;
 /** Files are read from Git up to this many bytes at a time, so a large component is never held in memory whole. */
 const READ_AT_ONCE_BYTES = 64 * 1024 * 1024;
+/** The listing of a commit's tree is read up to this size. It holds every path, and a component's author chose those. */
+const MAX_TREE_LISTING_BYTES = 64 * 1024 * 1024;
 
 const LISTING = field.shape({
   component: field.gitHash(),
@@ -80,7 +82,9 @@ function collisions(paths: readonly string[]): ReadonlySet<string> {
   const folded = new Map<string, string[]>();
   for (const path of paths) {
     const key = path.toLowerCase();
-    folded.set(key, [...(folded.get(key) ?? []), path]);
+    const same = folded.get(key);
+    if (same) same.push(path);
+    else folded.set(key, [path]);
   }
   const colliding = new Set<string>();
   for (const [key, same] of folded) {
@@ -110,7 +114,8 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   const regular: Listing["files"][number][] = [];
   const leftOut: Listing["leftOut"][number][] = [];
   const sizeOf = new Map<string, number>();
-  for (const entry of await listTree(scratch, commit)) {
+  const tree = await listTree(scratch, commit, { bytes: MAX_TREE_LISTING_BYTES, error: "component-too-large" });
+  for (const entry of tree) {
     sizeOf.set(entry.hash, entry.size);
     const path = decoded(entry.path);
     const leave = (reason: (typeof LEFT_OUT_REASONS)[number]): void => {
@@ -144,9 +149,13 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   // One blob may sit at many paths. Each blob is read once, in a batch of bounded size,
   // and written to every path that holds it before the next batch is read.
   const holders = new Map<string, typeof targets>();
-  for (const held of targets) holders.set(held.file.blob, [...(holders.get(held.file.blob) ?? []), held]);
-  const write = async (batch: readonly string[]): Promise<void> => {
-    const blobs = await readBlobs(scratch, batch);
+  for (const held of targets) {
+    const others = holders.get(held.file.blob);
+    if (others) others.push(held);
+    else holders.set(held.file.blob, [held]);
+  }
+  const write = async (batch: readonly string[], batched: number): Promise<void> => {
+    const blobs = await readBlobs(scratch, batch, batched);
     const writes = batch.flatMap((blob) => holders.get(blob) ?? []);
     for (let at = 0; at < writes.length; at += WRITES_AT_ONCE) {
       await Promise.all(
@@ -162,14 +171,14 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   for (const blob of holders.keys()) {
     const size = sizeOf.get(blob) ?? 0;
     if (batch.length > 0 && batched + size > READ_AT_ONCE_BYTES) {
-      await write(batch);
+      await write(batch, batched);
       batch = [];
       batched = 0;
     }
     batch.push(blob);
     batched += size;
   }
-  await write(batch);
+  await write(batch, batched);
   await rm(dir, { recursive: true, force: true });
   await rename(partial, dir);
 

@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 /** Pushes one more file to the team repo from somewhere else, as another run of the team's command would. */
-function pushFromElsewhere(path: string): void {
+function pushFromElsewhere(path: string, content = "{}\n"): void {
   const team = on.createRepo("team");
   const elsewhere = on.createRepo("elsewhere");
   const head = git(team, ["rev-parse", "--verify", "--quiet", `refs/heads/${TEAM_BRANCH}`]);
@@ -46,7 +46,7 @@ function pushFromElsewhere(path: string): void {
     const [mode = "", , hash = ""] = entry.split(" ");
     return { path: held, mode, hash };
   });
-  const commit = commitEntries(elsewhere, [...there, { path, content: "{}\n" }], head);
+  const commit = commitEntries(elsewhere, [...there, { path, content }], head);
   git(elsewhere, ["push", "--quiet", team, `${commit}:refs/heads/${TEAM_BRANCH}`]);
 }
 
@@ -177,6 +177,19 @@ describe("publish", () => {
     expect(outcome).toEqual({ code: EXIT.git, output: { error: "record-conflict", records: [other, under].sort() } });
     expect(git(on.repo("team"), ["rev-parse", TEAM_BRANCH])).toBe(head);
     expect(on.gitCalls.filter(([command]) => command === "push")).toHaveLength(pushes);
+  });
+
+  it("does not read a file that is too large to be a record before it calls it a conflict", async () => {
+    const { first } = await pinned(on);
+    await putRecord(on, finding(first));
+    await on.run("publish");
+    const mine = await putRecord(on, finding(first, { location: { path: "README.md", start: 3, end: 3 } }));
+    pushFromElsewhere(mine, "x".repeat(5000));
+    const reads = (): number => on.gitCalls.filter(([command, flag]) => command === "cat-file" && flag === "--batch").length;
+    const before = reads();
+
+    expect(await on.run("publish")).toEqual({ code: EXIT.git, output: { error: "record-conflict", records: [mine] } });
+    expect(reads()).toBe(before);
   });
 
   it("does nothing for an empty outbox", async () => {

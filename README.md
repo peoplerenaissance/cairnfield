@@ -66,7 +66,7 @@ The rest of the product code arrives unit by unit from the plan, in `index/`, `c
 
 ## Running the command
 
-The command needs Node 22.22 and Git. It reads `cairnfield.json` in the working folder, which names the team's node and, for a team that shares, an index:
+The command needs Node 22.22 and Git, and is written for macOS and Linux. Windows is not supported in the prototype. It reads `cairnfield.json` in the working folder, which names the team's node and, for a team that shares, an index:
 
 ```json
 { "node": "https://node.team-a.example" }
