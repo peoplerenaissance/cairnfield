@@ -9,7 +9,12 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "types": "wrangler types --strict-vars=false",
+    "typecheck": "npm run types && tsc -p tsconfig.json",
+    "check": "wrangler deploy --dry-run --env=\"\" && wrangler deploy --dry-run --env team-a && wrangler deploy --dry-run --env team-b",
+    "deploy:team-a": "wrangler deploy --env team-a --var NODE_URL:${TEAM_A_NODE_URL:-} --var INDEX_URL:${INDEX_URL:-}",
+    "deploy:team-b": "wrangler deploy --env team-b --var NODE_URL:${TEAM_B_NODE_URL:-} --var INDEX_URL:${INDEX_URL:-}",
+    "deploy:demo": "npm run deploy:team-a && npm run deploy:team-b"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",

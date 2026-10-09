@@ -1,0 +1,71 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // A team node (R6, R7). The top level is the node a team deploys for itself. The two
+  // environments at the end are the demo nodes.
+  "name": "cairnfield-node",
+  "main": "src/index.ts",
+  // The newest date that both runtimes in this package know: the one Wrangler deploys
+  // against and the older one the test pool runs.
+  "compatibility_date": "2026-08-15",
+  // A call to another Worker in the same account goes to its public URL (KTD28).
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  // The team's own Artifacts namespace. One namespace per node keeps one team's pushes
+  // from starting another team's Workflow (KTD9).
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-node" }],
+  // The one read token kept per fork (KTD7). With no ID, the namespace is made on deploy.
+  "kv_namespaces": [{ "binding": "READ_TOKENS" }],
+  // A Workflow name is unique in the account.
+  "workflows": [{ "name": "cairnfield-node-on-push", "binding": "ON_PUSH", "class_name": "OnPush" }],
+  // The shape Wrangler accepts for a push trigger. The Artifacts guide shows another one.
+  // A push to any repo of the namespace starts the Workflow.
+  "triggers": {
+    "events": [
+      {
+        "type": "cf.artifacts.repo.pushed",
+        "filter": { "namespace": "cairnfield-node" },
+        "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-on-push" }]
+      }
+    ]
+  },
+  // NODE_URL is the node's own base URL, in the one spelling the protocol accepts (KTD8).
+  // INDEX_URL is the index address with no slash at its end. A node with none sends no
+  // notice (KTD40). Both are set at deploy time. The admin key is a secret, never a
+  // variable: see `.dev.vars.example`.
+  "vars": { "NODE_URL": "", "INDEX_URL": "" },
+  // An environment inherits none of the bindings, variables or Workflows above, so each
+  // one states its own, with its own namespace, Workflow and trigger.
+  "env": {
+    "team-a": {
+      "name": "cairnfield-node-team-a",
+      "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-team-a" }],
+      "kv_namespaces": [{ "binding": "READ_TOKENS" }],
+      "workflows": [{ "name": "cairnfield-node-team-a-on-push", "binding": "ON_PUSH", "class_name": "OnPush" }],
+      "triggers": {
+        "events": [
+          {
+            "type": "cf.artifacts.repo.pushed",
+            "filter": { "namespace": "cairnfield-team-a" },
+            "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-a-on-push" }]
+          }
+        ]
+      },
+      "vars": { "NODE_URL": "", "INDEX_URL": "" }
+    },
+    "team-b": {
+      "name": "cairnfield-node-team-b",
+      "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-team-b" }],
+      "kv_namespaces": [{ "binding": "READ_TOKENS" }],
+      "workflows": [{ "name": "cairnfield-node-team-b-on-push", "binding": "ON_PUSH", "class_name": "OnPush" }],
+      "triggers": {
+        "events": [
+          {
+            "type": "cf.artifacts.repo.pushed",
+            "filter": { "namespace": "cairnfield-team-b" },
+            "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-b-on-push" }]
+          }
+        ]
+      },
+      "vars": { "NODE_URL": "", "INDEX_URL": "" }
+    }
+  }
+}

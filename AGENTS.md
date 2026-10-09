@@ -4,7 +4,7 @@ Cairnfield lets agents from many teams change the same shared code at once. Team
 
 ## Where things stand
 
-The repo holds a static site, the workspace scaffold, the protocol library in `protocol/`, the demo fixtures in `fixtures/` and the lens reader in `cli/`. The other packages hold placeholders. Product code arrives unit by unit from a build plan.
+The repo holds a static site, the workspace scaffold, the protocol library in `protocol/`, the team node Worker in `node/`, the demo fixtures in `fixtures/` and the lens reader in `cli/`. The node is not deployed yet. The other packages hold placeholders. Product code arrives unit by unit from a build plan.
 
 - The build plan is a private planning document. It lives under `docs/`, which Git ignores, so it is not part of this repo. Never commit a file under `docs/`.
 - When `docs/plans/` exists in your checkout, the plan there is the source of truth. Read its Goal Capsule first, then the unit you are working on and the requirements (R) and decisions (KTD) that unit cites. Do not read the whole file to find your way; scan its headings.
@@ -30,10 +30,15 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 | `npm run deploy:site` | repo root | Deploys the site. Ask the developer first |
 | `npm install` | repo root, and again in `node/` | Installs the workspace. `node/` and `site/` install on their own |
 | `npm test` | repo root, and in `node/` | Runs the Vitest suites |
-| `npm run typecheck` | repo root, and in `node/` | Type-checks every package |
+| `npm run typecheck` | repo root, and in `node/` | Type-checks every package and `scripts/`. In `node/` it first writes the binding types with `wrangler types` |
+| `npm run check` | `node/` | Dry-run of the node deploy: the default config and both demo environments |
+| `npm run deploy:demo` | `node/` | Deploys the two demo nodes. Ask the developer first |
+| `node scripts/check-node-contract.ts <node-url> <component-commit> <patch-commit>` | repo root | Checks a deployed node against the protocol's node contract |
 | `npm run scan:secrets` | repo root | Scans the repo for secrets |
 
-Later units add the Worker dry-run, demo and scale commands listed in the plan's Verification Contract.
+Later units add the index dry-run, demo and scale commands listed in the plan's Verification Contract.
+
+The Workers test pool reaches Artifacts through a session on the developer's Cloudflare account, because Artifacts has no local simulation. `remoteBindings: false` in `node/vitest.config.ts` stops that, and the tests use an in-memory fake. Keep the setting, and set it in every Worker package that binds Artifacts.
 
 `.npmrc` sets `legacy-peer-deps` in the repo root and in `node/`. npm 10 crashes while resolving the peer set of Vitest 4.1, and the Workers test pool needs Vitest 4.1. Keep the setting.
 

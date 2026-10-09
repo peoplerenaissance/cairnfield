@@ -1,5 +1,7 @@
 node_modules/
 .wrangler/
+# Written by `wrangler types` from the config and the installed runtime
+worker-configuration.d.ts
 .dev.vars
 .dev.vars.*
 !.dev.vars.example

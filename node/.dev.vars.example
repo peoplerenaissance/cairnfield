@@ -1,0 +1,9 @@
+# The secrets of a node, for `wrangler dev`. Copy this file to `.dev.vars`, which Git
+# ignores, and put a value of your own in it. Never commit a real key.
+#
+# On a deployed node the developer sets the key by hand, once per node, and each node
+# gets a different one:
+#   npx wrangler secret put ADMIN_KEY --env team-a
+#
+# A node with no key set refuses every admin call.
+ADMIN_KEY=not-a-real-key-replace-me
