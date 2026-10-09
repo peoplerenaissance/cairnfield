@@ -30,9 +30,10 @@
     ]
   },
   // NODE_URL is the node's own base URL, in the one spelling the protocol accepts (KTD8).
-  // INDEX_URL is the index address with no slash at its end. A node with none sends no
-  // notice (KTD40). Both are set at deploy time. The admin key is a secret, never a
-  // variable: see `.dev.vars.example`.
+  // The deploy scripts refuse to run without it, because a notice has to name the node.
+  // INDEX_URL is the index address with no slash at its end. It may be left out: a node
+  // with none sends no notice (KTD40). Both are set at deploy time. The admin key is a
+  // secret, never a variable: see `.dev.vars.example`.
   "vars": { "NODE_URL": "", "INDEX_URL": "" },
   // An environment inherits none of the bindings, variables or Workflows above, so each
   // one states its own, with its own namespace, Workflow and trigger. Its Durable Object

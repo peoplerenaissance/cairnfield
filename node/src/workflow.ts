@@ -15,6 +15,9 @@ export class OnPush extends WorkflowEntrypoint<Env> {
     const { INDEX_URL: index, NODE_URL: node } = this.env;
     // A node with no index address sends no notice (KTD40).
     if (!index) return;
+    // A notice names the node. A node that was deployed without its own address cannot
+    // send one, so the instance ends in an error that says why.
+    if (!node) throw new Error("NODE_URL is not set, so this node cannot name itself in a notice");
     await step.do("send notice", async () => {
       // Plain `fetch` to the index's public URL (KTD28).
       const response = await fetch(`${index}${NOTICE_PATH}`, {

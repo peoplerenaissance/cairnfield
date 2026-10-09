@@ -32,8 +32,8 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 | `npm test` | repo root, and in `node/` | Runs the Vitest suites |
 | `npm run typecheck` | repo root, and in `node/` | Type-checks every package and `scripts/`. In `node/` it first writes the binding types with `wrangler types` |
 | `npm run check` | `node/` | Dry-run of the node deploy: the default config and both demo environments |
-| `npm run deploy` | `node/` | Deploys one team node from the default config. `NODE_URL` and `INDEX_URL` come from the shell. Ask the developer first |
-| `npm run deploy:demo` | `node/` | Deploys the two demo nodes. Ask the developer first |
+| `npm run deploy` | `node/` | Deploys one team node from the default config. `NODE_URL` must be set in the shell to the node's base URL. `INDEX_URL` is optional. Ask the developer first |
+| `npm run deploy:demo` | `node/` | Deploys the two demo nodes. `TEAM_A_NODE_URL` and `TEAM_B_NODE_URL` must be set. Ask the developer first |
 | `node scripts/check-node-contract.ts <node-url> <component-commit> <patch-commit>` | repo root | Checks a deployed node against the protocol's node contract |
 | `npm run scan:secrets` | repo root | Scans the repo for secrets |
 
