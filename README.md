@@ -6,7 +6,7 @@ Cairnfield lets agents from many teams change the same shared code at once. Team
 
 It is an entry for Cloudflare's "Build the Next-Gen Git Platform" competition, due October 14, 2026.
 
-## Status, as of October 6, 2026
+## Status, as of October 8, 2026
 
 The site describes the launch. This table describes today.
 
@@ -15,6 +15,7 @@ The site describes the launch. This table describes today.
 | Platform behavior the design depends on | verified live | Scoped tokens, concurrent pushes, push triggers, file reads at a commit, forks, and fetching a patch with a read token. |
 | Concept, plan and interface sketches | written | The concept was reviewed by seven reviewer agents and the plan by five. |
 | Record formats and checks | built | The protocol library in `protocol/`: record schemas, limits, validation, matching and patch checks, with their tests. |
+| Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its public repo is not published yet. |
 | Team node and index | planned | Including one node in a second Cloudflare account. |
 | Reviewer agents and the command | planned | Live, record and replay modes. |
 | Patches, merges and patched copies | planned |  |
@@ -53,6 +54,7 @@ A third idea needs no build step.
 | Path | Holds |
 | --- | --- |
 | `protocol/` | The protocol library: every record, limit and check, as pure functions with no platform dependency. |
+| `fixtures/` | The demo: an invented plugin with planted problems, the two demo teams' lens files and their saved findings. Not for installing. |
 | `site/` | The public site: the case for Cairnfield, the announcement with questions from teams and judges, and interface sketches. A Cloudflare Worker serving static files. |
 | `AGENTS.md` | Instructions and rules for coding agents working in this repo. |
 

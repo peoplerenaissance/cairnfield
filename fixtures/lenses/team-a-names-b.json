@@ -1,0 +1,6 @@
+{
+  "patchLevel": 2,
+  "teams": ["https://node.team-b.example"],
+  "patchKinds": ["removes-only", "adds-or-changes"],
+  "publishRecipes": true
+}

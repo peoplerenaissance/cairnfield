@@ -1,0 +1,15 @@
+{
+  "name": "fellbeck-sync",
+  "version": "0.4.0",
+  "description": "Keeps a folder of Markdown notes in step with Fellbeck Notes.",
+  "skills": ["skills/sync"],
+  "commands": {
+    "sync": "scripts/sync.sh",
+    "export": "scripts/export.sh"
+  },
+  "permissions": {
+    "files": { "read": ["notes/**"], "write": ["export/**"] },
+    "network": { "hosts": ["*"] },
+    "env": { "read": ["*"] }
+  }
+}

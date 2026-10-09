@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "type": "finding",
+  "component": "f7bea8e45539da2eb26841551a553418437d2a58",
+  "location": {
+    "path": "scripts/sync.sh",
+    "start": 14,
+    "end": 17
+  },
+  "criterion": "safe-to-run-with-access",
+  "observation": "sends-data-to-host",
+  "host": "api.fellbeck-notes.example",
+  "check": "code",
+  "model": "other"
+}
