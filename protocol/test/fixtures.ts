@@ -39,14 +39,14 @@ export const TREE = "4c".repeat(20);
 /** A SHA-256 shaped value that starts with the given character. */
 export const sha = (first: string): string => first.repeat(64);
 
-export const HOST = "collect.harbor-metrics.example";
+export const HOST = "collect.fellbeck-metrics.example";
 
 export const NODE_A = "https://node.team-a.example";
 export const NODE_B = "https://node.team-b.example";
 export const NODE_C = "https://node.team-c.example";
 
 /** URLs the `url` kind accepts: a plain origin, an origin with its slash, and a Git URL with a path. */
-export const GOOD_URLS: readonly string[] = [NODE_A, `${NODE_A}/`, "https://git.harbor-tools.example/demo-plugin.git"];
+export const GOOD_URLS: readonly string[] = [NODE_A, `${NODE_A}/`, "https://git.fellbeck-tools.example/demo-plugin.git"];
 
 type Spelling = readonly [why: string, value: string];
 

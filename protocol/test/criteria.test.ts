@@ -60,7 +60,7 @@ describe("the lens rule of R23", () => {
   });
 
   it("approves a host only by its exact name", () => {
-    const parent: LensRule = { required: ["safe-to-run-with-access"], approvedHosts: ["harbor-metrics.example"] };
+    const parent: LensRule = { required: ["safe-to-run-with-access"], approvedHosts: ["fellbeck-metrics.example"] };
     expect(countsAgainstLens(destination, parent)).toBe(true);
     const other: LensRule = { required: ["safe-to-run-with-access"], approvedHosts: ["cdn.other-vendor.example"] };
     expect(countsAgainstLens(destination, other)).toBe(true);

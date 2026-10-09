@@ -10,13 +10,23 @@ import { DELETED_BLOB, DELETED_MODE, isFileMode } from "./enums.ts";
 import type { PatchKind, RejectionReason } from "./enums.ts";
 import type { FileEntry, FileListing } from "./files.ts";
 import { gitBlobHash, sha256Hex } from "./hash.ts";
-import { MAX_BLOB_BYTES, MAX_PATCH_LINES, MAX_PATCH_REPLACEMENTS } from "./limits.ts";
-import { splitLines } from "./lines.ts";
+import { MAX_BLOB_BYTES, MAX_PATCH_ADDED_BYTES, MAX_PATCH_LINES, MAX_PATCH_REPLACEMENTS } from "./limits.ts";
+import { linesOf, splitLines } from "./lines.ts";
 
 /** The files of one commit, with the content of the blobs a check must read, by blob hash. */
 export interface FileSet {
   readonly files: FileListing;
   readonly content: ReadonlyMap<string, Uint8Array>;
+}
+
+/**
+ * The lines of one content that a finding cites. `blob` is the finding's cited content
+ * (KTD5). Lines count from 1 and the range includes both ends.
+ */
+export interface CitedRange {
+  readonly blob: string;
+  readonly start: number;
+  readonly end: number;
 }
 
 /** One path a patch commit changes, as a node reports it (KTD7). A deletion carries the deletion marker. */
@@ -111,13 +121,39 @@ export function modesAreRegular(changes: readonly PathChange[]): boolean {
 }
 
 /**
- * Scope (R11): a patch changes only content its findings cite. `cited` holds the blob
- * hashes the findings cite. An added path is out of scope, because no finding can cite
- * content that was not in the pinned commit.
+ * Scope by file (R11): a patch changes only content its findings cite. An added path is
+ * out of scope, because no finding can cite content that was not in the pinned commit.
  */
-export function isInScope(changes: readonly PathChange[], cited: readonly string[]): boolean {
-  const allowed = new Set(cited);
+export function isInScope(changes: readonly PathChange[], cited: readonly CitedRange[]): boolean {
+  const allowed = new Set(cited.map((range) => range.blob));
   return changes.every((change) => change.old !== undefined && allowed.has(change.old.blob));
+}
+
+// The cited ranges of one content, in order. Ranges that overlap or adjoin count as one.
+function mergedRanges(cited: readonly CitedRange[], blob: string): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  const ordered = cited.filter((range) => range.blob === blob).sort((a, b) => a.start - b.start || a.end - b.end);
+  for (const { start, end } of ordered) {
+    const last = ranges[ranges.length - 1];
+    if (last !== undefined && start <= last.end + 1) last.end = Math.max(last.end, end);
+    else ranges.push({ start, end });
+  }
+  return ranges;
+}
+
+/**
+ * Scope by line (R11): a patch changes only the lines its findings cite. Every removed
+ * line is a cited line. Lines added with nothing removed go in front of a cited line or
+ * straight after the last one. A patch that only changes a mode changes no line, and a
+ * patch that deletes a file removes every line of it.
+ */
+export function linesAreInScope(changes: readonly ContentChange[], cited: readonly CitedRange[]): boolean {
+  return changes.every((change) => {
+    const ranges = mergedRanges(cited, change.blob);
+    return change.hunks.every((hunk) =>
+      ranges.some((range) => range.start <= hunk.oldStart && hunk.oldStart + hunk.removed - 1 <= range.end),
+    );
+  });
 }
 
 function serialize(replacement: Replacement): string {
@@ -219,8 +255,10 @@ function addsNoLine(before: Uint8Array, after: Uint8Array): boolean {
 
 /**
  * Size, kind and changed lines. Size is lines removed plus lines added, summed over the
- * replaced contents. A content counts once, however many copies it rewrites and whatever
- * their modes. Kind is `removes-only` when the patch adds no line and changes no mode.
+ * replaced contents. The bytes of the added lines have a limit of their own, so one long
+ * line cannot carry what sixty lines may not. A content counts once, however many copies
+ * it rewrites and whatever their modes. Kind is `removes-only` when the patch adds no
+ * line and changes no mode.
  */
 export async function measurePatch(
   base: FileSet,
@@ -234,6 +272,7 @@ export async function measurePatch(
   // Copies with two modes give two replacements and one content change.
   const measured = new Map<string, readonly Hunk[]>();
   let size = 0;
+  let addedBytes = 0;
   let addsLine = false;
   let modeChanged = false;
   for (const replacement of replacements) {
@@ -263,6 +302,10 @@ export async function measurePatch(
     const diff = diffLines(before, after, MAX_PATCH_LINES - size);
     if (diff === undefined) return refuse("patch-too-large");
     size += diff.removed + diff.added;
+    for (const hunk of diff.hunks) {
+      if (hunk.added > 0) addedBytes += linesOf(after, hunk.newStart, hunk.newStart + hunk.added - 1)?.length ?? 0;
+    }
+    if (addedBytes > MAX_PATCH_ADDED_BYTES) return refuse("patch-too-large");
     if (diff.added > 0 && !addsNoLine(before, after)) addsLine = true;
     measured.set(content, diff.hunks);
     changes.push({ blob: replacement.oldBlob, hunks: diff.hunks });
@@ -273,13 +316,14 @@ export async function measurePatch(
 
 /**
  * Runs every patch check in a fixed order and returns the first failure, or the computed
- * facts. The order is file mode, scope, completeness, number of replacements, served
- * content, then size. `cited` holds the blob hashes that the patch's findings cite.
+ * facts. The order is file mode, scope by file, completeness, number of replacements,
+ * served content, size, then scope by line. `cited` holds the lines that the patch's
+ * findings cite.
  */
 export async function checkPatch(input: {
   readonly base: FileSet;
   readonly patched: FileSet;
-  readonly cited: readonly string[];
+  readonly cited: readonly CitedRange[];
 }): Promise<PatchVerdict> {
   const { base, patched, cited } = input;
   const changes = changedPaths(base.files, patched.files);
@@ -290,6 +334,7 @@ export async function checkPatch(input: {
   if (replacements.length > MAX_PATCH_REPLACEMENTS) return refuse("patch-too-large");
   const measured = await measurePatch(base, patched, replacements);
   if (!measured.ok) return measured;
+  if (!linesAreInScope(measured.changes, cited)) return refuse("patch-out-of-scope");
   return {
     ok: true,
     patchId: await patchId(replacements),
