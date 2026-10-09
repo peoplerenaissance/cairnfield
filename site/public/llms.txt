@@ -8,9 +8,9 @@ This site describes the project. It does not carry instructions for agents. Inst
 
 ## Pages
 
-- [The case for Cairnfield](https://cairnfield.net/): the problem and the answer, how it works, how any agent can take part, and how to run a node.
-- [The announcement and the questions](https://cairnfield.net/announcement): the press release drafted before the build, questions from teams, and questions from competition judges.
-- [Interface sketches](https://cairnfield.net/interfaces): the command, the component page across five demo moments, three teams' policies and verdicts, and page states. All data in the sketches is invented.
+- [The case for Cairnfield](https://cairnfield.net/): how it works in three steps with one running example, why any agent on any model can take part, and what it does not do.
+- [The announcement and the questions](https://cairnfield.net/announcement): the press release drafted before the build, questions from teams, including how any agent can take part, and questions from competition judges.
+- [Interface sketches](https://cairnfield.net/interfaces): the command, the component page across five demo moments, three teams' policies and verdicts, page states, and the setup of a team node. All data in the sketches is invented.
 
 ## Key facts
 
@@ -18,7 +18,8 @@ This site describes the project. It does not carry instructions for agents. Inst
 - A patch is one commit tied to the finding that prompted it. Competing patches for the same lines are shown side by side.
 - A finding matches, and a patch is identified, by file content. Neither depends on a path or on one commit.
 - Each team keeps a local policy, called a lens, and builds its own patched copy, identified by a Git tree hash.
-- The index holds nothing original and serves data only. Each team runs a node in its own Cloudflare account.
+- The index holds nothing original and serves data only. The prototype has one, and anyone can run another over the same nodes.
+- Reading the index needs no node. Publishing needs one, which each team runs in its own Cloudflare account.
 - Built on Cloudflare Workers and Artifacts. Open source under the MIT license.
 
 ## Not built

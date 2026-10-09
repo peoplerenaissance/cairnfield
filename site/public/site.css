@@ -89,7 +89,6 @@
   .cairn.mid > .stone.base { width: 74px; height: 15px; }
   .cairn.xl > .stone.o { width: 168px; height: 28px; box-shadow: inset 0 -7px 0 rgba(0,0,0,.2), inset 0 2px 0 rgba(255,255,255,.55), 0 2px 0 rgba(0,0,0,.12); }
   .cairn > .stone.o + .stone, .cairn > .stone.base + .stone { margin-top: -2px; }
-  .stone.aside { rotate: 24deg; translate: 22px 9px; width: 20px; margin-top: -13px; }
   .a { --c: var(--slate); --ci: var(--slate-ink); } .b { --c: var(--sandstone); --ci: var(--sandstone-ink); } .c { --c: var(--ironstone); --ci: var(--ironstone-ink); } .d { --c: var(--drift); --ci: var(--drift-ink); } .o { --c: var(--base); }
   .cairn.xl .stone { width: 132px; height: 46px; margin-top: -10px; box-shadow: inset 0 -9px 0 rgba(0,0,0,.14); }
   .cairn.xl > .stone:nth-child(2) { width: 108px; }
@@ -109,18 +108,17 @@
   .hero { position: relative; overflow: hidden; background: rgba(250,251,249,.62); border-bottom: 1px solid var(--line); }
   .hero-inner { position: relative; padding-block: 72px 56px; }
   .hero h1 { font: 400 clamp(38px, 5.4vw, 70px)/1.06 var(--display); letter-spacing: 0.005em; margin: 0 0 22px; max-width: 15em; }
-  .hero p.promise { font-size: 23px; line-height: 1.38; max-width: 30em; margin: 0 0 16px; font-weight: 600; }
+  .hero p.promise { font-size: 23px; line-height: 1.4; max-width: 33em; margin: 0 0 28px; text-wrap: balance; }
+  .hero p.promise strong { font-weight: 700; }
   .hero p.lede { font-size: 19px; line-height: 1.45; max-width: 36em; margin: 0 0 16px; color: var(--muted); }
-  .hero p.judge { font: 500 14px/1.55 var(--mono); color: var(--muted); max-width: 46em; margin: 0 0 28px; }
   .cta { display: flex; flex-wrap: wrap; gap: 10px; }
   .btn { display: inline-block; font: 600 15px/1 var(--body); text-decoration: none; padding: 13px 18px; border-radius: 8px; border: 1px solid var(--ink); }
   .btn.solid { background: var(--ink); color: var(--paper); }
   .btn:hover { border-color: var(--slate); }
-  .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 56px; align-items: end; }
-  .trio figure { margin: 0; text-align: center; }
-  .trio figcaption { margin-top: 14px; font-size: 14.5px; color: var(--muted); }
-  .trio figcaption b { display: block; font: 400 25px/1.1 var(--display); color: var(--ink); margin-bottom: 6px; }
-  .trio-note { text-align: center; margin: 26px auto 0; max-width: 40em; font-size: 15px; color: var(--muted); }
+  .hero p.judging { font: 500 13px/1.5 var(--mono); color: var(--muted); margin: 18px 0 0; }
+  .contrast { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 48px; }
+  .contrast figure.fig { margin: 0; }
+  .contrast .fig text { font-size: 13px; }
 
   /* ---------- the trail: a cairn at each section, joined down the page ---------- */
   main section > .wrap { position: relative; }
@@ -134,14 +132,8 @@
   @media (max-width: 1239px) { .waymark, main section > .wrap::before { display: none; } }
 
   /* ---------- legend ---------- */
-  .legend { margin: 40px auto 0; max-width: 980px; border: 1px solid var(--line); border-radius: 10px; background: rgba(250,251,249,.92); display: grid; grid-template-columns: auto 1fr; }
-  .legend h2 { font: 400 24px/1.0 var(--display); margin: 0; padding: 18px 22px; border-right: 1px solid var(--line-soft); display: flex; align-items: center; }
-  .legend-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 22px; padding: 14px 22px; align-items: start; }
-  .legend-body .lg { display: grid; gap: 2px; }
-  .trailsample { width: 40px; height: 22px; justify-self: center; }
-  .legend-body .lg > div { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center; font-size: 13.5px; color: var(--muted); min-height: 26px; }
-  .legend-body .stone { justify-self: center; margin: 0; width: 28px; height: 12px; }
-  @media (max-width: 900px) { .legend { grid-template-columns: 1fr; } .legend h2 { border-right: 0; border-bottom: 1px solid var(--line-soft); } .legend-body { grid-template-columns: 1fr; } }
+  .legend { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 18px; margin-top: 18px; font-size: 13.5px; color: var(--muted); }
+  .legend .stone { display: inline-block; margin: 0 6px 0 0; vertical-align: middle; width: 22px; height: 10px; }
 
   /* ---------- sections ---------- */
   section { padding: 72px 0 12px; }
@@ -189,38 +181,44 @@
   .facts b { display: block; font: 400 38px/1.0 var(--display); }
   .facts span { font-size: 13.5px; color: var(--muted); line-height: 1.35; display: block; margin-top: 4px; }
 
-  /* ---------- the fit ---------- */
-  .fitgrid { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
-  .fitrow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line-soft); }
-  .fitrow.head { border-top: 0; background: #fff; }
-  .fitrow.head div { font: 500 12.5px/1.2 var(--mono); color: var(--muted); padding: 12px 20px; }
-  .fitrow > div { padding: 20px; border-left: 1px solid var(--line-soft); font-size: 15.5px; line-height: 1.5; }
-  .fitrow > div:first-child { border-left: 0; }
-  .fitrow > div > b { display: block; font-weight: 600; margin-bottom: 4px; }
-  .fitrow .cairn, .fitrow .chip { display: inline-flex; float: right; margin: 0 0 8px 12px; }
-  .fitrow .cairn.md .stone { margin-top: -4px; }
-  .two-col { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; }
-  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+  /* ---------- cards ---------- */
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .card, .payoff { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
   .card h3 { font: 400 23px/1.15 var(--display); margin: 0 0 12px; }
   .card ul { margin: 0; padding-left: 18px; font-size: 15.5px; }
   .card li { margin-bottom: 8px; }
-  table.plain.compact td, table.plain.compact th { padding-right: 10px; font-size: 14px; }
+  .card p { margin: 0 0 10px; font-size: 15.5px; }
+  .card ul + p { margin-top: 12px; }
+  .card > :last-child { margin-bottom: 0; }
+  .cards .card { display: flex; flex-direction: column; }
+  .cards .card > p:last-child { margin-top: auto; padding-top: 6px; }
 
-  /* ---------- how it works ---------- */
-  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-  .step { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
-  .step .stage { background: #fff; border-bottom: 1px solid var(--line-soft); min-height: 168px; padding: 18px; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
-  .step .text { padding: 18px 20px 20px; }
+  /* ---------- how it works: one block per step, then the three copies it leads to ---------- */
+  .steps { display: grid; gap: 16px; margin-bottom: 16px; }
+  .step { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+  .step .stage { background: #fff; border-left: 1px solid var(--line-soft); margin: 0; padding: 24px 28px; display: flex; flex-direction: column; justify-content: center; gap: 20px; }
+  .step .art { display: flex; flex-direction: column; justify-content: center; gap: 10px; min-height: 104px; }
+  .step .stage figcaption { border-top: 1px solid var(--line-soft); padding-top: 14px; font-size: 14.5px; line-height: 1.5; color: var(--muted); }
+  .step .eg { display: block; font: 500 12.5px/1 var(--mono); margin-bottom: 8px; }
+  .step .text { padding: 22px 24px 22px; }
   .step .num { font: 500 13px/1 var(--mono); color: var(--muted); }
-  .step h3 { font: 400 27px/1.15 var(--display); margin: 8px 0 10px; }
-  .step p { margin: 0; font-size: 15.5px; color: var(--muted); }
+  .step h3 { font: 400 27px/1.15 var(--display); margin: 8px 0 14px; }
+  .step dl { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: 10px 16px; margin: 0; font-size: 15.5px; }
+  .step dt { font: 500 12.5px/24px var(--mono); color: var(--muted); }
+  .step dd { margin: 0; }
+  .step dd b { font-weight: 600; }
+  .payoff { padding-top: 40px; padding-bottom: 26px; margin-bottom: 16px; }
+  .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: end; }
+  .trio figure { margin: 0; text-align: center; }
+  .trio figcaption { margin-top: 14px; font-size: 14.5px; color: var(--muted); }
+  .trio figcaption b { display: block; font: 400 25px/1.1 var(--display); color: var(--ink); margin-bottom: 6px; }
+  .trio-note { text-align: center; margin: 26px auto 0; max-width: 40em; font-size: 15px; color: var(--muted); }
   .row { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; align-items: center; }
   .row > .cairn { justify-self: start; margin-left: 4px; }
   .row .what { font-weight: 600; font-size: 15px; }
   .row .where { font: 400 12px/1.4 var(--mono); color: var(--muted); }
   .tag { display: inline-block; font: 600 11.5px/1 var(--mono); padding: 6px 8px; border-radius: 5px; border: 1px solid var(--line); background: #fff; width: fit-content; }
   .tag.ok { background: #EAF1DC; border-color: #C9D8AD; color: #2E4716; }
-  .tag.rej { background: var(--del); border-color: #E4B7C2; color: #7A2638; }
   .diff { font: 400 11.5px/1.6 var(--mono); border: 1px solid var(--line-soft); border-radius: 6px; overflow: hidden; background: var(--paper); }
   .diff div { padding: 0 8px; white-space: pre; }
   .diff .m { background: var(--del); } .diff .p { background: var(--add); }
@@ -230,27 +228,7 @@
   .built { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: end; }
   .built .mono { font: 500 12.5px/1.5 var(--mono); color: var(--muted); }
 
-  /* ---------- deploy ---------- */
-  .deploy-top { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; align-items: start; padding: 28px; background: #fff; border-bottom: 1px solid var(--line-soft); }
-  .offbtn > summary { list-style: none; cursor: pointer; width: fit-content; }
-  .offbtn > summary::-webkit-details-marker { display: none; }
-  .offbtn > p { margin: 12px 0 0; font-size: 14px; color: var(--muted); max-width: 30em; }
-  .deploy-official { display: inline-block; line-height: 0; }
-  .deploy-official img { display: block; height: 44px; width: auto; }
-  .deploy-official.inactive { padding: 6px; border: 1.5px dashed var(--line); border-radius: 8px; cursor: not-allowed; }
-  .deploy-official.inactive img { opacity: .5; filter: grayscale(1); }
-  .deploy-flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .deploy-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .deploy-cols > div { padding: 22px 24px 18px; border-left: 1px solid var(--line-soft); }
-  .deploy-cols > div:first-child { border-left: 0; }
-  .deploy-cols h3 { font: 400 21px/1.15 var(--display); margin: 0 0 12px; }
-  .deploy-cols ul { margin: 0; padding-left: 18px; font-size: 15px; }
-  .deploy-cols li { margin-bottom: 8px; }
-
-  /* ---------- vendor tabs ---------- */
-  .vendors { margin-top: 28px; }
-  .vendors h3 { font: 400 23px/1.15 var(--display); margin: 0 0 6px; }
-  .vendors p.note { margin: 0 0 14px; color: var(--muted); font-size: 15px; max-width: 60em; }
+  /* ---------- tabs ---------- */
   .tabs { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
   .tabs > input { position: absolute; opacity: 0; width: 0; height: 0; }
   .tabs .tablist { display: flex; flex-wrap: wrap; background: #fff; border-bottom: 1px solid var(--line-soft); }
@@ -272,6 +250,7 @@
   .qa p { margin: 0 0 12px; font-size: 15.5px; }
   .qa ul { margin: 0 0 12px; padding-left: 20px; font-size: 15.5px; }
   .qa li { margin-bottom: 6px; }
+  .qa .scroll + p { margin-top: 14px; }
   .users { --c: var(--sandstone); } .judges { --c: var(--slate); }
 
   .mini { min-height: 104px; padding: 16px 14px; background: #fff; border-bottom: 1px solid var(--line-soft); display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; position: relative; }
@@ -325,14 +304,13 @@
     .bar nav { margin-left: 0; flex-wrap: wrap; white-space: normal; gap: 6px 14px; width: 100%; }
     .hero-inner { padding-block: 40px 36px; }
     section { padding-top: 52px; }
-    .fitrow > div, .card, .step .text, .qa .body { padding-left: 18px; padding-right: 18px; }
+    .card, .payoff, .step .text, .qa .body { padding-left: 18px; padding-right: 18px; }
     .release { grid-template-columns: 1fr; padding: 28px 22px; gap: 18px; }
-    .steps, .faq, .trio, footer.end .cols, .deploy-top, .deploy-cols, .fitrow, .two-col { grid-template-columns: 1fr; }
-    .fitrow > div { border-left: 0; border-top: 1px solid var(--line-soft); }
-    .fitrow > div:first-child { border-top: 0; }
-    .fitrow.head { display: none; }
-    .deploy-cols > div { border-left: 0; border-top: 1px solid var(--line-soft); }
-    .deploy-cols > div:first-child { border-top: 0; }
+    .step, .contrast, .faq, .trio, footer.end .cols, .cards { grid-template-columns: 1fr; }
+    .step .stage { border-left: 0; border-top: 1px solid var(--line-soft); padding: 18px; }
+    .step dl { grid-template-columns: 1fr; gap: 0; }
+    .step dd { margin-bottom: 12px; }
+    .step dd:last-child { margin-bottom: 0; }
     .facts { grid-template-columns: 1fr; }
     .facts div { border-left: 0; border-top: 1px solid var(--line-soft); }
     .facts div:first-child { border-top: 0; }
