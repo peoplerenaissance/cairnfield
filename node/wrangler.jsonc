@@ -1,0 +1,78 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // A team node (R6, R7). The top level is the node a team deploys for itself. The two
+  // environments at the end are the demo nodes.
+  "name": "cairnfield-node",
+  "main": "src/index.ts",
+  // The newest date that both runtimes in this package know: the one Wrangler deploys
+  // against and the older one the test pool runs.
+  "compatibility_date": "2026-08-15",
+  // A call to another Worker in the same account goes to its public URL (KTD28).
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  // The team's own Artifacts namespace. One namespace per node keeps one team's pushes
+  // from starting another team's Workflow (KTD9).
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-node" }],
+  // The one read token kept per fork, in a Durable Object named after the fork (KTD7).
+  "durable_objects": { "bindings": [{ "name": "READ_TOKENS", "class_name": "ReadTokens" }] },
+  // Every environment takes this over. The class keeps its state in SQLite storage.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ReadTokens"] }],
+  // A Workflow name is unique in the account.
+  "workflows": [{ "name": "cairnfield-node-on-push", "binding": "ON_PUSH", "class_name": "OnPush" }],
+  // The shape Wrangler accepts for a push trigger. The Artifacts guide shows another one.
+  // A push to any repo of the namespace starts the Workflow.
+  "triggers": {
+    "events": [
+      {
+        "type": "cf.artifacts.repo.pushed",
+        "filter": { "namespace": "cairnfield-node" },
+        "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-on-push" }]
+      }
+    ]
+  },
+  // NODE_URL is the node's own base URL, in the one spelling the protocol accepts (KTD8).
+  // It is the origin the Worker answers at, with no path: this Worker serves its routes
+  // from the root of its host. The deploy scripts refuse to run without it, and the
+  // Workflow sends no notice for an address it cannot use.
+  // INDEX_URL is the index address: an HTTPS URL with no slash at its end and nothing
+  // after its path. The Workflow sends no notice to an address in another form. It may be
+  // left out: a node with none sends no notice (KTD40). Both are set at deploy time. The admin key is a
+  // secret, never a variable: see `.dev.vars.example`.
+  "vars": { "NODE_URL": "", "INDEX_URL": "" },
+  // An environment inherits none of the bindings, variables or Workflows above, so each
+  // one states its own, with its own namespace, Workflow and trigger. Its Durable Object
+  // belongs to its own Worker, so the two demo nodes share no kept token.
+  "env": {
+    "team-a": {
+      "name": "cairnfield-node-team-a",
+      "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-team-a" }],
+      "durable_objects": { "bindings": [{ "name": "READ_TOKENS", "class_name": "ReadTokens" }] },
+      "workflows": [{ "name": "cairnfield-node-team-a-on-push", "binding": "ON_PUSH", "class_name": "OnPush" }],
+      "triggers": {
+        "events": [
+          {
+            "type": "cf.artifacts.repo.pushed",
+            "filter": { "namespace": "cairnfield-team-a" },
+            "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-a-on-push" }]
+          }
+        ]
+      },
+      "vars": { "NODE_URL": "", "INDEX_URL": "" }
+    },
+    "team-b": {
+      "name": "cairnfield-node-team-b",
+      "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-team-b" }],
+      "durable_objects": { "bindings": [{ "name": "READ_TOKENS", "class_name": "ReadTokens" }] },
+      "workflows": [{ "name": "cairnfield-node-team-b-on-push", "binding": "ON_PUSH", "class_name": "OnPush" }],
+      "triggers": {
+        "events": [
+          {
+            "type": "cf.artifacts.repo.pushed",
+            "filter": { "namespace": "cairnfield-team-b" },
+            "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-b-on-push" }]
+          }
+        ]
+      },
+      "vars": { "NODE_URL": "", "INDEX_URL": "" }
+    }
+  }
+}

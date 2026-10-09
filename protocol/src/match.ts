@@ -6,6 +6,7 @@ import { countsAgainst } from "./criteria.ts";
 import { CRITERIA } from "./enums.ts";
 import type { Criterion, Observation } from "./enums.ts";
 import type { FileListing } from "./files.ts";
+import type { CitedRange } from "./patch-checks.ts";
 import { CONFIRMED_AT } from "./limits.ts";
 import type { AnyRecord, CounterFinding, Finding, Recheck } from "./schemas.ts";
 
@@ -38,14 +39,14 @@ export function citedBlob(finding: Finding, listing: FileListing): string | unde
   return listing.find((entry) => entry.path === finding.location.path)?.blob;
 }
 
-/** The cited content of each finding, without duplicates. Patch scope is checked against this (R11). */
-export function citedBlobs(findings: readonly Finding[], listing: FileListing): string[] {
-  const blobs = new Set<string>();
+/** The lines each finding cites, as lines of its cited content. Patch scope is checked against these (R11). */
+export function citedRanges(findings: readonly Finding[], listing: FileListing): CitedRange[] {
+  const cited: CitedRange[] = [];
   for (const finding of findings) {
     const blob = citedBlob(finding, listing);
-    if (blob !== undefined) blobs.add(blob);
+    if (blob !== undefined) cited.push({ blob, start: finding.location.start, end: finding.location.end });
   }
-  return [...blobs].sort();
+  return cited;
 }
 
 // Two destination findings share an observation only when they name the same host.

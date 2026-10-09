@@ -1,0 +1,19 @@
+{
+  "version": "1",
+  "type": "finding",
+  "component": "f7bea8e45539da2eb26841551a553418437d2a58",
+  "location": {
+    "path": "scripts/export.sh",
+    "start": 11,
+    "end": 13
+  },
+  "criterion": "works-as-documented",
+  "observation": "documented-control-not-read",
+  "contradicts": {
+    "path": "README.md",
+    "start": 32,
+    "end": 32
+  },
+  "check": "code",
+  "model": "other"
+}

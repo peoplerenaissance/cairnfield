@@ -13,9 +13,8 @@
   <div class="wrap">
     <a class="mark" href="#top">Cairnfield</a>
     <nav aria-label="Sections">
-      <a href="#fit">The problem</a>
       <a href="#how">How it works</a>
-      <a href="#deploy">Run a node</a>
+      <a href="#part">Taking part</a>
       <a href="/announcement">Announcement and questions</a>
     </nav>
   </div>
@@ -24,318 +23,199 @@
 <header class="hero" id="top">
   <div class="wrap hero-inner">
     <h1>Trust your whole AI toolchain?</h1>
-    <p class="promise">Trust is earned, not assumed. Apply your own evaluation criteria to evidence about each exact version, collected by everyone who uses it.</p>
-    <p class="lede">Plugins, agent skills and MCP servers change with every release. With Cairnfield, your team's agents review them together with other teams', fix what they find without waiting on anyone, and prove which version you run.</p>
-    <p class="judge">Built on Git, on Cloudflare Workers and Artifacts. Each team's findings and patches are commits in its own repo, pinned to the exact Git SHA it reviewed. No shared branch, no merge, no maintainer: each team assembles its own version from work it can check.</p>
+    <p class="promise">Plugins, agent skills and MCP servers change with every release. With Cairnfield, your team's agents <strong>review</strong> them together with other teams', <strong>fix</strong> what they find without waiting on anyone, and <strong>prove</strong> what you run.</p>
     <div class="cta">
-      <a class="btn solid" href="#fit">See the problem and the answer</a>
+      <a class="btn solid" href="#how">See how it works</a>
       <a class="btn" href="/interfaces">See the interface sketches</a>
     </div>
+    <p class="judging">For competition judges: <a href="/announcement#judges">where to look for each criterion</a></p>
 
-    <div class="trio" role="img" aria-label="Three teams build three different copies of one plugin from shared patches">
-      <figure>
-        <span class="cairn xl"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone a drop"></span><span class="stone a drop"></span><span class="stone a drop"></span></span>
-        <figcaption><b>Northfork</b>Takes only its own patches.</figcaption>
+    <div class="contrast">
+      <figure class="fig">
+        <svg viewBox="0 0 500 170" role="img" aria-label="Nine changes queue at a single gate and one gets through">
+          <rect x="296" y="14" width="8" height="52" rx="3" fill="#1E2A2E"/>
+          <rect x="296" y="88" width="8" height="52" rx="3" fill="#1E2A2E"/>
+          <g>
+            <circle class="fa s1" style="--from:translateX(-200px)" cx="278" cy="77" r="8"/>
+            <circle class="fb s1" style="--from:translateX(-200px)" cx="256" cy="65" r="8"/>
+            <circle class="fc s2" style="--from:translateX(-200px)" cx="256" cy="89" r="8"/>
+            <circle class="fa s2" style="--from:translateX(-200px)" cx="233" cy="54" r="8"/>
+            <circle class="fb s3" style="--from:translateX(-200px)" cx="233" cy="77" r="8"/>
+            <circle class="fc s3" style="--from:translateX(-200px)" cx="233" cy="100" r="8"/>
+            <circle class="fa s4" style="--from:translateX(-200px)" cx="210" cy="65" r="8"/>
+            <circle class="fb s4" style="--from:translateX(-200px)" cx="210" cy="89" r="8"/>
+            <circle class="fc s6" style="--from:translateX(-120px)" cx="430" cy="77" r="8"/>
+          </g>
+          <text x="24" y="160">nine changes are ready</text>
+          <text x="300" y="160" text-anchor="middle">one person merges</text>
+          <text x="430" y="160" text-anchor="middle">one landed</text>
+        </svg>
+        <figcaption>The usual model. Agents can write fixes in minutes, and every one of them waits at the same gate.</figcaption>
       </figure>
-      <figure>
-        <span class="cairn xl"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone b drop"></span><span class="stone b drop"></span><span class="stone a drop"></span></span>
-        <figcaption><b>Kestrel</b>Merges two fixes and adopts one from Northfork.</figcaption>
+      <figure class="fig">
+        <svg viewBox="0 0 500 170" role="img" aria-label="Nine changes travel three lanes side by side and all land, each in its own team's Artifacts repo">
+          <text x="476" y="22" text-anchor="end">each team's own Artifacts repo</text>
+          <line class="la" x1="24" y1="48" x2="346" y2="48" stroke-width="2"/>
+          <line class="lb" x1="24" y1="83" x2="346" y2="83" stroke-width="2"/>
+          <line class="lc" x1="24" y1="118" x2="346" y2="118" stroke-width="2"/>
+          <rect class="la" x="346" y="34" width="130" height="28" rx="6" fill="#FAFBF9" stroke-width="1.5"/>
+          <rect class="lb" x="346" y="69" width="130" height="28" rx="6" fill="#FAFBF9" stroke-width="1.5"/>
+          <rect class="lc" x="346" y="104" width="130" height="28" rx="6" fill="#FAFBF9" stroke-width="1.5"/>
+          <g>
+            <circle class="fa s1" style="--from:translateX(-300px)" cx="444" cy="48" r="8"/><circle class="fb s1" style="--from:translateX(-300px)" cx="444" cy="83" r="8"/><circle class="fc s1" style="--from:translateX(-300px)" cx="444" cy="118" r="8"/>
+            <circle class="fa s2" style="--from:translateX(-300px)" cx="411" cy="48" r="8"/><circle class="fb s2" style="--from:translateX(-300px)" cx="411" cy="83" r="8"/><circle class="fc s2" style="--from:translateX(-300px)" cx="411" cy="118" r="8"/>
+            <circle class="fa s3" style="--from:translateX(-300px)" cx="378" cy="48" r="8"/><circle class="fb s3" style="--from:translateX(-300px)" cx="378" cy="83" r="8"/><circle class="fc s3" style="--from:translateX(-300px)" cx="378" cy="118" r="8"/>
+          </g>
+          <text x="24" y="160">nine changes are ready</text>
+          <text x="280" y="160" text-anchor="middle">nobody merges</text>
+          <text x="411" y="160" text-anchor="middle">nine landed</text>
+        </svg>
+        <figcaption>Cairnfield. The same nine changes land at once, because no two teams write to the same place.</figcaption>
       </figure>
-      <figure>
-        <span class="cairn xl"><span class="stone o" data-sha="9f3c1e7a"></span></span>
-        <figcaption><b>Marlow</b>Takes none, and does not approve the plugin.</figcaption>
-      </figure>
-    </div>
-    <p class="trio-note">One plugin, one set of findings, three versions. Each stone is a patch, in the rock of the team that wrote it, stacked on the pinned original. A cairn is the copy one team built.</p>
-
-    <div class="legend">
-      <h2>Legend</h2>
-      <div class="legend-body">
-        <div class="lg">
-          <div><span class="cairn md" style="transform:scale(.55);margin:-8px 0"><span class="stone o"></span><span class="stone b"></span><span class="stone a"></span></span>A cairn: one team's copy, the original plus the patches it accepted</div>
-          <div><span class="stone o"></span>The pinned original (granite), stamped with its Git SHA</div>
-          <div><svg class="trailsample" viewBox="0 0 40 22" aria-hidden="true"><path d="M2 18 C10 2, 16 22, 24 10 S34 2, 38 8" fill="none" stroke="#7F8D8A" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/></svg>The trail, from section to section</div>
-        </div>
-        <div class="lg">
-          <div><span class="stone a"></span>Northfork, in slate</div>
-          <div><span class="stone b"></span>Kestrel, in sandstone</div>
-          <div><span class="stone c"></span>Marlow, in ironstone</div>
-          <div><span class="stone d"></span>Mallory, a hostile contributor, in basalt</div>
-        </div>
-      </div>
     </div>
   </div>
 </header>
 
 <main>
 
-  <!-- ================= THE FIT ================= -->
-  <section id="fit">
-    <div class="wrap">
-      <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
-      <p class="eyebrow">For the engineer responsible for what the team installs</p>
-      <h2>The problem, the answer, and why it fits</h2>
-      <p class="intro">Three things go wrong when one team reviews the tools it installs. Each has one answer in Cairnfield, and one reason the answer holds up when the other teams are strangers.</p>
-
-      <div class="fitgrid">
-        <div class="fitrow head"><div>The problem</div><div>The answer</div><div>Why it works</div></div>
-        <div class="fitrow">
-          <div><b>Every team reviews alone, or not at all.</b> The same plugin is read in private by each team that uses it, and by nobody for the rest.</div>
-          <div><span class="cairn md" aria-hidden="true"><span class="stone a"></span><span class="stone b"></span></span>Teams publish what they find as checkable facts: this file, these lines, this observation. No verdict, no prose.</div>
-          <div>You can use a stranger's finding without trusting the stranger. Your own agent re-checks the lines before anything counts.</div>
-        </div>
-        <div class="fitrow">
-          <div><b>The fix waits on someone else.</b> In our own reviews, a small code fix gets "tracked as follow-up": a note, and no place for the fix to go.</div>
-          <div><span class="cairn md" aria-hidden="true"><span class="stone o"></span><span class="stone b"></span><span class="stone a"></span></span>Each team publishes patches tied to findings, and builds its own copy from the patches it accepts.</div>
-          <div>Nobody has to merge, so nobody is waited on. Two teams that write the same fix end up with the same stone.</div>
-        </div>
-        <div class="fitrow">
-          <div><b>Nothing verifies what an engineer installed.</b> In our own reviews, 44 of 191 findings are closed by a control on each person's machine: a setting, a written instruction or a tool left uninstalled. The record cannot tell whether it is there.</div>
-          <div><span class="chip yes" aria-hidden="true">tree 71aa09…</span>A patched copy has a tree hash, and your team's approvals name it.</div>
-          <div>A hash can be checked on any machine with one Git command. A setup checklist cannot.</div>
-        </div>
-      </div>
-
-      <div class="two-col">
-        <div class="card">
-          <h3>What you need</h3>
-          <ul>
-            <li>A node in your own Cloudflare account, on the Workers Paid plan.</li>
-            <li>Your own model API key for the reviewer agents.</li>
-            <li>Publishing reveals which tools your team is evaluating.</li>
-            <li>An approval still needs your own review. Sharing makes rejections cheap and approvals better evidenced; it does not remove the work.</li>
-          </ul>
-        </div>
-        <div class="card">
-          <h3>A review, today and after</h3>
-          <div class="scroll">
-            <table class="plain compact">
-              <thead><tr><th>Step</th><th>Today</th><th>With Cairnfield</th></tr></thead>
-              <tbody>
-                <tr><td>Find</td><td>One engineer and one agent, alone</td><td>Three agents, with other teams' findings to check against</td></tr>
-                <tr><td>Fix</td><td>A note in a record, waiting upstream</td><td>A patch in your own copy, re-checked by others</td></tr>
-                <tr><td>Decide</td><td>A person rules, in a pull request</td><td>A person still rules, through a local lens</td></tr>
-                <tr><td>Verify</td><td>A checklist nobody can check</td><td>A tree hash anyone can check</td></tr>
-                <tr><td>Revisit</td><td>By hand, when someone asks</td><td>Not yet. The first thing to build next</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- ================= HOW IT WORKS ================= -->
   <section id="how">
     <div class="wrap">
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
-      <p class="eyebrow">The loop, in order</p>
+      <p class="eyebrow">For the engineer responsible for what the team installs</p>
       <h2>How it works</h2>
-      <p class="intro">Three things happen, in this order, for every component version. Everything a team publishes is a small file in its own Git repo.</p>
+      <p class="intro">Today a team reviews what it installs alone, waits on someone else for every fix, and cannot check what its engineers run. Cairnfield answers each in turn, for each component: a plugin, skill or MCP server at one exact commit. One invented plugin, <code>fellbeck-sync</code>, and three invented teams are the example throughout.</p>
+
       <div class="steps">
         <div class="step">
-          <div class="stage" aria-hidden="true">
-            <div class="row">
-              <span class="cairn md"><span class="stone a s1"></span><span class="stone b s2"></span><span class="stone c aside s4" style="translate:36px 14px;width:34px"></span></span>
-              <div>
-                <div class="what">Network access to any host</div>
-                <div class="where">plugin.json · line 12</div>
-              </div>
-            </div>
-            <span class="tag ok s3" style="--from:none">confirmed by 2</span>
-            <span class="tag s4" style="--from:none">disputed by 1, and still shown</span>
-          </div>
           <div class="text">
             <span class="num">First</span>
-            <h3>Publish facts</h3>
-            <p>A finding names a file, a line range and an observation at one commit. Each organization that stands behind it adds a stone. A dispute sits beside the stack and removes nothing.</p>
+            <h3>Review together</h3>
+            <dl>
+              <dt>What happens</dt>
+              <dd>Each team publishes what it finds as findings, in its own Git repo. A finding is a checkable fact: a file, a line range and an observation at one commit, with no verdict and no prose. The index is a service that reads every team's repo and shows the findings together on one public page. Other teams re-check a finding and confirm it.</dd>
+              <dt>Why it holds up</dt>
+              <dd>You can use a stranger's finding without trusting the stranger. Your own agent re-checks the lines before anything counts.</dd>
+            </dl>
           </div>
+          <figure class="stage">
+            <div class="art" aria-hidden="true">
+              <div class="row">
+                <span class="cairn md"><span class="stone a s1"></span><span class="stone b s2"></span></span>
+                <div>
+                  <div class="what">Network access to any host</div>
+                  <div class="where">plugin.json · line 12</div>
+                </div>
+              </div>
+              <span class="tag ok s3" style="--from:none">confirmed by 2</span>
+            </div>
+            <figcaption><span class="eg">The example</span>Northfork reports that <code>fellbeck-sync</code> may reach any host, at line 12 of <code>plugin.json</code>. Kestrel re-checks the line and confirms it.</figcaption>
+          </figure>
         </div>
         <div class="step">
-          <div class="stage" aria-hidden="true">
-            <div class="pair">
-              <div class="s1" style="--from:translateX(-24px)">
-                <span class="org a">northfork</span>
-                <div class="diff"><div class="m">-"hosts": ["*"]</div><div class="p">+"hosts": ["api…"]</div></div>
-              </div>
-              <div class="s2" style="--from:translateX(24px)">
-                <span class="org b">kestrel</span>
-                <div class="diff"><div class="m">-"read": ["*"]</div><div class="p">+"read": ["TOKEN"]</div></div>
-              </div>
-            </div>
-            <span class="tag ok s3" style="--from:none">both shown, side by side</span>
-            <span class="tag rej s5" style="--from:translateX(30px)">a third patch touched an uncited file: rejected</span>
-          </div>
           <div class="text">
             <span class="num">Then</span>
-            <h3>Publish fixes</h3>
-            <p>A patch is one commit tied to its finding. It is identified by the content it replaces, so one fix covers every identical copy of a file and keeps its identity when a release leaves that file unchanged. Competing patches for the same lines sit side by side. The index rejects a patch that touches content its finding does not cite.</p>
+            <h3>Fix without waiting</h3>
+            <dl>
+              <dt>What happens</dt>
+              <dd>Each team publishes its fixes as patches, in its own Git repo. A patch is one commit, tied to the finding it fixes. The index shows it beside that finding, for any team to take. When two teams patch the same lines, or lines next to each other, both patches appear side by side. Neither overwrites the other.</dd>
+              <dt>Why it holds up</dt>
+              <dd>Nobody has to merge, so nobody is waited on. Two teams that write the same fix end up with one patch, with both names behind it.</dd>
+            </dl>
           </div>
+          <figure class="stage">
+            <div class="art" aria-hidden="true">
+              <div class="pair">
+                <div class="s1" style="--from:translateX(-24px)">
+                  <span class="org a">northfork</span>
+                  <div class="diff"><div class="m">-"hosts": ["*"]</div><div class="p">+"hosts": ["api…"]</div></div>
+                </div>
+                <div class="s1" style="--from:translateX(24px)">
+                  <span class="org b">kestrel</span>
+                  <div class="diff"><div class="m">-"read": ["*"]</div><div class="p">+"read": ["TOKEN"]</div></div>
+                </div>
+              </div>
+              <span class="tag ok s3" style="--from:none">both shown, side by side</span>
+            </div>
+            <figcaption><span class="eg">The example</span>Northfork limits <code>fellbeck-sync</code> to the one host it needs. At the same moment, Kestrel limits the variables it may read, on the next line. Both patches are published, side by side, and neither team waits for the other.</figcaption>
+          </figure>
         </div>
         <div class="step">
-          <div class="stage" aria-hidden="true">
-            <div class="built">
-              <span class="cairn md"><span class="stone o"></span><span class="stone b s1" style="--from:translateY(-34px)"></span><span class="stone b s2" style="--from:translateY(-34px)"></span><span class="stone a s3" style="--from:translateY(-34px)"></span></span>
-              <div class="mono"><span class="s4" style="--from:none;display:block">kestrel's copy</span><span class="s4" style="--from:none;display:block">tree 71aa09…</span><span class="s4" style="--from:none;display:block">3 patches, 2 teams</span></div>
-            </div>
-            <span class="tag ok s5" style="--from:none">approved with required mitigations</span>
-          </div>
           <div class="text">
             <span class="num">Last</span>
-            <h3>Build your own copy</h3>
-            <p>Each team's lens picks the patches it accepts. Its command fetches them from the teams that wrote them, re-checks them, and builds a copy that anyone can verify by its tree hash.</p>
+            <h3>Prove what you run</h3>
+            <dl>
+              <dt>What happens</dt>
+              <dd>Each team keeps a lens, a short local policy that says which patches it accepts. The <code>cairnfield</code> command fetches those patches from the teams that wrote them, re-checks each one, and builds the team's copy: the original plus the patches it accepted. Git gives that copy a tree hash, a fingerprint of every file in it, and the team's approval names that hash.</dd>
+              <dt>Why it holds up</dt>
+              <dd>A hash can be checked on any machine with one Git command. A setup checklist cannot.</dd>
+            </dl>
           </div>
+          <figure class="stage">
+            <div class="art" aria-hidden="true">
+              <div class="built">
+                <span class="cairn md"><span class="stone o"></span><span class="stone b s1" style="--from:translateY(-34px)"></span><span class="stone b s2" style="--from:translateY(-34px)"></span><span class="stone a s3" style="--from:translateY(-34px)"></span></span>
+                <div class="mono"><span class="s4" style="--from:none;display:block">kestrel's copy</span><span class="s4" style="--from:none;display:block">tree 71aa09…</span><span class="s4" style="--from:none;display:block">3 patches, 2 teams</span></div>
+              </div>
+              <span class="tag ok s5" style="--from:none">approved</span>
+            </div>
+            <figcaption><span class="eg">The example</span>Kestrel's lens accepts three patches from two teams. Its copy of <code>fellbeck-sync</code> has the tree hash <code>71aa09…</code>, and that is the hash Kestrel approves.</figcaption>
+          </figure>
         </div>
       </div>
 
-      <div class="vendors">
-        <h3>Any agent can take part</h3>
-        <p class="note">The records, the node, the index and the checks involve no model. An agent on any harness reviews a checkout, writes record files to an outbox, and the command validates and publishes them. Only the first tab ships with the prototype; the others follow the skill file in the repository, and their commands are illustrative.</p>
-        <div class="tabs">
-          <input type="radio" name="vendor" id="v1" checked>
-          <input type="radio" name="vendor" id="v2">
-          <input type="radio" name="vendor" id="v3">
-          <input type="radio" name="vendor" id="v4">
-          <div class="tablist">
-            <label for="v1">Claude, bundled</label>
-            <label for="v2">Codex</label>
-            <label for="v3">Gemini</label>
-            <label for="v4">Your own script</label>
-          </div>
-          <div class="panels">
-            <div class="panel p1">
-              <div class="term">
-                <div><span class="p">$</span> <span class="cmd">cairnfield review 9f3c1e7a</span></div>
-                <div class="dimm">  3 agents on the Claude API, read-only file tools, no network</div>
-                <div>  outbox: 4 findings written</div>
-                <div class="ok">  validated 4 · published 4 · head 5d10c3…</div>
-              </div>
-              <p>The bundled reviewers. The command runs them, so no agent ever holds the repo token.</p>
-            </div>
-            <div class="panel p2">
-              <div class="term">
-                <div><span class="p">$</span> <span class="cmd">codex exec "Follow skills/cairnfield/SKILL.md. Review .cairnfield/work/9f3c1e7a/checkout and write findings to .cairnfield/outbox."</span></div>
-                <div class="dimm">  … wrote outbox/finding/3f0a….json, outbox/finding/b81c….json</div>
-                <div><span class="p">$</span> <span class="cmd">cairnfield publish 9f3c1e7a</span></div>
-                <div class="ok">  validated 2 · published 2 · head 7c44e1…</div>
-              </div>
-              <p>Another vendor's agent reads the skill file and writes the same record files. Publishing is unchanged.</p>
-            </div>
-            <div class="panel p3">
-              <div class="term">
-                <div><span class="p">$</span> <span class="cmd">gemini -p "Follow skills/cairnfield/SKILL.md. Review .cairnfield/work/9f3c1e7a/checkout and write findings to .cairnfield/outbox."</span></div>
-                <div class="dimm">  … wrote 3 files to outbox/finding/</div>
-                <div><span class="p">$</span> <span class="cmd">cairnfield publish 9f3c1e7a</span></div>
-                <div class="warn">  {"record":"outbox/finding/91d2….json","reason":"unknown-value","field":"observation"}</div>
-                <div class="ok">  validated 2 · rejected 1 · published 2</div>
-              </div>
-              <p>The checks do not care who wrote a record. A field outside the vocabulary is refused before it is published, whichever agent produced it.</p>
-            </div>
-            <div class="panel p4">
-              <div class="term">
-                <div><span class="p">$</span> <span class="cmd">./scan-hosts.sh checkout/ &gt; .cairnfield/outbox/finding/a0c7….json</span></div>
-                <div><span class="p">$</span> <span class="cmd">cairnfield validate</span></div>
-                <div class="ok">  1 record · ok</div>
-                <div><span class="p">$</span> <span class="cmd">cairnfield publish 9f3c1e7a</span></div>
-                <div class="ok">  validated 1 · published 1</div>
-              </div>
-              <p>No model at all. A script that finds outside hosts writes a finding against the published schema, and it counts the same as any other.</p>
-            </div>
-          </div>
+      <div class="payoff">
+        <div class="trio" role="img" aria-label="Three teams build three different copies of one plugin from shared patches">
+          <figure>
+            <span class="cairn xl"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone a drop"></span><span class="stone a drop"></span><span class="stone a drop"></span></span>
+            <figcaption><b>Northfork</b>Takes only its own patches.</figcaption>
+          </figure>
+          <figure>
+            <span class="cairn xl"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone b drop"></span><span class="stone b drop"></span><span class="stone a drop"></span></span>
+            <figcaption><b>Kestrel</b>Takes two of its own patches and one from Northfork.</figcaption>
+          </figure>
+          <figure>
+            <span class="cairn xl"><span class="stone o" data-sha="9f3c1e7a"></span></span>
+            <figcaption><b>Marlow</b>Takes none, and does not approve the plugin.</figcaption>
+          </figure>
+        </div>
+        <p class="trio-note">The same <code>fellbeck-sync</code>, the same findings, three copies. Each stone is a patch, in the rock of the team that wrote it, stacked on the original. A cairn is one team's copy.</p>
+        <div class="legend">
+          <span><span class="stone o"></span>The original, pinned at its Git SHA</span>
+          <span><span class="stone a"></span>Northfork, in slate</span>
+          <span><span class="stone b"></span>Kestrel, in sandstone</span>
+          <span><span class="stone c"></span>Marlow, in ironstone</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ================= DEPLOY ================= -->
-  <section id="deploy">
+  <!-- ================= TAKING PART ================= -->
+  <section id="part">
     <div class="wrap">
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
       <p class="eyebrow">For a team that wants to take part</p>
-      <h2>Run your own node</h2>
-      <p class="intro">A team node is the one piece of Cairnfield you host: one Worker and one Artifacts namespace in your own Cloudflare account. It holds your team's records, your pinned copies of the components you review, and your patches. Two ways to deploy it give the same node.</p>
+      <h2>Taking part</h2>
 
-      <div class="two-col" style="margin-bottom:16px">
+      <div class="cards">
         <div class="card">
-          <h3>What you need</h3>
-          <ul>
-            <li>A Cloudflare account on the Workers Paid plan, which Artifacts requires. Usage beyond the included amounts is billed to you.</li>
-            <li>An admin key that you choose. Your own command uses it to manage your node, and nobody else should have it.</li>
-            <li>The address of the index you want to notify. It defaults to the demo index.</li>
-          </ul>
+          <h3>Any agent, any model</h3>
+          <p>Cairnfield is not tied to one model or one agent. Findings and patches are plain files, and the node, the index and the checks involve no model. An agent from any vendor, or a script with no model at all, can write them, and the command checks them the same way. The bundled reviewers use Claude, and they are the only ones in this prototype.</p>
+          <p><a href="/announcement#agents">See the commands for each</a></p>
         </div>
         <div class="card">
-          <h3>What stays yours</h3>
+          <h3>Run your own node</h3>
+          <p>A node is the one piece of Cairnfield your team hosts: one Worker and one Artifacts namespace in your own Cloudflare account. A setup script deploys it.</p>
+          <p><a href="/interfaces#node">See the setup</a></p>
+        </div>
+        <div class="card">
+          <h3>What it does not do</h3>
           <ul>
-            <li>It gives us no access to your account, your repos or your key.</li>
-            <li>It does not register your node with any index. You do that with the command.</li>
-            <li>It does not install the <code>cairnfield</code> command or run any review.</li>
-            <li>It publishes nothing. A new node is empty until you push to it.</li>
+            <li>It does not review for you. An approval still needs your own review. Sharing makes rejections cheap and approvals better evidenced.</li>
+            <li>It does not hide what you look at. Publishing reveals which components your team is evaluating.</li>
+            <li>It does not yet carry findings and patches forward to a new release. That is the first thing to build next.</li>
           </ul>
-        </div>
-      </div>
-
-      <div class="tabs">
-        <input type="radio" name="deploy" id="d1" checked>
-        <input type="radio" name="deploy" id="d2">
-        <div class="tablist">
-          <label for="d1">One-click deploy</label>
-          <label for="d2">Setup script</label>
-        </div>
-        <div class="panels">
-          <div class="panel">
-            <div class="deploy-top">
-              <div>
-                <!--
-                  Cloudflare's own button, from https://developers.cloudflare.com/workers/platform/deploy-buttons/
-                  To activate: replace the details element with
-                    <a class="deploy-official" href="https://deploy.workers.cloudflare.com/?url=https://github.com/OWNER/REPO/tree/main/node"><img …></a>
-                -->
-                <details class="offbtn">
-                  <summary title="Switched off for now. Select to see why."><span class="deploy-official inactive"><img src="/deploy-to-cloudflare.svg" alt="Deploy to Cloudflare, switched off for now" width="183" height="40"></span></summary>
-                  <p>Switched off for now. Cloudflare's one-click button does not yet list Artifacts, Workflows or push triggers among the services it sets up, and a node needs all three. We will turn it on when it does. Until then, the setup script deploys the same node.</p>
-                </details>
-              </div>
-              <div class="deploy-flow" aria-hidden="true">
-                <span class="chip s1">you click</span><span class="arr s2" style="--from:none">→</span>
-                <span class="chip s2">a copy of the node's code in your Git account</span><span class="arr s3" style="--from:none">→</span>
-                <span class="chip b s3">a Worker in your Cloudflare account</span><span class="arr s4" style="--from:none">→</span>
-                <span class="chip yes s4">your node, at your own address</span>
-              </div>
-            </div>
-            <div class="deploy-cols">
-              <div>
-                <h3>What the button does</h3>
-                <ul>
-                  <li>Opens Cloudflare's setup page, where you sign in, choose your account, and can rename the repository and the Worker.</li>
-                  <li>Copies the node's code into a new repository in your own GitHub or GitLab account.</li>
-                  <li>Builds and deploys the Worker, with a Workflow that runs on each push to your repos.</li>
-                  <li>Sets up automatic builds, so a push to your copy redeploys your node, and gives each pull request a preview address.</li>
-                </ul>
-              </div>
-              <div>
-                <h3>What the setup page asks for</h3>
-                <ul>
-                  <li>A GitHub or GitLab account for the copied code.</li>
-                  <li>The admin key, with a note on the setup page saying how to generate one.</li>
-                  <li>The index address, prefilled with the demo index.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="term" role="img" aria-label="Terminal: clone the repository, log in to Cloudflare, set the admin key, deploy">
-              <div><span class="p">$</span> <span class="cmd">git clone https://github.com/OWNER/cairnfield && cd cairnfield/node</span></div>
-              <div><span class="p">$</span> <span class="cmd">nvm use && npm install</span></div>
-              <div><span class="p">$</span> <span class="cmd">npx wrangler login</span></div>
-              <div><span class="p">$</span> <span class="cmd">npx wrangler secret put ADMIN_KEY</span></div>
-              <div class="dimm">  paste the key you generated, for example with: openssl rand -hex 32</div>
-              <div><span class="p">$</span> <span class="cmd">npm run deploy</span></div>
-              <div class="ok">  Deployed cairnfield-node · https://cairnfield-node.YOUR-ACCOUNT.workers.dev</div>
-              <div class="ok">  Artifacts namespace, Workflow and push trigger set up</div>
-            </div>
-            <p>The script runs Wrangler from the node's own directory, which is self-contained. It needs Node 22. Point your command at the address it prints, and run <code>cairnfield pin</code> to review your first component. The repository address above is a placeholder until the repository is public.</p>
-          </div>
+          <p><a href="/announcement#users">More questions from teams</a></p>
         </div>
       </div>
     </div>

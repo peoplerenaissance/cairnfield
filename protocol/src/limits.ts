@@ -7,6 +7,8 @@ export const MAX_HOSTNAME_LENGTH = 253;
 export const MAX_PATCH_REPLACEMENTS = 3;
 /** A patch changes at most 60 lines: lines removed plus lines added. */
 export const MAX_PATCH_LINES = 60;
+/** A patch adds at most 8 KB: the bytes of the lines it adds. A removed line has no limit. A first value. */
+export const MAX_PATCH_ADDED_BYTES = 8 * 1024;
 /** A path has at most 200 characters. */
 export const MAX_PATH_LENGTH = 200;
 /** A record has at most 4 KB. */

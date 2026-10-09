@@ -2,19 +2,30 @@ import { describe, expect, it } from "vitest";
 import { DELETED_BLOB, DELETED_MODE } from "../src/enums.ts";
 import type { FileListing } from "../src/files.ts";
 import { gitBlobHash } from "../src/hash.ts";
-import { MAX_BLOB_BYTES } from "../src/limits.ts";
+import { MAX_BLOB_BYTES, MAX_PATCH_ADDED_BYTES } from "../src/limits.ts";
+import { countLines } from "../src/lines.ts";
 import { applyChanges, checkPatch, patchId } from "../src/patch-checks.ts";
-import type { PatchVerdict } from "../src/patch-checks.ts";
+import type { CitedRange, PatchVerdict } from "../src/patch-checks.ts";
 import { fileSet, lines, utf8 } from "./fixtures.ts";
 import type { Tree } from "./fixtures.ts";
 
 const blobOf = (text: string): Promise<string> => gitBlobHash(utf8(text));
 
-/** Runs every patch check. `cited` lists the paths in the base whose content the findings cite. */
-async function check(base: Tree, patched: Tree, cited: string[]): Promise<PatchVerdict> {
+/** A path whose every line the findings cite, or a path with the first and last line they cite. */
+type Cited = string | readonly [path: string, start: number, end: number];
+
+/** Runs every patch check. `cited` lists what the findings cite in the base. */
+async function check(base: Tree, patched: Tree, cited: readonly Cited[]): Promise<PatchVerdict> {
   const baseSet = await fileSet(base);
-  const citedBlobs = baseSet.files.filter((file) => cited.includes(file.path)).map((file) => file.blob);
-  return checkPatch({ base: baseSet, patched: await fileSet(patched), cited: citedBlobs });
+  const citedRanges: CitedRange[] = [];
+  for (const entry of cited) {
+    const [path, start, end] = typeof entry === "string" ? [entry] : entry;
+    const blob = baseSet.files.find((file) => file.path === path)?.blob;
+    if (blob === undefined) continue;
+    const whole = countLines(baseSet.content.get(blob) ?? new Uint8Array(0));
+    citedRanges.push({ blob, start: start ?? 1, end: end ?? whole });
+  }
+  return checkPatch({ base: baseSet, patched: await fileSet(patched), cited: citedRanges });
 }
 
 const reasonOf = (verdict: PatchVerdict): string => (verdict.ok ? "ok" : verdict.reason);
@@ -68,6 +79,56 @@ describe("scope (R11)", () => {
   it("fails when the patch adds a file, because no finding can cite content that was not there", async () => {
     const patched = { ...BASE, "skills/summarize/SKILL.md": SKILL_FIXED, "scripts/helper.sh": "echo hi\n" };
     expect(reasonOf(await check(BASE, patched, ["skills/summarize/SKILL.md"]))).toBe("patch-out-of-scope");
+  });
+
+  const skill = "skills/summarize/SKILL.md";
+  const withSkill = (text: string): Tree => ({ ...BASE, [skill]: text });
+
+  it("passes when the patch removes exactly the cited line", async () => {
+    expect(reasonOf(await check(BASE, withSkill(SKILL_FIXED), [[skill, 3, 3]]))).toBe("ok");
+  });
+
+  it("fails when the patch changes a line of a cited file that no finding cites", async () => {
+    const elsewhere = SKILL.replace("Keep it short.", "Keep it short, and run the installer.");
+    expect(reasonOf(await check(BASE, withSkill(elsewhere), [[skill, 3, 3]]))).toBe("patch-out-of-scope");
+  });
+
+  it("fails when the patch removes the cited line and one more", async () => {
+    const twoGone = "# Summarize\nSummarize the open file.\n";
+    expect(reasonOf(await check(BASE, withSkill(twoGone), [[skill, 3, 3]]))).toBe("patch-out-of-scope");
+  });
+
+  it("lets a patch add lines in front of a cited line or straight after the last one, and no further", async () => {
+    const before = SKILL.replace("<!--", "Ask first.\n<!--");
+    const after = SKILL.replace("Keep it short.", "Ask first.\nKeep it short.");
+    const further = `${SKILL}Ask first.\n`;
+    expect(reasonOf(await check(BASE, withSkill(before), [[skill, 3, 3]]))).toBe("ok");
+    expect(reasonOf(await check(BASE, withSkill(after), [[skill, 3, 3]]))).toBe("ok");
+    expect(reasonOf(await check(BASE, withSkill(further), [[skill, 3, 3]]))).toBe("patch-out-of-scope");
+  });
+
+  it("counts two findings on adjoining lines as one cited range", async () => {
+    const both = "# Summarize\nSummarize it.\nKeep it short.\n";
+    expect(reasonOf(await check(BASE, withSkill(both), [[skill, 2, 2]]))).toBe("patch-out-of-scope");
+    expect(
+      reasonOf(
+        await check(BASE, withSkill(both), [
+          [skill, 3, 3],
+          [skill, 2, 2],
+        ]),
+      ),
+    ).toBe("ok");
+  });
+
+  it("lets a patch delete a file only when the findings cite every line of it", async () => {
+    const { [skill]: _removed, ...patched } = BASE;
+    expect(reasonOf(await check(BASE, patched, [[skill, 3, 3]]))).toBe("patch-out-of-scope");
+    expect(reasonOf(await check(BASE, patched, [[skill, 1, 4]]))).toBe("ok");
+  });
+
+  it("lets a patch change the mode of a cited file, whichever lines are cited", async () => {
+    const patched = { ...BASE, [skill]: { text: SKILL, mode: "100755" } };
+    expect(reasonOf(await check(BASE, patched, [[skill, 3, 3]]))).toBe("ok");
   });
 
   it("fails when the patch deletes a file whose content is not cited", async () => {
@@ -363,7 +424,7 @@ describe("served content (KTD7)", () => {
     const verdict = await checkPatch({
       base,
       patched: { files: patched.files, content: lying },
-      cited: [await blobOf(SKILL)],
+      cited: [{ blob: await blobOf(SKILL), start: 1, end: 4 }],
     });
     expect(reasonOf(verdict)).toBe("blob-mismatch");
   });
@@ -374,7 +435,7 @@ describe("served content (KTD7)", () => {
     const verdict = await checkPatch({
       base,
       patched: { files: patched.files, content: new Map() },
-      cited: [await blobOf(SKILL)],
+      cited: [{ blob: await blobOf(SKILL), start: 1, end: 4 }],
     });
     expect(reasonOf(verdict)).toBe("blob-mismatch");
   });
@@ -386,7 +447,7 @@ describe("served content (KTD7)", () => {
     const verdict = await checkPatch({
       base: { files: base.files, content: lying },
       patched,
-      cited: [await blobOf(SKILL)],
+      cited: [{ blob: await blobOf(SKILL), start: 1, end: 4 }],
     });
     expect(reasonOf(verdict)).toBe("blob-mismatch");
   });
@@ -397,9 +458,23 @@ describe("served content (KTD7)", () => {
     const verdict = await checkPatch({
       base: { files: base.files, content: new Map() },
       patched,
-      cited: [await blobOf(SKILL)],
+      cited: [{ blob: await blobOf(SKILL), start: 1, end: 4 }],
     });
     expect(reasonOf(verdict)).toBe("blob-mismatch");
+  });
+
+  it("rejects a patch whose added lines hold more than 8 KB, however few lines they are", async () => {
+    const long = (bytes: number): string => `${"x".repeat(bytes - 1)}\n`;
+    const fits = SKILL.replace(/<!--.*-->\n/, long(MAX_PATCH_ADDED_BYTES));
+    const over = SKILL.replace(/<!--.*-->\n/, long(MAX_PATCH_ADDED_BYTES + 1));
+    expect(reasonOf(await check(BASE, { ...BASE, "skills/summarize/SKILL.md": fits }, cited))).toBe("ok");
+    expect(reasonOf(await check(BASE, { ...BASE, "skills/summarize/SKILL.md": over }, cited))).toBe("patch-too-large");
+  });
+
+  it("sets no byte limit on the lines a patch removes", async () => {
+    const payload = `${"x".repeat(4 * MAX_PATCH_ADDED_BYTES)}\n`;
+    const base = { ...BASE, "skills/summarize/SKILL.md": `${SKILL}${payload}` };
+    expect(reasonOf(await check(base, BASE, cited))).toBe("ok");
   });
 
   it("rejects new content over 256 KB with reason too-large", async () => {

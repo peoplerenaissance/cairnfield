@@ -220,7 +220,7 @@
         <div class="qa">
           <div class="mini" aria-hidden="true">
             <div class="zone"><small>yours</small><div class="rowc"><span class="chip b s1">team node</span><span class="chip b s2">the command</span><span class="chip b s3">model API key</span></div></div>
-            <div class="zone s5" style="--from:none"><small>anyone's</small><div class="rowc"><span class="chip">an index</span></div></div>
+            <div class="zone s5" style="--from:none"><small>someone else's</small><div class="rowc"><span class="chip">the index</span></div></div>
           </div>
           <div class="body">
             <h3>What do we have to run?</h3>
@@ -229,7 +229,81 @@
               <li>The <code>cairnfield</code> command on a machine or in your build system.</li>
               <li>Your own model API key for the reviewer agents. The bundled agents use Claude; the records, the node, the index and the checks involve no model, and an agent on any harness can take part by writing records the command publishes.</li>
             </ul>
-            <p>You do not run the index. Anyone can, and it holds nothing that cannot be rebuilt from the nodes.</p>
+            <p>You do not run the index. To read its public page you run nothing at all.</p>
+          </div>
+        </div>
+
+        <div class="qa wide" id="agents">
+          <div class="body">
+            <h3>Do we have to use the bundled agents?</h3>
+            <p>No. An agent on any harness reviews a checkout and writes record files to an outbox. The command validates and publishes them, whichever agent wrote them. Only the first tab ships with the prototype. The others follow the skill file in the repository, and their commands are illustrative.</p>
+            <div class="tabs">
+              <input type="radio" name="vendor" id="v1" checked>
+              <input type="radio" name="vendor" id="v2">
+              <input type="radio" name="vendor" id="v3">
+              <input type="radio" name="vendor" id="v4">
+              <div class="tablist">
+                <label for="v1">Claude, bundled</label>
+                <label for="v2">Codex</label>
+                <label for="v3">Gemini</label>
+                <label for="v4">Your own script</label>
+              </div>
+              <div class="panels">
+                <div class="panel p1">
+                  <div class="term">
+                    <div><span class="p">$</span> <span class="cmd">cairnfield review 9f3c1e7a</span></div>
+                    <div class="dimm">  3 agents on the Claude API, read-only file tools, no network</div>
+                    <div>  outbox: 4 findings written</div>
+                    <div class="ok">  validated 4 · published 4 · head 5d10c3…</div>
+                  </div>
+                  <p>The bundled reviewers. The command runs them, so no agent ever holds the repo token.</p>
+                </div>
+                <div class="panel p2">
+                  <div class="term">
+                    <div><span class="p">$</span> <span class="cmd">codex exec "Follow skills/cairnfield/SKILL.md. Review .cairnfield/work/9f3c1e7a/checkout and write findings to .cairnfield/outbox."</span></div>
+                    <div class="dimm">  … wrote outbox/finding/3f0a….json, outbox/finding/b81c….json</div>
+                    <div><span class="p">$</span> <span class="cmd">cairnfield publish 9f3c1e7a</span></div>
+                    <div class="ok">  validated 2 · published 2 · head 7c44e1…</div>
+                  </div>
+                  <p>Another vendor's agent reads the skill file and writes the same record files. Publishing is unchanged.</p>
+                </div>
+                <div class="panel p3">
+                  <div class="term">
+                    <div><span class="p">$</span> <span class="cmd">gemini -p "Follow skills/cairnfield/SKILL.md. Review .cairnfield/work/9f3c1e7a/checkout and write findings to .cairnfield/outbox."</span></div>
+                    <div class="dimm">  … wrote 3 files to outbox/finding/</div>
+                    <div><span class="p">$</span> <span class="cmd">cairnfield publish 9f3c1e7a</span></div>
+                    <div class="warn">  {"record":"outbox/finding/91d2….json","reason":"unknown-value","field":"observation"}</div>
+                    <div class="ok">  validated 2 · rejected 1 · published 2</div>
+                  </div>
+                  <p>The checks do not care who wrote a record. A field outside the vocabulary is refused before it is published, whichever agent produced it.</p>
+                </div>
+                <div class="panel p4">
+                  <div class="term">
+                    <div><span class="p">$</span> <span class="cmd">./scan-hosts.sh checkout/ &gt; .cairnfield/outbox/finding/a0c7….json</span></div>
+                    <div><span class="p">$</span> <span class="cmd">cairnfield validate</span></div>
+                    <div class="ok">  1 record · ok</div>
+                    <div><span class="p">$</span> <span class="cmd">cairnfield publish 9f3c1e7a</span></div>
+                    <div class="ok">  validated 1 · published 1</div>
+                  </div>
+                  <p>No model at all. A script that finds outside hosts writes a finding against the published schema, and it counts the same as any other.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="qa" id="index">
+          <div class="mini" aria-hidden="true">
+            <div class="zone"><small>the teams' nodes</small><div class="rowc"><span class="chip a s1">northfork</span><span class="chip b s1">kestrel</span><span class="chip c s1">marlow</span></div></div>
+            <span class="arr s2" style="--from:none">→</span>
+            <span class="chip s3">the index, a copy</span>
+            <span class="chip yes s5">your command checks the nodes</span>
+          </div>
+          <div class="body">
+            <h3>Who runs the index, and do we have to trust it?</h3>
+            <p>The prototype has one index, the demo index, and we run it. Reading its page needs no node and no account. Publishing needs a node.</p>
+            <p>You do not have to trust it. The index holds nothing original. It is a copy, rebuilt from the teams' nodes, so its operator can leave a finding out or misreport one but cannot alter one. Before a patch enters your copy, your command fetches it, and every confirmation it counts, from the nodes that wrote them and never from the index.</p>
+            <p>Anyone can run a second index over the same nodes, and that is the check on the first. One is enough for the design to work. Two limits remain: most readers will never compare the index with the nodes, and a node the index does not know about is invisible.</p>
           </div>
         </div>
 
@@ -311,7 +385,7 @@
           </div>
           <div class="body">
             <h3>What happens when the plugin releases a new version?</h3>
-            <p>A finding and a patch are tied to a file's content, not to one commit. When a release leaves a file unchanged, the work on that file still applies, and a patch keeps its identity and its confirmations. The prototype stores records this way, but it does not yet show carried work on a new version's page, so today a new commit still starts with an empty page. That is the first thing we would build next. Real reviews are driven by updates, so we consider this the largest gap.</p>
+            <p>A finding and a patch are tied to a file's content, not to one commit. A patch is identified by the content it replaces, so one fix covers every identical copy of a file. When a release leaves a file unchanged, the work on that file still applies, and a patch keeps its identity and its confirmations. The prototype stores records this way, but it does not yet show carried work on a new version's page, so today a new commit still starts with an empty page. That is the first thing we would build next. Real reviews are driven by updates, so we consider this the largest gap.</p>
           </div>
         </div>
 
@@ -329,7 +403,7 @@
           </div>
         </div>
 
-        <div class="qa">
+        <div class="qa wide">
           <div class="mini" aria-hidden="true">
             <span class="chip dotted s1">tuned to pass the agents</span><span class="chip dotted s2">no sealed findings</span><span class="chip dotted s3">wrong findings about real products</span><span class="chip dotted s4">too many patches to choose from</span>
           </div>
@@ -353,7 +427,7 @@
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
       <p class="eyebrow">Frequently asked</p>
       <h2>Questions from judges</h2>
-      <p class="intro">For the Build the Next-Gen Git Platform on Cloudflare competition, organized by its three criteria.</p>
+      <p class="intro">For the Build the Next-Gen Git Platform on Cloudflare competition, organized by its three criteria. Cairnfield is built on Git, on Cloudflare Workers and Artifacts. Each team's findings and patches are commits in its own repo, pinned to the exact Git SHA it reviewed. No shared branch, no merge, no maintainer: each team assembles its own version from work it can check.</p>
       <div class="faq">
 
         <div class="qa wide">
@@ -363,12 +437,46 @@
               <table class="plain">
                 <thead><tr><th>Criterion</th><th>Weight</th><th>What Cairnfield offers</th><th>Where to see it</th></tr></thead>
                 <tbody>
+                  <tr><td>Entry requirement: built on Workers and Artifacts, with multiple agents working on changes concurrently</td><td>Required</td><td>Every repo lives in a team's own Artifacts namespace, and Workers run each node and the index. In the demo, nine agents from three teams push at once.</td><td><a href="#artifacts">Why this needs Artifacts</a>, below; demo moment 1</td></tr>
                   <tr><td>Originality and quality as a prototype for agent-oriented collaboration</td><td>50%</td><td>No maintainer, no shared main branch, no merge queue. Changes carry their evidence, and each consumer assembles its own version.</td><td>Demo moments 2 and 3; the component page</td></tr>
                   <tr><td>Concurrency, coordination, context, review, conflict handling</td><td>25%</td><td>Agents write only to their own team's repos. Live claims show who is changing what. Competing patches are merged by the team that wants them, and the merge is re-reviewed.</td><td>Demo moments 1, 3 and 5</td></tr>
                   <tr><td>Ease of use and product experience</td><td>25%</td><td>One command per step, one page per component version, a setup script for the node, and a replay mode that needs no API key.</td><td>The README and the <a href="/interfaces">interface sketches</a></td></tr>
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <div class="qa wide" id="artifacts">
+          <div class="mini" aria-hidden="true">
+            <div class="zone"><small>any Git host</small><div class="rowc"><span class="chip s1">fellbeck-sync</span></div></div>
+            <span class="arr s2" style="--from:none">import →</span>
+            <div class="zone" style="border-color:var(--ink)"><small>Kestrel's Artifacts namespace, in Kestrel's own account</small>
+              <div class="rowc">
+                <span class="chip s2">pinned original</span>
+                <span class="arr s3" style="--from:none">fork →</span>
+                <span class="chip b s3">patch fork</span>
+                <span class="chip b s4">records repo</span>
+              </div>
+            </div>
+            <span class="arr s5" style="--from:none">push event →</span>
+            <div class="zone s5" style="--from:none"><small>someone else's</small><div class="rowc"><span class="chip">the index</span></div></div>
+          </div>
+          <div class="body">
+            <h3>Why does this need Artifacts?</h3>
+            <p>The design has no shared branch, so every team needs Git repos of its own that a Worker can create, copy and guard. Artifacts supplies each of those as one call. Without it, each rule below loses what it rests on.</p>
+            <div class="scroll">
+              <table class="plain">
+                <thead><tr><th>The design needs</th><th>Artifacts provides</th><th>Where to see it</th></tr></thead>
+                <tbody>
+                  <tr><td>No shared branch. Each team writes only to repos of its own.</td><td>A namespace in each team's account, and a new repo from one call.</td><td>The <a href="/interfaces#node">node setup sketch</a></td></tr>
+                  <tr><td>A pinned original, and a patch that is one commit on top of it.</td><td>Import of any Git repo, and a fork of that copy. Each patch is one commit in the fork, and any machine fetches it by its hash over plain Git.</td><td>Demo moment 2; the <a href="/interfaces#page">component page</a></td></tr>
+                  <tr><td>One team cannot write to another's repo, and other teams can still fetch from it.</td><td>Tokens scoped to one repo, for reading or for writing, that expire. A node issues no write token for the original.</td><td>The threat model in the repository</td></tr>
+                  <tr><td>A shared view that nobody writes to.</td><td>An event on every push. It starts a Workflow on the node that tells the index.</td><td>Demo moment 5, where a banner shows how far the index is behind</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>Two limits. Artifacts guidance prefers a repo per agent, and here a team's agents share one records repo. The command pushes for them with pull and retry, so contention stays inside one team. The scale run's simulated nodes hold no Artifacts repos, so it measures the index only.</p>
           </div>
         </div>
 
@@ -463,9 +571,9 @@
             </div>
           </div>
           <div class="body">
-            <h3>How does it use Workers and Artifacts?</h3>
+            <h3>How does it use Workers?</h3>
             <ul>
-              <li><strong>Artifacts</strong> holds everything original: each team's records repo, its pinned copy of a component, and a fork with one commit per patch. Repo-scoped tokens keep one team from writing to another's repo.</li>
+              <li><strong>One Worker</strong> is each team's node. It creates that team's repos and issues their tokens.</li>
               <li><strong>A push trigger and a Workflow</strong> on each node tell the index about every push.</li>
               <li><strong>Workers, D1 and a Queue</strong> run the index and the public page. The index reads nodes over HTTP only, so nodes can live in different accounts.</li>
             </ul>

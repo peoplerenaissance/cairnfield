@@ -337,10 +337,10 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
   });
 
   it("registers a component by Git URL, branch and commit", () => {
-    const body = { url: "https://git.harbor-tools.example/demo-plugin.git", branch: "main", commit: COMPONENT };
+    const body = { url: "https://git.fellbeck-tools.example/demo-plugin.git", branch: "main", commit: COMPONENT };
     expect(reasonOf(REGISTER_COMPONENT_REQUEST, body)).toBe("ok");
     expect(reasonOf(REGISTER_COMPONENT_REQUEST, { ...body, branch: "--upload-pack=x" })).toBe("unknown-value");
-    expect(reasonOf(REGISTER_COMPONENT_REQUEST, { ...body, url: "https://user:pw@git.harbor-tools.example/x.git" })).toBe(
+    expect(reasonOf(REGISTER_COMPONENT_REQUEST, { ...body, url: "https://user:pw@git.fellbeck-tools.example/x.git" })).toBe(
       "unknown-value",
     );
     expect(reasonOf(REGISTER_COMPONENT_REQUEST, { ...body, commit: "HEAD" })).toBe("unknown-value");

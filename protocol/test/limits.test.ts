@@ -4,6 +4,7 @@ import {
   MAX_FETCH_BYTES,
   MAX_HOSTNAME_LENGTH,
   MAX_LISTING_ENTRIES,
+  MAX_PATCH_ADDED_BYTES,
   MAX_PATCH_LINES,
   MAX_PATCH_REPLACEMENTS,
   MAX_PATH_LENGTH,
@@ -34,6 +35,7 @@ describe("limits of KTD6", () => {
     expect(MAX_HOSTNAME_LENGTH).toBe(253);
     expect(MAX_PATCH_REPLACEMENTS).toBe(3);
     expect(MAX_PATCH_LINES).toBe(60);
+    expect(MAX_PATCH_ADDED_BYTES).toBe(8 * 1024);
     expect(MAX_PATH_LENGTH).toBe(200);
     expect(MAX_RECORD_BYTES).toBe(4096);
     expect(MAX_LISTING_ENTRIES).toBe(5000);
@@ -195,15 +197,15 @@ describe("path", () => {
 
 describe("hostname", () => {
   it("accepts lower-case labels joined by dots", () => {
-    expect(isHostname("collect.harbor-metrics.example")).toBe(true);
+    expect(isHostname("collect.fellbeck-metrics.example")).toBe(true);
     expect(isHostname("localhost")).toBe(true);
     expect(isHostname("203.0.113.9")).toBe(true);
   });
 
   it("rejects an upper-case letter, a slash or a space", () => {
-    expect(isHostname("Collect.harbor-metrics.example")).toBe(false);
-    expect(isHostname("collect.harbor-metrics.example/ingest")).toBe(false);
-    expect(isHostname("collect harbor-metrics.example")).toBe(false);
+    expect(isHostname("Collect.fellbeck-metrics.example")).toBe(false);
+    expect(isHostname("collect.fellbeck-metrics.example/ingest")).toBe(false);
+    expect(isHostname("collect fellbeck-metrics.example")).toBe(false);
   });
 
   it("rejects more than 253 characters", () => {

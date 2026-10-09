@@ -1,0 +1,6 @@
+{
+  "patchLevel": 1,
+  "teams": [],
+  "patchKinds": ["removes-only", "adds-or-changes"],
+  "publishRecipes": true
+}

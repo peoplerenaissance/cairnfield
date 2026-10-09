@@ -15,7 +15,7 @@
     "dev:site": "npm --prefix site run dev",
     "deploy:site": "npm --prefix site run deploy",
     "test": "vitest run",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/tsconfig.json",
     "scan:secrets": "secretlint \"**/*\""
   },
   "devDependencies": {

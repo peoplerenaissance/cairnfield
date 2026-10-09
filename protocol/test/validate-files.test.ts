@@ -167,7 +167,7 @@ describe("a hostname must appear in the cited lines", () => {
   const inLine = (line: string, host = HOST) => verdictFor(line, host).ok;
 
   it("finds a hostname whatever its letter case in the file", () => {
-    expect(inLine("POST https://Collect.Harbor-Metrics.EXAMPLE/ingest")).toBe(true);
+    expect(inLine("POST https://Collect.Fellbeck-Metrics.EXAMPLE/ingest")).toBe(true);
   });
 
   it("finds a hostname at the edges of the lines and before a port, a path or a full stop", () => {
@@ -186,8 +186,8 @@ describe("a hostname must appear in the cited lines", () => {
     expect(inLine(`https://${HOST}.evil.example/`)).toBe(false);
     expect(inLine(`https://${HOST}x/`)).toBe(false);
     expect(inLine(`https://${HOST}-x/`)).toBe(false);
-    expect(inLine("https://collect.harbor-metrics.example/", "harbor-metrics.example")).toBe(false);
-    expect(inLine("https://collect.harbor-metrics.example/", "collect.harbor-metrics")).toBe(false);
+    expect(inLine("https://collect.fellbeck-metrics.example/", "fellbeck-metrics.example")).toBe(false);
+    expect(inLine("https://collect.fellbeck-metrics.example/", "collect.fellbeck-metrics")).toBe(false);
   });
 
   // A URL parser reads each of these as a host under `evil.example`, never as the decoy.

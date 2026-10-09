@@ -17,7 +17,9 @@
     "isolatedModules": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": []
+    // The module `cloudflare:test`. The runtime and binding types come from the file
+    // that `wrangler types` writes, which `npm run typecheck` regenerates.
+    "types": ["@cloudflare/vitest-pool-workers/types"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "worker-configuration.d.ts"]
 }

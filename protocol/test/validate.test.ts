@@ -159,9 +159,9 @@ describe("structure and limits: rejections", () => {
   });
 
   it("rejects a hostname with an upper-case letter, a slash or a space", () => {
-    expect(reasonOf({ ...finding(), host: "Collect.harbor-metrics.example" })).toBe("unknown-value");
-    expect(reasonOf({ ...finding(), host: "collect.harbor-metrics.example/ingest" })).toBe("unknown-value");
-    expect(reasonOf({ ...finding(), host: "collect harbor-metrics.example" })).toBe("unknown-value");
+    expect(reasonOf({ ...finding(), host: "Collect.fellbeck-metrics.example" })).toBe("unknown-value");
+    expect(reasonOf({ ...finding(), host: "collect.fellbeck-metrics.example/ingest" })).toBe("unknown-value");
+    expect(reasonOf({ ...finding(), host: "collect fellbeck-metrics.example" })).toBe("unknown-value");
   });
 
   it("rejects a destination finding with no hostname", () => {
@@ -173,7 +173,7 @@ describe("structure and limits: rejections", () => {
   });
 
   it("rejects a finding of another kind with a hostname", () => {
-    expect(reasonOf({ ...plainFinding(), host: "collect.harbor-metrics.example" })).toBe("unknown-field");
+    expect(reasonOf({ ...plainFinding(), host: "collect.fellbeck-metrics.example" })).toBe("unknown-field");
     expect(reasonOf({ ...finding(), observation: "hidden-instruction" })).toBe("unknown-field");
   });
 
