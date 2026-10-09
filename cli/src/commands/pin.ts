@@ -26,8 +26,7 @@ export interface Component {
 }
 
 /** Registers the node and the commit. The index may hold either already. */
-async function register(io: Io, home: Home, index: string, component: Component): Promise<void> {
-  const key = keyFrom(io, REGISTRATION_KEY);
+async function register(io: Io, home: Home, index: string, key: string, component: Component): Promise<void> {
   const calls = [
     () => callIndex(io, index, INDEX_ROUTES.registerNode, { key, body: { url: home.config.node } }),
     () => callIndex(io, index, INDEX_ROUTES.registerComponent, { key, body: component }),
@@ -41,7 +40,8 @@ async function register(io: Io, home: Home, index: string, component: Component)
 export async function pin(io: Io, home: Home, component: Component): Promise<Outcome> {
   const key = adminKey(io);
   const { index } = home.config;
-  if (index !== undefined) keyFrom(io, REGISTRATION_KEY);
+  // Read before any call, so a missing key stops the command before the node imports anything.
+  const registration = index === undefined ? undefined : { index, key: keyFrom(io, REGISTRATION_KEY) };
 
   const copy = await untilReady(io, () => callNode(io, home, NODE_ROUTES.importCopy, { key, body: component }));
   if (!copy.ok) {
@@ -51,7 +51,7 @@ export async function pin(io: Io, home: Home, component: Component): Promise<Out
     }
     return nodeFailed(copy);
   }
-  if (index !== undefined) await register(io, home, index, component);
+  if (registration) await register(io, home, registration.index, registration.key, component);
 
   const { commit } = component;
   let listing = await readListing(home, commit);
@@ -68,6 +68,6 @@ export async function pin(io: Io, home: Home, component: Component): Promise<Out
     files: listing.files.length,
     // What the pinned tree holds that the checkout does not, by reason (KTD16).
     leftOut: listing.leftOut,
-    registered: index !== undefined,
+    registered: registration !== undefined,
   });
 }

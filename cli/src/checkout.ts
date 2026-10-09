@@ -8,7 +8,7 @@
 
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { FILE_MODES, conforms, field, isFileMode, isPath } from "@cairnfield/protocol";
+import { FILE_MODES, LINK_MODE, SUBMODULE_MODE, conforms, field, isFileMode, isPath } from "@cairnfield/protocol";
 import type { CitedFile, CitedFiles, Infer } from "@cairnfield/protocol";
 import type { Home } from "./config.ts";
 import { listTree, readBlobs } from "./git.ts";
@@ -16,12 +16,14 @@ import type { Scratch } from "./git.ts";
 import { EXIT, stop } from "./outcome.ts";
 
 /** Why an entry of the pinned tree is not in the checkout. */
-export const LEFT_OUT_REASONS = ["symbolic-link", "submodule", "unsupported-mode", "refused-path"] as const;
+const LEFT_OUT_REASONS = ["symbolic-link", "submodule", "unsupported-mode", "refused-path"] as const;
 
 // First values for the sizes of a listing. A component with more entries is not pinned.
 const MAX_ENTRIES = 1_000_000;
 /** A path the checkout leaves out is shown up to this length. It comes from the component. */
 const MAX_SHOWN_PATH = 1024;
+/** How many files of a checkout are written at once. */
+const WRITES_AT_ONCE = 32;
 
 const LISTING = field.shape({
   component: field.gitHash(),
@@ -60,9 +62,6 @@ export async function readListing(home: Home, component: string): Promise<Listin
   return listing as Listing;
 }
 
-const MODE_LINK = "120000";
-const MODE_SUBMODULE = "160000";
-
 function decoded(path: Uint8Array): string | undefined {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(path);
@@ -84,8 +83,8 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
       const shown = path ?? new TextDecoder().decode(entry.path);
       leftOut.push({ path: shown.slice(0, MAX_SHOWN_PATH), reason });
     };
-    if (entry.mode === MODE_LINK) leave("symbolic-link");
-    else if (entry.mode === MODE_SUBMODULE) leave("submodule");
+    if (entry.mode === LINK_MODE) leave("symbolic-link");
+    else if (entry.mode === SUBMODULE_MODE) leave("submodule");
     else if (!isFileMode(entry.mode)) leave("unsupported-mode");
     else if (path === undefined || !isPath(path)) leave("refused-path");
     else files.push({ path, mode: entry.mode, blob: entry.hash });
@@ -96,14 +95,18 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   const dir = checkoutDir(home, commit);
   const partial = `${dir}.partial`;
   await rm(partial, { recursive: true, force: true });
-  for (const file of files) {
-    // The path passed the path rule: no part is `.`, `..` or `.git`, so it stays in the folder.
-    const target = join(partial, ...file.path.split("/"));
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, blobs.get(file.blob) ?? new Uint8Array(0));
-    await chmod(target, file.mode === "100755" ? 0o755 : 0o644);
-  }
+  // Each path passed the path rule: no part is `.`, `..` or `.git`, so it stays in the folder.
+  const targets = files.map((file) => ({ file, target: join(partial, ...file.path.split("/")) }));
   await mkdir(partial, { recursive: true });
+  for (const dir of new Set(targets.map(({ target }) => dirname(target)))) await mkdir(dir, { recursive: true });
+  for (let at = 0; at < targets.length; at += WRITES_AT_ONCE) {
+    await Promise.all(
+      targets.slice(at, at + WRITES_AT_ONCE).map(async ({ file, target }) => {
+        await writeFile(target, blobs.get(file.blob) ?? new Uint8Array(0));
+        await chmod(target, file.mode === "100755" ? 0o755 : 0o644);
+      }),
+    );
+  }
   await rm(dir, { recursive: true, force: true });
   await rename(partial, dir);
 
@@ -112,14 +115,26 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   return listing;
 }
 
-/** Reads the files a record cites from the checkout, for the second layer of validation. */
-export async function citedFiles(home: Home, listing: Listing, paths: readonly string[]): Promise<CitedFiles> {
-  const cited = new Map<string, CitedFile>();
-  for (const path of paths) {
-    const held = listing.files.find((file) => file.path === path);
-    if (!held) continue;
-    const file = join(checkoutDir(home, listing.component), ...path.split("/"));
-    cited.set(path, { mode: held.mode, content: new Uint8Array(await readFile(file)) });
-  }
-  return cited;
+/**
+ * Gives a reader of the files that records cite in one checkout, for the second layer of
+ * validation. A file is read once, however many records cite it.
+ */
+export function citedFileReader(home: Home, listing: Listing): (paths: readonly string[]) => Promise<CitedFiles> {
+  const modes = new Map(listing.files.map((file) => [file.path, file.mode]));
+  const read = new Map<string, CitedFile>();
+  return async (paths) => {
+    const cited = new Map<string, CitedFile>();
+    for (const path of paths) {
+      const mode = modes.get(path);
+      if (mode === undefined) continue;
+      let file = read.get(path);
+      if (!file) {
+        const content = await readFile(join(checkoutDir(home, listing.component), ...path.split("/")));
+        file = { mode, content: new Uint8Array(content) };
+        read.set(path, file);
+      }
+      cited.set(path, file);
+    }
+    return cited;
+  };
 }

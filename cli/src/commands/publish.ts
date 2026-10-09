@@ -11,8 +11,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { INDEX_ROUTES, NODE_ROUTES, TEAM_BRANCH } from "@cairnfield/protocol";
+import type { FileMode } from "@cairnfield/protocol";
 import type { Home } from "../config.ts";
-import { said, withScratch } from "../git.ts";
+import { fetchRef, said, withScratch } from "../git.ts";
 import type { Access, Scratch } from "../git.ts";
 import type { Io } from "../io.ts";
 import { checkOutbox } from "../outbox.ts";
@@ -23,35 +24,49 @@ import { adminKey, callIndex, callNode, nodeFailed, repoAccess, untilReady } fro
 import { verdict } from "./validate.ts";
 
 const BRANCH = `refs/heads/${TEAM_BRANCH}`;
+/** A record file is a plain file. */
+const RECORD_MODE: FileMode = "100644";
 /** Three runs at once all landed within three tries on Artifacts, so this leaves room. */
 const MAX_TRIES = 6;
 /** A try waits up to this long, times its number, so runs that collide spread out. */
 const RETRY_SPREAD_MS = 400;
 
-/** Stores each record's validated bytes as a blob, with no filter. Returns the blob hashes, in order. */
-async function storeBlobs(scratch: Scratch, records: readonly Checked[]): Promise<string[]> {
+/** A record file as Git holds it: its path in the team repo and the blob of its bytes. */
+interface Stored {
+  readonly path: string;
+  readonly blob: string;
+}
+
+const lines = (all: readonly string[]): Uint8Array => new TextEncoder().encode(all.map((line) => `${line}\n`).join(""));
+
+/** Stores each record's validated bytes as a blob, with no filter. */
+async function storeBlobs(scratch: Scratch, records: readonly Checked[]): Promise<Stored[]> {
   const dir = join(scratch.dir, "records");
   await mkdir(dir);
-  const files = records.map((_, at) => join(dir, String(at)));
-  await Promise.all(records.map((record, at) => writeFile(files[at] ?? "", record.content)));
+  const files = records.map((record, at) => ({ record, file: join(dir, String(at)) }));
+  await Promise.all(files.map(({ record, file }) => writeFile(file, record.content)));
   const hashed = await scratch.git("hash-object", ["hash-object", "-w", "--no-filters", "--stdin-paths"], {
-    input: new TextEncoder().encode(files.map((file) => `${file}\n`).join("")),
+    input: lines(files.map(({ file }) => file)),
   });
   const blobs = said(hashed).split("\n");
   if (blobs.length !== records.length) stop(EXIT.git, "git-failed", { step: "hash-object" });
-  return blobs;
+  return records.map((record, at) => ({ path: record.path, blob: blobs[at] ?? "" }));
 }
 
 /** The commit the team branch points to, fetched at depth 1. Nothing for a repo with no push yet. */
 async function fetchHead(scratch: Scratch, access: Access): Promise<string | undefined> {
   const listed = await scratch.git("ls-remote", ["ls-remote", access.remote, BRANCH], { access });
-  if (said(listed) === "") return undefined;
-  await scratch.git(
-    "fetch",
-    ["fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", access.remote, BRANCH],
-    { access },
-  );
-  return said(await scratch.git("fetch", ["rev-parse", "--verify", "--quiet", "FETCH_HEAD^{commit}"]));
+  return said(listed) === "" ? undefined : fetchRef(scratch, access, BRANCH);
+}
+
+/** The files a commit does not hold yet. Only these are asked about, however many the commit holds. */
+async function notYetIn(scratch: Scratch, commit: string, files: readonly Stored[]): Promise<Stored[]> {
+  const asked = await scratch.git("cat-file", ["cat-file", "--batch-check"], {
+    input: lines(files.map(({ path }) => `${commit}:${path}`)),
+  });
+  const answers = said(asked).split("\n");
+  if (answers.length !== files.length) stop(EXIT.git, "git-failed", { step: "cat-file" });
+  return files.filter((_, at) => answers[at]?.endsWith(" missing"));
 }
 
 /** Whether the remote turned the push down because the branch is not where the push expects it. */
@@ -67,20 +82,18 @@ interface Landed {
 }
 
 async function push(io: Io, scratch: Scratch, access: Access, records: readonly Checked[]): Promise<Landed> {
-  const blobs = await storeBlobs(scratch, records);
+  const stored = await storeBlobs(scratch, records);
   for (let attempt = 1; ; attempt++) {
     const head = await fetchHead(scratch, access);
-    const index = join(scratch.dir, `index-${attempt}`);
-    await scratch.git("read-tree", head === undefined ? ["read-tree", "--empty"] : ["read-tree", head], { index });
-    const listed = head === undefined ? "" : said(await scratch.git("ls-tree", ["ls-tree", "-r", "--name-only", head]));
-    const held = new Set(listed.split("\n"));
     // A published record is never written again (KTD1), even with other spacing.
-    const added = records.flatMap((record, at) => (held.has(record.path) ? [] : [{ path: record.path, blob: blobs[at] ?? "" }]));
+    const added = head === undefined ? stored : await notYetIn(scratch, head, stored);
     if (added.length === 0) return { head, published: [] };
 
+    const index = join(scratch.dir, `index-${attempt}`);
+    await scratch.git("read-tree", head === undefined ? ["read-tree", "--empty"] : ["read-tree", head], { index });
     await scratch.git("update-index", ["update-index", "--add", "--index-info"], {
       index,
-      input: new TextEncoder().encode(added.map(({ path, blob }) => `100644 blob ${blob}\t${path}\n`).join("")),
+      input: lines(added.map(({ path, blob }) => `${RECORD_MODE} blob ${blob}\t${path}`)),
     });
     const tree = said(await scratch.git("write-tree", ["write-tree"], { index }));
     const parent = head === undefined ? [] : ["-p", head];

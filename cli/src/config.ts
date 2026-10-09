@@ -11,7 +11,7 @@ import type { Infer } from "@cairnfield/protocol";
 import type { Io } from "./io.ts";
 import { EXIT, stop } from "./outcome.ts";
 
-export const CONFIG_FILE = "cairnfield.json";
+const CONFIG_FILE = "cairnfield.json";
 /** The key of the team's node, for its admin routes. */
 export const ADMIN_KEY = "CAIRNFIELD_ADMIN_KEY";
 /** The key an index asks for when a node or a component is registered. */

@@ -40,7 +40,7 @@ export const runGit: GitRunner = (args, call) =>
     child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
     child.on("error", reject);
     child.on("close", (code) => {
-      resolve({ code: code ?? 1, stdout: new Uint8Array(Buffer.concat(out)), stderr: Buffer.concat(err).toString("utf8") });
+      resolve({ code: code ?? 1, stdout: Buffer.concat(out), stderr: Buffer.concat(err).toString("utf8") });
     });
     // A Git that ends before it has read its input closes the pipe, which is no failure of its own.
     child.stdin.on("error", () => undefined);
@@ -181,17 +181,21 @@ export async function withScratch<T>(io: Io, work: (scratch: Scratch) => Promise
 export const said = (run: GitRun): string => new TextDecoder().decode(run.stdout).trim();
 
 /**
- * Fetches one commit by its hash at depth 1, with no tag and no submodule. The hash is
- * the only thing asked for, so the answer cannot be another commit.
+ * Fetches the commit that a branch or a full commit hash names, at depth 1, with no tag
+ * and no submodule (KTD33). Returns the hash of the commit that arrived.
  */
-export async function fetchCommit(scratch: Scratch, access: Access, commit: string): Promise<void> {
+export async function fetchRef(scratch: Scratch, access: Access, ref: string): Promise<string> {
   await scratch.git(
     "fetch",
-    ["fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", access.remote, commit],
+    ["fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", access.remote, ref],
     { access },
   );
-  const held = await scratch.git("fetch", ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`]);
-  if (said(held) !== commit) stop(EXIT.git, "git-failed", { step: "fetch" });
+  return said(await scratch.git("fetch", ["rev-parse", "--verify", "--quiet", "FETCH_HEAD^{commit}"]));
+}
+
+/** Fetches one commit by its hash. The hash is the only thing asked for, and no other commit is accepted. */
+export async function fetchCommit(scratch: Scratch, access: Access, commit: string): Promise<void> {
+  if ((await fetchRef(scratch, access, commit)) !== commit) stop(EXIT.git, "git-failed", { step: "fetch" });
 }
 
 /** One entry of a commit's tree. The path is bytes, because a hostile repo may hold any. */

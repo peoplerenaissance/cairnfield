@@ -18,8 +18,7 @@ import {
   validateRecordText,
 } from "@cairnfield/protocol";
 import type { AnyRecord, RejectionReason } from "@cairnfield/protocol";
-import { citedFiles, readListing } from "./checkout.ts";
-import type { Listing } from "./checkout.ts";
+import { citedFileReader, readListing } from "./checkout.ts";
 import type { Home } from "./config.ts";
 
 /** A record file that passed both layers. */
@@ -69,10 +68,14 @@ async function entries(outbox: string): Promise<{ readonly path: string; readonl
 export async function checkOutbox(home: Home): Promise<OutboxCheck> {
   const records: Checked[] = [];
   const rejected: Refused[] = [];
-  const listings = new Map<string, Listing | undefined>();
-  const pinned = async (component: string): Promise<Listing | undefined> => {
-    if (!listings.has(component)) listings.set(component, await readListing(home, component));
-    return listings.get(component);
+  // The reader of each component's checkout, or nothing for a component that is not pinned here.
+  const checkouts = new Map<string, ReturnType<typeof citedFileReader> | undefined>();
+  const pinned = async (component: string): Promise<ReturnType<typeof citedFileReader> | undefined> => {
+    if (!checkouts.has(component)) {
+      const listing = await readListing(home, component);
+      checkouts.set(component, listing && citedFileReader(home, listing));
+    }
+    return checkouts.get(component);
   };
 
   for (const { path, isFile } of await entries(home.outbox)) {
@@ -103,12 +106,12 @@ export async function checkOutbox(home: Home): Promise<OutboxCheck> {
       continue;
     }
     const { record, id } = structure;
-    const listing = await pinned(record.component);
-    if (!listing) {
+    const citedFiles = await pinned(record.component);
+    if (!citedFiles) {
       refuse("unknown-component");
       continue;
     }
-    const cited = validateAgainstFiles(record, await citedFiles(home, listing, citedPaths(record)));
+    const cited = validateAgainstFiles(record, await citedFiles(citedPaths(record)));
     if (!cited.ok) {
       refuse(cited.reason, cited.field === undefined ? {} : { field: cited.field });
       continue;
