@@ -13,6 +13,7 @@ import { splitLines } from "@cairnfield/protocol";
 import { checkoutDir } from "../checkout.ts";
 import type { Listing } from "../checkout.ts";
 import type { Home } from "../config.ts";
+import { MAX_SHOWN_LINE, lineText } from "../patch/edits.ts";
 
 /** What an agent works on: the path, the lines and the observation of one finding of the team's own. */
 export interface Target {
@@ -47,7 +48,6 @@ export interface Toolbox {
 // How much one tool call gives back. A component's author chose every size here.
 const MAX_LISTED_FILES = 5000;
 const MAX_READ_LINES = 400;
-const MAX_SHOWN_LINE = 2000;
 const MAX_MATCHES = 100;
 const MAX_SEARCH_TEXT = 200;
 /** A file past this size is not read by a tool. */
@@ -74,13 +74,10 @@ const DEFINITIONS = [
 const fine = (content: string): ToolAnswer => ({ content, isError: false });
 const failed = (code: string): ToolAnswer => ({ content: code, isError: true });
 
-const DECODER = new TextDecoder();
-
-/** A line as text, without the line feed that ends it and up to a fixed length. */
+/** A line as a tool shows it: up to a fixed length, with a mark where it was cut. */
 function shown(line: Uint8Array): string {
-  const text = DECODER.decode(line);
-  const body = text.endsWith("\n") ? text.slice(0, -1) : text;
-  return body.length > MAX_SHOWN_LINE ? `${body.slice(0, MAX_SHOWN_LINE)}[cut]` : body;
+  const text = lineText(line);
+  return text.length > MAX_SHOWN_LINE ? `${text.slice(0, MAX_SHOWN_LINE)}[cut]` : text;
 }
 
 /** The tools over one checkout, for an agent whose target is one finding. */
@@ -95,17 +92,17 @@ export function checkoutTools(home: Home, listing: Listing, target: Target): Too
     if (!known.has(path)) return "not-in-checkout";
     realRoot ??= realpath(root);
     const parts = path.split("/");
-    let real: string;
     try {
-      real = await realpath(join(root, ...parts));
+      const real = await realpath(join(root, ...parts));
+      // A file of the checkout is no link and lies under no link, so its real path is its own.
+      if (real !== join(await realRoot, ...parts)) return "outside-checkout";
+      const { size } = await stat(real);
+      if (size > MAX_FILE_BYTES) return "too-large";
+      return await readFile(real);
     } catch {
+      // A file that is gone or cannot be read is a code for the agent, and does not end the run.
       return "not-found";
     }
-    // A file of the checkout is no link and lies under no link, so its real path is its own.
-    if (real !== join(await realRoot, ...parts)) return "outside-checkout";
-    const { size } = await stat(real);
-    if (size > MAX_FILE_BYTES) return "too-large";
-    return readFile(real);
   }
 
   async function readFrom(path: unknown, from: unknown): Promise<ToolAnswer> {

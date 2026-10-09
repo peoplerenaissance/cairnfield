@@ -18,6 +18,21 @@ const MAX_EDITS = 64;
 const MAX_EDIT_LINES = 256;
 const MAX_LINE_LENGTH = 64 * 1024;
 
+/**
+ * A file tool shows a line up to this many characters, and cuts a longer one short. An
+ * agent has then not seen the whole line, so an edit may delete such a line and may not
+ * replace it.
+ */
+export const MAX_SHOWN_LINE = 2000;
+
+const DECODER = new TextDecoder();
+
+/** A line as text, without the line feed that ends it. */
+export function lineText(line: Uint8Array): string {
+  const text = DECODER.decode(line);
+  return text.endsWith("\n") ? text.slice(0, -1) : text;
+}
+
 /** Lines `start` to `end` of the file at `path`, replaced by `lines`. Lines count from 1 and the range includes both ends. */
 export const EDIT = field.shape(
   {
@@ -81,14 +96,20 @@ export type Drafted = ({ readonly ok: true } & Draft) | { readonly ok: false; re
 const LINE_FEED = 10;
 
 /** Applies the edits of one content. Every line number is a line of the content as it was. */
-function apply(content: Uint8Array, edits: readonly Edit[]): Uint8Array | "lines-out-of-range" | "edits-overlap" {
+function apply(content: Uint8Array, edits: readonly Edit[]): Uint8Array | "lines-out-of-range" | "edits-overlap" | "line-cut" {
   const starts = lineStarts(content);
+  const lineAt = (line: number): Uint8Array => content.subarray(starts[line - 1], starts[line] ?? content.length);
   const parts: Uint8Array[] = [];
   let at = 0;
   let last = 0;
   for (const edit of [...edits].sort((a, b) => a.start - b.start)) {
     if (edit.end > starts.length) return "lines-out-of-range";
     if (edit.start <= last) return "edits-overlap";
+    if (edit.lines.length > 0) {
+      for (let line = edit.start; line <= edit.end; line++) {
+        if (lineText(lineAt(line)).length > MAX_SHOWN_LINE) return "line-cut";
+      }
+    }
     parts.push(content.subarray(at, starts[edit.start - 1]));
     let text = edit.lines.map((line) => `${line}\n`).join("");
     // A file's last line may end with no line feed. What replaces it then ends with none either.
@@ -114,10 +135,13 @@ export async function draftPatch(home: Home, listing: Listing, finding: Finding,
 
   // Edits are kept by the content they change, so two paths with one content are one file here.
   const blobOf = new Map(listing.files.map((file) => [file.path, file.blob]));
+  const cited = citedRanges([finding], listing.files);
   const byBlob = new Map<string, { readonly path: string; readonly edits: Edit[] }>();
   for (const edit of edits) {
     const blob = blobOf.get(edit.path);
     if (blob === undefined) return refused("bad-path");
+    // Refused before any file is read, so an answer cannot make the command read a file the finding does not cite.
+    if (!cited.some((range) => range.blob === blob)) return refused("patch-out-of-scope");
     const same = byBlob.get(blob);
     if (same) same.edits.push(edit);
     else byBlob.set(blob, { path: edit.path, edits: [edit] });
@@ -144,7 +168,7 @@ export async function draftPatch(home: Home, listing: Listing, finding: Finding,
   const verdict = await checkPatch({
     base: { files: listing.files, content: before },
     patched: { files: patched, content: after },
-    cited: citedRanges([finding], listing.files),
+    cited,
   });
   if (!verdict.ok) return refused(verdict.reason);
   const { ok, ...facts } = verdict;

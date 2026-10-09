@@ -87,6 +87,8 @@ export interface Seen {
   readonly url: string;
   readonly headers: Headers;
   readonly body: unknown;
+  /** What the request asked `fetch` to do with a redirect. */
+  readonly redirect: string | undefined;
 }
 
 export interface FakeNode {
@@ -103,6 +105,8 @@ export interface ModelAnswer {
   readonly content: readonly object[];
   readonly stop: string;
   readonly details?: object;
+  /** The tokens the answer reports, when a test counts them. */
+  readonly usage?: { readonly input_tokens: number; readonly output_tokens: number };
 }
 
 export interface FakeModel {
@@ -305,7 +309,7 @@ export function bench(sharing?: Bench): Bench {
       stop_reason: next.stop,
       stop_sequence: null,
       stop_details: next.details ?? null,
-      usage: { input_tokens: 100, output_tokens: 10 },
+      usage: next.usage ?? { input_tokens: 100, output_tokens: 10 },
     });
   }
 
@@ -318,6 +322,7 @@ export function bench(sharing?: Bench): Bench {
       url: url.href,
       headers: new Headers(init?.headers),
       body: text === undefined ? undefined : (JSON.parse(text) as unknown),
+      redirect: init?.redirect,
     };
     requests.push(seen);
     const given = made.respond?.(seen);

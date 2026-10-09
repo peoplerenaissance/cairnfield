@@ -1,7 +1,7 @@
 // The live agent loop (KTD16, KTD19, KTD21), against a fake model behind `fetch`. No test
 // here reaches a model.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAgent } from "../../src/agents/live.ts";
 import type { Toolbox } from "../../src/agents/tools.ts";
 import { EXIT, done, outcomeOf } from "../../src/outcome.ts";
@@ -31,17 +31,19 @@ beforeEach(() => {
 });
 afterEach(() => {
   on.dispose();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 /** Runs the agent. An answer is accepted when it says so. */
-function agent(): Promise<Outcome> {
+function agent(model = "claude-sonnet-5-5", tools: Toolbox = TOOLS): Promise<Outcome> {
   return outcomeOf(async () =>
     done({
       result: await runAgent(on.io, {
         key: MODEL_KEY,
-        model: "claude-sonnet-5-5",
+        model,
         system: SYSTEM,
-        tools: TOOLS,
+        tools,
         answer: ANSWER,
         check: async (answer) =>
           (answer as { readonly fine?: unknown } | undefined)?.fine === true ? { ok: true, value: "accepted" } : { ok: false, reason: "not-fine" },
@@ -128,6 +130,37 @@ describe("the live agent", () => {
     expect(on.model.requests).toHaveLength(1);
   });
 
+  it("stops when the run has used its tokens", async () => {
+    on.model.answers.push({ ...calls(["read_file", { path: FILE_PATH }]), usage: { input_tokens: 2_000_000, output_tokens: 10 } }, answers({ fine: true }));
+
+    expect(await agent()).toEqual({ code: EXIT.agent, output: { error: "agent-limit", limit: "tokens" } });
+    expect(on.model.requests).toHaveLength(1);
+  });
+
+  it("stops at its deadline", async () => {
+    on.model.answers.push(calls(["read_file", { path: FILE_PATH }]), answers({ fine: true }));
+    const slow: Toolbox = {
+      ...TOOLS,
+      call: async (name, input) => {
+        await on.io.sleep(11 * 60_000);
+        return TOOLS.call(name, input);
+      },
+    };
+
+    expect(await agent("claude-sonnet-5-5", slow)).toEqual({ code: EXIT.agent, output: { error: "agent-limit", limit: "deadline" } });
+    expect(on.model.requests).toHaveLength(1);
+  });
+
+  it("sets an effort for the model that takes one, and none for the model that takes none", async () => {
+    on.model.answers.push(answers({ fine: true }), answers({ fine: true }));
+    await agent("claude-sonnet-5-5");
+    await agent("claude-haiku-4-5-20251001");
+
+    expect(sent(0).output_config).toMatchObject({ effort: "medium" });
+    expect(sent(1).output_config).not.toHaveProperty("effort");
+    expect(sent(1).output_config).toMatchObject({ format: { type: "json_schema" } });
+  });
+
   it("names the status when the model's service refuses the request", async () => {
     expect(await agent()).toEqual({ code: EXIT.agent, output: { error: "agent-failed", status: 400 } });
   });
@@ -142,5 +175,28 @@ describe("the live agent", () => {
       expect(headers.get("authorization")).toBeNull();
       expect(JSON.stringify(body)).not.toContain(MODEL_KEY);
     }
+  });
+
+  it("takes no address, credential, header or log level from the process's own environment", async () => {
+    // The SDK reads these from `process.env` itself, whatever environment the command was given.
+    vi.stubEnv("ANTHROPIC_BASE_URL", "https://elsewhere.fellbeck-tools.example");
+    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "a-token-from-the-environment");
+    vi.stubEnv("ANTHROPIC_CUSTOM_HEADERS", "x-api-key: a-key-from-the-environment");
+    vi.stubEnv("ANTHROPIC_LOG", "debug");
+    const written = (["debug", "info", "log", "warn", "error"] as const).map((level) => vi.spyOn(console, level).mockImplementation(() => undefined));
+    on.model.answers.push(calls(["read_file", { path: FILE_PATH }]), answers({ fine: true }));
+
+    expect(await agent()).toMatchObject({ code: EXIT.ok });
+
+    expect(on.model.requests).toHaveLength(2);
+    for (const { url, headers, redirect } of on.model.requests) {
+      expect(url).toBe("https://api.anthropic.com/v1/messages");
+      expect(headers.get("x-api-key")).toBe(MODEL_KEY);
+      expect(headers.get("authorization")).toBeNull();
+      // A redirect would carry the key's header to another address.
+      expect(redirect).toBe("error");
+    }
+    // The command's standard output holds one line of JSON, so the SDK writes nothing.
+    for (const level of written) expect(level).not.toHaveBeenCalled();
   });
 });

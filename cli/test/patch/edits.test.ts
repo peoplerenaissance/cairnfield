@@ -155,6 +155,18 @@ describe("the edits of a patch", () => {
     expect(text(draft.blobs.get(draft.changes[0]?.blob ?? ""))).toBe("# Notes\n");
   });
 
+  it("may delete a line too long for a tool to show whole, and may not replace it", async () => {
+    const long = `{"hosts":"${"h".repeat(3000)}"}`;
+    const { home, listing, cites } = await tree([{ path: "min.json", content: `${long}\n{"next":1}\n` }]);
+    const finding = cites("min.json", 1, 1);
+
+    expect(await draftPatch(home, listing, finding, { edits: [{ path: "min.json", start: 1, end: 1, lines: ['{"hosts":"one.example"}'] }] })).toEqual({
+      ok: false,
+      reason: "line-cut",
+    });
+    expect(await draftPatch(home, listing, finding, { edits: [{ path: "min.json", start: 1, end: 1, lines: [] }] })).toMatchObject({ ok: true });
+  });
+
   it("keep a last line with no line feed as it was", async () => {
     const { home, listing, cites } = await tree([{ path: "hosts.txt", content: new TextEncoder().encode("one.example\n*") }]);
 

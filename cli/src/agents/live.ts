@@ -28,6 +28,8 @@ const MAX_TURNS = 40;
 const MAX_ANSWER_TOKENS = 16_000;
 /** The most tokens of one run: what every request sent and every answer held. */
 const MAX_RUN_TOKENS = 1_000_000;
+/** The models that take no effort setting. Every other model runs at one fixed effort. */
+const NO_EFFORT: ReadonlySet<string> = new Set(["claude-haiku-4-5-20251001"]);
 const RUN_DEADLINE_MS = 10 * 60_000;
 const REQUEST_DEADLINE_MS = 3 * 60_000;
 
@@ -59,8 +61,21 @@ function category(details: Anthropic.Message["stop_details"]): string {
  * command.
  */
 export async function runAgent<T>(io: Io, run: AgentRun<T>): Promise<Checked<T>> {
-  // The key, the address and the transport are all named here, so nothing is read from the process's own environment.
-  const client = new Anthropic({ apiKey: run.key, authToken: null, baseURL: API, fetch: io.fetch, timeout: REQUEST_DEADLINE_MS });
+  // The key, the address, the transport and the log level are all named here. The SDK
+  // would otherwise read an address, a second credential and a log level from the
+  // process's own environment, and its log goes to standard output. It also adds headers
+  // it finds there, so the key's header is set once more, which no such header replaces.
+  const client = new Anthropic({
+    apiKey: run.key,
+    authToken: null,
+    baseURL: API,
+    defaultHeaders: { "x-api-key": run.key },
+    fetch: io.fetch,
+    // A redirect would carry the key's header to another address.
+    fetchOptions: { redirect: "error" },
+    logLevel: "off",
+    timeout: REQUEST_DEADLINE_MS,
+  });
   const tools = run.tools.definitions.map((tool) => ({ ...tool, strict: true }));
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: START }];
   const deadline = io.now() + RUN_DEADLINE_MS;
@@ -77,7 +92,10 @@ export async function runAgent<T>(io: Io, run: AgentRun<T>): Promise<Checked<T>>
         system: run.system,
         tools,
         messages,
-        output_config: { effort: "medium", format: { type: "json_schema", schema: run.answer } },
+        output_config: {
+          ...(NO_EFFORT.has(run.model) ? {} : { effort: "medium" as const }),
+          format: { type: "json_schema", schema: run.answer },
+        },
       });
     } catch (error) {
       if (!(error instanceof Anthropic.APIError)) throw error;

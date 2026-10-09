@@ -2,13 +2,14 @@
 // command turns it into a checked commit and a patch record, live or from a recording
 // (R15, R18, R20, R24). The model is a fake behind `fetch`, so no test reaches one.
 
-import { cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
 import {
   ADMIN_KEY,
+  INDEX,
   MODEL_API,
   MODEL_KEY,
   NODE,
@@ -55,8 +56,8 @@ afterEach(() => {
 });
 
 /** A team with a label, the demo plugin pinned and its saved findings published. Returns the pinned commit. */
-async function team(at: Bench = on): Promise<string> {
-  at.configure({ node: NODE, team: "team-a", recordings: "recordings" });
+async function team(at: Bench = on, more: { readonly [field: string]: unknown } = {}): Promise<string> {
+  at.configure({ node: NODE, team: "team-a", recordings: "recordings", ...more });
   const { first } = await pinned(at);
   saveOutbox(at, "team-a");
   const outcome = await at.run("publish");
@@ -89,6 +90,20 @@ function patchRefs(at: Bench, component: string): string[] {
 
 const recordsOf = (at: Bench, type: string): string[] => published(at).filter((path) => path.includes(`/${type}/`));
 const recording = (component: string, id: string): string => `recordings/team-a/${component}/${id}.json`;
+
+/** Saves a recording as a live run would have, or text in its place. */
+function record(component: string, id: string, content: object | string): void {
+  const file = join(on.home, recording(component, id));
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, typeof content === "string" ? content : JSON.stringify(content));
+}
+
+/** Makes the push of a patch commit fail, by taking the fork away just before it. */
+function failThePush(component: string): void {
+  on.beforeGit = (args) => {
+    if (args[0] === "push" && args.some((arg) => arg.includes("refs/heads/patch/"))) rmSync(fork(on, component), { recursive: true, force: true });
+  };
+}
 
 interface Sent {
   readonly system: unknown;
@@ -327,15 +342,97 @@ describe("patch", () => {
   it("publishes no patch record when the push to the fork fails", async () => {
     const first = await team();
     on.model.answers.push(answers(DROP_THE_LINE));
-    on.beforeGit = (args) => {
-      if (args[0] === "push" && args.some((arg) => arg.includes("refs/heads/patch/"))) rmSync(fork(on, first), { recursive: true, force: true });
-    };
+    failThePush(first);
 
     const outcome = await on.run("patch", first, "--finding", HIDDEN);
 
     expect(outcome).toMatchObject({ code: EXIT.git, output: { error: "git-failed", step: "push" } });
     expect(recordsOf(on, "patch")).toEqual([]);
     expect((await on.run("validate")).output).toEqual({ records: 5, rejected: [] });
+  });
+
+  it("finishes a run that stopped after its recording was saved, under the same claim", async () => {
+    const first = await team();
+    on.nextRandom = 9;
+    on.model.answers.push(answers(DROP_THE_LINE));
+    failThePush(first);
+    const stopped = await on.run("patch", first, "--finding", HIDDEN);
+    expect(stopped).toMatchObject({ code: EXIT.git, output: { number: 9 } });
+    on.beforeGit = undefined;
+    on.nextRandom = 10;
+
+    const finished = await on.run("patch", first, "--finding", HIDDEN, "--replay");
+
+    expect(finished).toMatchObject({ code: EXIT.ok, output: { claim: stopped.output["claim"], number: 9 } });
+    expect(recordsOf(on, "claim")).toHaveLength(1);
+    expect(recordsOf(on, "patch")).toHaveLength(1);
+    expect(patchRefs(on, first)).toHaveLength(1);
+  });
+
+  it("tells a configured index of the claim and of the patch record", async () => {
+    const first = await team(on, { index: INDEX });
+    on.model.answers.push(answers(DROP_THE_LINE));
+    const notices = on.index.notices.length;
+
+    const outcome = await on.run("patch", first, "--finding", HIDDEN);
+
+    expect(outcome).toMatchObject({ code: EXIT.ok, output: { notice: "sent" } });
+    expect(on.index.notices).toHaveLength(notices + 2);
+  });
+
+  it("goes on when the notice of its claim fails, and ends with the index's exit code", async () => {
+    const first = await team(on, { index: INDEX });
+    on.model.answers.push(answers(DROP_THE_LINE));
+    on.index.noticeStatus = 503;
+
+    const outcome = await on.run("patch", first, "--finding", HIDDEN);
+
+    expect(outcome).toMatchObject({ code: EXIT.index, output: { notice: "failed", kind: "removes-only" } });
+    expect(recordsOf(on, "claim")).toHaveLength(1);
+    expect(recordsOf(on, "patch")).toHaveLength(1);
+    expect(patchRefs(on, first)).toHaveLength(1);
+  });
+
+  it("takes an answer with no edits as the agent's last word, and publishes nothing", async () => {
+    const first = await team();
+    modelWrites({ edits: [] }, NAME_THE_HOST);
+
+    const outcome = await on.run("patch", first, "--finding", ANY_HOST);
+
+    expect(outcome).toMatchObject({ code: EXIT.invalid, output: { error: "edits-refused", reason: "no-edits" } });
+    // Two tool calls and one answer. The agent is not asked again.
+    expect(on.model.requests).toHaveLength(3);
+    expect(recordsOf(on, "patch")).toEqual([]);
+    expect(patchRefs(on, first)).toEqual([]);
+  });
+
+  it.each([
+    ["text that is no JSON", (): string => "not JSON"],
+    ["another shape", (good: object): object => ({ ...good, edits: "none" })],
+    ["a field of its own", (good: object): object => ({ ...good, note: "a note" })],
+    ["another finding", (good: object): object => ({ ...good, finding: HIDDEN })],
+    ["another component", (good: object): object => ({ ...good, component: "2e".repeat(20) })],
+    ["another schema version", (good: object): object => ({ ...good, version: "2" })],
+  ])("refuses a recording that holds %s, before anything is published", async (_what, spoil) => {
+    const first = await team();
+    record(first, ANY_HOST, spoil({ version: "1", component: first, finding: ANY_HOST, claim: 31, model: "claude-sonnet-5-5", edits: NAME_THE_HOST.edits }));
+    const requests = on.requests.length;
+
+    expect(await on.run("patch", first, "--finding", ANY_HOST, "--replay")).toEqual({ code: EXIT.failed, output: { error: "bad-recording" } });
+    expect(on.requests).toHaveLength(requests);
+    expect(recordsOf(on, "claim")).toEqual([]);
+  });
+
+  it("refuses a recording whose edits leave the cited lines, and pushes nothing", async () => {
+    const first = await team();
+    record(first, ANY_HOST, { version: "1", component: first, finding: ANY_HOST, claim: 31, model: "claude-sonnet-5-5", edits: WIDER.edits });
+
+    const outcome = await on.run("patch", first, "--finding", ANY_HOST, "--replay");
+
+    expect(outcome).toMatchObject({ code: EXIT.invalid, output: { error: "edits-refused", reason: "patch-out-of-scope", number: 31 } });
+    expect(on.model.requests).toHaveLength(0);
+    expect(recordsOf(on, "patch")).toEqual([]);
+    expect(patchRefs(on, first)).toEqual([]);
   });
 
   it("keeps the model key, the admin key and a repo token out of the model's requests, the recording, the log and the outbox", async () => {

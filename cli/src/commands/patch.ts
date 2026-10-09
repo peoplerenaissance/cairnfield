@@ -45,7 +45,8 @@ const PROMPT = new URL("../agents/prompts/patch.md", import.meta.url);
 
 /**
  * Runs the patch agent on one finding of a checkout. Returns the edits that passed the
- * patch checks as a draft, or the code of the second answer that failed them.
+ * patch checks as a draft, or the code of what stopped it: `no-edits` when the agent gave
+ * none, or the code of the second answer that failed the checks.
  */
 export async function writeEdits(
   io: Io,
@@ -63,7 +64,8 @@ export async function writeEdits(
     answer: ANSWER_SCHEMA,
     check: async (answer) => {
       const drafted = await draftPatch(home, listing, finding, answer);
-      return drafted.ok ? { ok: true, value: drafted } : drafted;
+      // An answer with no edit is the agent's own verdict that no patch fits. It is final, and is not asked for again.
+      return drafted.ok || drafted.reason === "no-edits" ? { ok: true, value: drafted } : drafted;
     },
   });
   return written.ok ? written.value : written;
@@ -110,7 +112,9 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
     intent: "new",
     number: recorded && String(recorded.claim),
   });
-  if (claimed.code !== EXIT.ok) return claimed;
+  // A claim whose notice to the index failed is published all the same. The run goes on,
+  // and the patch record's publish sends the notice again.
+  if (claimed.code !== EXIT.ok && claimed.output["notice"] !== "failed") return claimed;
   const made = { claim: String(claimed.output["claim"]), number: Number(claimed.output["number"]) };
 
   // When a later step stops, the output still names the claim that was published.

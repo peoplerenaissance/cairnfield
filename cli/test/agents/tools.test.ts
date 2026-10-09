@@ -8,7 +8,7 @@ import { checkoutTools } from "../../src/agents/tools.ts";
 import type { Toolbox } from "../../src/agents/tools.ts";
 import { checkoutDir, readListing } from "../../src/checkout.ts";
 import { loadHome } from "../../src/config.ts";
-import { bench, pinned } from "../support.ts";
+import { bench, pinTree, pinned } from "../support.ts";
 import type { Bench } from "../support.ts";
 
 const TARGET = { path: "plugin.json", start: 12, end: 12, observation: "network-access-any-host" };
@@ -82,6 +82,22 @@ describe("the agent's tools", () => {
     symlinkSync(elsewhere, join(checkout, "scripts"));
 
     expect(await tools.call("read_file", { path: "scripts/sync.sh", from: 1 })).toEqual({ isError: true, content: "outside-checkout" });
+  });
+
+  it("answers with a code for a file that is gone", async () => {
+    rmSync(join(checkout, "plugin.json"));
+    expect(await tools.call("read_file", { path: "plugin.json", from: 1 })).toEqual({ isError: true, content: "not-found" });
+  });
+
+  it("shows a long line cut short, with a mark", async () => {
+    const { commit } = await pinTree(on, [{ path: "min.json", content: `{"hosts":"${"h".repeat(3000)}"}\n` }]);
+    const home = await loadHome(on.io, undefined);
+    const listing = await readListing(home, commit);
+    if (!listing) throw new Error("the commit is not pinned");
+
+    const answer = await checkoutTools(home, listing, TARGET).call("read_file", { path: "min.json", from: 1 });
+
+    expect(answer.content).toBe(`lines 1-1 of 1\n1\t{"hosts":"${"h".repeat(1990)}[cut]`);
   });
 
   it.each([
