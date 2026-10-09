@@ -117,15 +117,25 @@ describe("a component copy", () => {
     expect(artifacts.imports).toHaveLength(1);
   });
 
-  it("is not ready when it does not hold the pinned commit", async () => {
+  it("answers not found once the import has finished without the pinned commit", async () => {
     const artifacts = new FakeArtifacts();
     await artifacts.push(UPSTREAM, "main", { "README.md": "# Demo plugin\n" });
     const elsewhere = await artifacts.push(UPSTREAM, "release", { "README.md": "# Demo plugin 2\n" });
     const node = nodeOver(artifacts);
     const request = { url: UPSTREAM, branch: "main", commit: elsewhere };
+    const notFound = { status: 404, body: { error: "not-found" } };
+
+    // While the import runs, nothing shows that the branch does not reach the commit.
     const copy = await repoOf(node.admin("import", request));
-    artifacts.finish();
     expect(await answer(node.admin("import", request))).toEqual({ status: 200, body: { repo: copy, ready: false } });
+    artifacts.finish();
+    expect(await answer(node.admin("import", request))).toEqual(notFound);
+    // The call that finds the import finished still revokes the token Artifacts returned.
+    expect(artifacts.tokens(copy)).toEqual([returnedByArtifacts("revoked")]);
+
+    // No fork is made of a copy that lacks the commit.
+    expect(await answer(node.admin("fork", { component: elsewhere }))).toEqual(notFound);
+    expect(artifacts.repos()).toEqual([copy]);
   });
 });
 

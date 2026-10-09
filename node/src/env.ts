@@ -1,12 +1,13 @@
 // What the Worker is given: its bindings, two plain variables and one secret.
 
 import type { Store } from "./artifacts.ts";
+import type { ReadTokens } from "./read-tokens.ts";
 
 export interface Env {
   /** The team's own Artifacts namespace (R6, KTD9). */
   readonly ARTIFACTS: Store;
-  /** The one read token kept per fork (KTD7). */
-  readonly READ_TOKENS: KVNamespace;
+  /** The one read token kept per fork, in an object named after the fork (KTD7). */
+  readonly READ_TOKENS: DurableObjectNamespace<ReadTokens>;
   /** The node's own base URL, which is its identity (KTD8). */
   readonly NODE_URL: string;
   /** The index address, with no slash at its end. A node with none sends no notice (KTD40). */

@@ -2,6 +2,7 @@
 // Artifacts binding. The paths and the header are written out here as the node contract
 // states them, and are not taken from the node's own copy of the contract.
 
+import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { expect } from "vitest";
 import type { Env } from "../src/env.ts";
@@ -26,13 +27,23 @@ export function nodeOver(
   settings: Pick<Env, "ADMIN_KEY"> = { ADMIN_KEY },
 ): TestNode {
   const bindings: Env = { ARTIFACTS: artifacts, READ_TOKENS: env.READ_TOKENS, NODE_URL: BASE, ...settings };
+  // One request with a context of its own, as the runtime gives each request. The call
+  // ends when the work the request left running has ended too.
+  const fetch = async (request: Request): Promise<Response> => {
+    const context = createExecutionContext();
+    try {
+      return await worker.fetch(request, bindings, context);
+    } finally {
+      await waitOnExecutionContext(context);
+    }
+  };
   return {
-    get: (path) => worker.fetch(new Request(`${BASE}/${path}`), bindings),
+    get: (path) => fetch(new Request(`${BASE}/${path}`)),
     admin: (path, body, key = ADMIN_KEY) => {
       const headers = new Headers({ "content-type": "application/json" });
       if (key !== null) headers.set("x-cairnfield-admin-key", key);
       const init = { method: "POST", headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
-      return worker.fetch(new Request(`${BASE}/admin/${path}`, init), bindings);
+      return fetch(new Request(`${BASE}/admin/${path}`, init));
     },
   };
 }

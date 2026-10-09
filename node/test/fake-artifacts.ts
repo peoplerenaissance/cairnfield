@@ -161,6 +161,8 @@ export class FakeArtifacts implements Store {
   /** Every `fork` call, as the node made it. */
   readonly forks: { readonly from: string; readonly name: string; readonly defaultBranchOnly: boolean | undefined }[] =
     [];
+  /** Set by a test: this many `createToken` calls fail first, as when the service has an error. */
+  tokenFailures = 0;
   /** Set by a test: every import fails with this code, as when Artifacts refuses the remote. */
   importFailure: ArtifactsErrorCode | undefined;
   readonly #repos = new Map<string, RepoState>();
@@ -320,6 +322,10 @@ export class FakeArtifacts implements Store {
   #handle(state: RepoState): ArtifactsRepo {
     return {
       createToken: async (scope, ttl) => {
+        if (this.tokenFailures > 0) {
+          this.tokenFailures -= 1;
+          throw failure("INTERNAL_ERROR");
+        }
         const token = this.#issue(state, scope, ttl);
         return {
           id: token.id,

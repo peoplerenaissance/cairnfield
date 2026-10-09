@@ -1,14 +1,16 @@
 // The public routes (KTD7). Every host, team and file here is invented.
 
 import { reset } from "cloudflare:test";
-import { env } from "cloudflare:workers";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FakeArtifacts, blobHash } from "./fake-artifacts.ts";
 import type { Files } from "./fake-artifacts.ts";
 import { UPSTREAM, answer, forkCopy, importCopy, nodeOver, repoOf } from "./node.ts";
 import type { TestNode } from "./node.ts";
 
-afterEach(reset);
+afterEach(async () => {
+  vi.useRealTimers();
+  await reset();
+});
 
 const COMPONENT = "1f".repeat(20);
 const CLAIM = `records/${COMPONENT}/claim/${"a".repeat(64)}.json`;
@@ -249,7 +251,7 @@ describe("the public token route", () => {
     expect(artifacts.tokens(fork).map((token) => token.state)).toEqual(["revoked"]);
   });
 
-  it("mints one token for fifty requests for one fork", async () => {
+  it("mints one token for fifty requests for one fork, made one after another", async () => {
     const { artifacts, node, pinned, fork } = await nodeWithFork();
     const answers: string[] = [];
     for (let request = 0; request < 50; request += 1) {
@@ -261,15 +263,51 @@ describe("the public token route", () => {
     expect(artifacts.tokens(fork).filter((token) => token.asked.scope === "read")).toHaveLength(1);
   });
 
-  it("keeps the token only until shortly before it expires", async () => {
+  it("mints one token for fifty requests for one fork, made at once", async () => {
     const { artifacts, node, pinned, fork } = await nodeWithFork();
-    await node.get(`read-token?component=${pinned}`);
-    const expires = artifacts.tokens(fork).at(-1)?.expires ?? 0;
-    const { keys } = await env.READ_TOKENS.list();
-    expect(keys).toHaveLength(1);
-    const dropped = keys[0]?.expiration ?? 0;
-    expect(dropped).toBeGreaterThan(Date.now() / 1000);
-    expect(dropped).toBeLessThan(expires);
+    const responses = await Promise.all(
+      Array.from({ length: 50 }, () => node.get(`read-token?component=${pinned}`)),
+    );
+    expect(new Set(responses.map((response) => response.status))).toEqual(new Set([200]));
+    const answers = await Promise.all(responses.map((response) => response.text()));
+    expect(new Set(answers).size).toBe(1);
+    expect(artifacts.tokens(fork).filter((token) => token.asked.scope === "read")).toHaveLength(1);
+  });
+
+  it("serves the kept token until shortly before it expires, and then mints the next one", async () => {
+    const { artifacts, node, pinned, fork } = await nodeWithFork();
+    const first = await answer(node.get(`read-token?component=${pinned}`));
+    const { expires } = first.body as { expires: number };
+    const minted = () => artifacts.tokens(fork).filter((token) => token.asked.scope === "read");
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // Ten minutes before the token expires, a reader still has time to use it.
+    vi.setSystemTime((expires - 10 * 60) * 1000);
+    expect(await answer(node.get(`read-token?component=${pinned}`))).toEqual(first);
+    expect(minted()).toHaveLength(1);
+    // One minute before, it does not, so the node mints the next one.
+    vi.setSystemTime((expires - 60) * 1000);
+    const next = await answer(node.get(`read-token?component=${pinned}`));
+    expect(next.status).toBe(200);
+    expect(next.body).not.toEqual(first.body);
+    expect(minted()).toHaveLength(2);
+  });
+
+  it("asks Artifacts once when minting fails for requests made at once, and mints for the next request", async () => {
+    const { artifacts, node, pinned, fork } = await nodeWithFork();
+    const minted = () => artifacts.tokens(fork).filter((token) => token.asked.scope === "read");
+    artifacts.tokenFailures = 1;
+
+    const settled = await Promise.allSettled(
+      Array.from({ length: 5 }, () => node.get(`read-token?component=${pinned}`)),
+    );
+    expect(settled.map((one) => one.status)).toEqual(Array.from({ length: 5 }, () => "rejected"));
+    // The one failure was used up and no token exists, so no second request asked Artifacts.
+    expect(artifacts.tokenFailures).toBe(0);
+    expect(minted()).toHaveLength(0);
+
+    expect((await node.get(`read-token?component=${pinned}`)).status).toBe(200);
+    expect(minted()).toHaveLength(1);
   });
 
   it("keeps a token of its own for each fork", async () => {
@@ -314,7 +352,13 @@ describe("the public token route", () => {
       status: 409,
       body: { error: "not-ready" },
     });
-    expect(await env.READ_TOKENS.list()).toMatchObject({ keys: [] });
+    // No refusal is served again from the store: once the fork is ready, the first request mints its token.
+    artifacts.finish();
+    const { status, body } = await answer(node.get(`read-token?component=${pinned}`));
+    const fork = await repoOf(node.admin("fork", { component: pinned }));
+    const tokens = artifacts.tokens(fork).filter((token) => token.asked.scope === "read");
+    expect(tokens).toHaveLength(1);
+    expect({ status, body }).toMatchObject({ status: 200, body: { token: tokens[0]?.plaintext } });
   });
 });
 

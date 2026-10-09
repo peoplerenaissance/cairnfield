@@ -42,15 +42,14 @@ async function revokeOtherTokens(repo: Repo, role: Role): Promise<void> {
 /**
  * Reports a repo that a create, an import or a fork has started. A copy or a fork is
  * ready when `get()` no longer throws and `readCommit` returns the pinned commit, which
- * is also the check that it holds that commit (KTD36).
+ * is also the check that it holds that commit (KTD36). One that has finished without the
+ * commit never will hold it, so that is not found, and a caller need not wait for it.
  */
 async function report(repo: Repo | Unavailable, name: string, role: Role, pinned?: string): Promise<Response> {
-  let ready = false;
-  if (typeof repo !== "string") {
-    await revokeOtherTokens(repo, role);
-    ready = pinned === undefined || (await repo.readCommit(pinned)) !== null;
-  }
-  return Response.json({ repo: name, ready } satisfies AdminRepo);
+  if (typeof repo === "string") return Response.json({ repo: name, ready: false } satisfies AdminRepo);
+  await revokeOtherTokens(repo, role);
+  if (pinned !== undefined && (await repo.readCommit(pinned)) === null) return refusal("not-found");
+  return Response.json({ repo: name, ready: true } satisfies AdminRepo);
 }
 
 // Each of the three routes below may be called again and again. The first call starts
@@ -118,11 +117,14 @@ async function createFork(env: Env, { component }: ForkRequest): Promise<Respons
     // The import call that started the copy may never have been made again, so the token
     // Artifacts returned for the copy may still be active.
     await revokeOtherTokens(copy, "copy");
+    // A copy that finished without its commit gives a fork that never holds it.
+    if ((await copy.readCommit(component)) === null) return refusal("not-found");
+    // A read token kept under this name belongs to a fork that was deleted, and died with
+    // it. It is forgotten before the fork is made, so a call that fails here changes nothing.
+    await env.READ_TOKENS.get(env.READ_TOKENS.idFromName(name)).forget();
     // A fork copies only the default branch unless told otherwise, and a copy can report
     // a default branch it does not have (KTD36).
     await started(copy.fork(name, { defaultBranchOnly: false }));
-    // A read token kept under this name belongs to a fork that was deleted, and died with it.
-    await env.READ_TOKENS.delete(name);
     fork = await open(store, name);
   }
   return report(fork, name, "fork", component);

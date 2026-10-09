@@ -15,11 +15,13 @@ import {
   readTokenQuery,
   refusal,
 } from "./contract.ts";
-import type { NodeListing, NodePatch, RepoToken } from "./contract.ts";
+import type { NodeListing, NodePatch } from "./contract.ts";
 import type { Env } from "./env.ts";
 import { changedFiles, filesUnder } from "./tree.ts";
 
-// The Workflow that a push starts. The Wrangler config names this class.
+// The Workflow that a push starts and the object that keeps a fork's read token. The
+// Wrangler config names both classes.
+export { ReadTokens } from "./read-tokens.ts";
 export { OnPush } from "./workflow.ts";
 
 /** The head commit of the team repo with every file under its records folder. */
@@ -66,28 +68,30 @@ async function blob(store: Store, component: string, hash: string): Promise<Resp
   return new Response(content, { headers: { "content-type": "application/octet-stream" } });
 }
 
-/** A kept read token leaves the store this many seconds before it expires, so a reader has time to use it. */
-const KEPT_TOKEN_MARGIN = 5 * 60;
-
 /**
  * A read token for the fork of a component, for anyone who asks. The route takes a
  * component and nothing else, so it can name neither the team repo nor a write scope.
  * The node keeps one token per fork and serves that one until shortly before it expires,
  * so this route cannot mint without bound or spend the namespace's request budget (KTD7).
  */
-async function readToken(env: Env, component: string): Promise<Response> {
+async function readToken(env: Env, context: ExecutionContext, component: string): Promise<Response> {
   const name = forkOf(component);
-  const kept = await env.READ_TOKENS.get<RepoToken>(name, "json");
-  if (kept) return Response.json(kept);
-  const fork = await open(env.ARTIFACTS, name);
-  if (typeof fork === "string") return refusal(fork);
-  const token = await issueToken(fork, "read");
-  // The store drops the entry by itself, and the next request mints the next token.
-  await env.READ_TOKENS.put(name, JSON.stringify(token), { expiration: token.expires - KEPT_TOKEN_MARGIN });
-  return Response.json(token);
+  const kept = env.READ_TOKENS.get(env.READ_TOKENS.idFromName(name));
+  const asked = kept.tokenOr(async () => {
+    const fork = await open(env.ARTIFACTS, name);
+    return typeof fork === "string" ? fork : issueToken(fork, "read");
+  });
+  // The object calls back into this request to mint. A client that goes away must not
+  // take the mint with it: the requests waiting on the object would fail, and a token
+  // made but not yet kept would be lost. So this request lives until the object answers.
+  context.waitUntil(asked.then(noop, noop));
+  const token = await asked;
+  return typeof token === "string" ? refusal(token) : Response.json(token);
 }
 
-async function serve(path: string, url: URL, env: Env): Promise<Response> {
+function noop(): void {}
+
+async function serve(path: string, url: URL, env: Env, context: ExecutionContext): Promise<Response> {
   const store = env.ARTIFACTS;
   if (path === PATHS.listing) {
     return listingQuery(url) ? listing(store) : refusal("bad-request");
@@ -106,18 +110,18 @@ async function serve(path: string, url: URL, env: Env): Promise<Response> {
   }
   if (path === PATHS.readToken) {
     const query = readTokenQuery(url);
-    return query ? readToken(env, query.component) : refusal("bad-request");
+    return query ? readToken(env, context, query.component) : refusal("bad-request");
   }
   return refusal("not-found");
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     // A route path is relative to the node's base URL, and a deployed node lives at the root of its host.
     const path = url.pathname.slice(1);
     if (path.startsWith("admin/")) return admin(request, path, env);
     if (request.method !== "GET") return refusal("not-found");
-    return serve(path, url, env);
+    return serve(path, url, env, context);
   },
 } satisfies ExportedHandler<Env>;
