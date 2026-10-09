@@ -30,7 +30,9 @@
     ]
   },
   // NODE_URL is the node's own base URL, in the one spelling the protocol accepts (KTD8).
-  // The deploy scripts refuse to run without it, because a notice has to name the node.
+  // It is the origin the Worker answers at, with no path: this Worker serves its routes
+  // from the root of its host. The deploy scripts refuse to run without it, and the
+  // Workflow sends no notice for an address it cannot use.
   // INDEX_URL is the index address with no slash at its end. It may be left out: a node
   // with none sends no notice (KTD40). Both are set at deploy time. The admin key is a
   // secret, never a variable: see `.dev.vars.example`.

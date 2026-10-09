@@ -16,10 +16,11 @@ export class OnPush extends WorkflowEntrypoint<Env> {
     // A node with no index address sends no notice (KTD40).
     if (!index) return;
     // A notice names the node by its base URL in the one accepted spelling (KTD8), and
-    // the index refuses any other. A node that was deployed without that address cannot
-    // send one, so the instance ends in an error that says why.
-    if (!isNodeUrl(node)) {
-      throw new Error("NODE_URL is not a node base URL in the accepted spelling, so this node cannot name itself in a notice");
+    // the index refuses any other. This Worker also answers at the root of its host, so
+    // its address has no path. A node that was deployed without such an address cannot
+    // send a notice, and the instance ends in an error that says why.
+    if (!isNodeUrl(node) || new URL(node).pathname !== "/") {
+      throw new Error("NODE_URL is not this node's origin in the accepted spelling, so the node cannot name itself in a notice");
     }
     await step.do("send notice", async () => {
       // Plain `fetch` to the index's public URL (KTD28).
