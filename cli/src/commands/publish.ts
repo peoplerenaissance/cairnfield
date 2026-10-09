@@ -8,12 +8,11 @@
 // After the push the command tells a configured index that its node has news (KTD11).
 // The notice is a hint, and a run with nothing new to push sends it again.
 
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { INDEX_ROUTES, MAX_RECORD_BYTES, NODE_ROUTES, TEAM_BRANCH, validateRecordFile } from "@cairnfield/protocol";
 import type { FileMode } from "@cairnfield/protocol";
 import type { Home } from "../config.ts";
-import { fetchRef, readBlobs, said, withScratch } from "../git.ts";
+import { fetchRef, inputLines, readBlobs, said, withScratch, writeBlobs } from "../git.ts";
 import type { Access, Scratch } from "../git.ts";
 import type { Io } from "../io.ts";
 import { checkOutbox } from "../outbox.ts";
@@ -37,19 +36,9 @@ interface Stored {
   readonly blob: string;
 }
 
-const lines = (all: readonly string[]): Uint8Array => new TextEncoder().encode(all.map((line) => `${line}\n`).join(""));
-
-/** Stores each record's validated bytes as a blob, with no filter. */
+/** Stores each record's validated bytes as a blob. */
 async function storeBlobs(scratch: Scratch, records: readonly Checked[]): Promise<Stored[]> {
-  const dir = join(scratch.dir, "records");
-  await mkdir(dir);
-  const files = records.map((record, at) => ({ record, file: join(dir, String(at)) }));
-  await Promise.all(files.map(({ record, file }) => writeFile(file, record.content)));
-  const hashed = await scratch.git("hash-object", ["hash-object", "-w", "--no-filters", "--stdin-paths"], {
-    input: lines(files.map(({ file }) => file)),
-  });
-  const blobs = said(hashed).split("\n");
-  if (blobs.length !== records.length) stop(EXIT.git, "git-failed", { step: "hash-object" });
+  const blobs = await writeBlobs(scratch, records.map(({ content }) => content));
   return records.map((record, at) => ({ path: record.path, blob: blobs[at] ?? "" }));
 }
 
@@ -67,7 +56,7 @@ async function fetchHead(scratch: Scratch, access: Access): Promise<string | und
  */
 async function notYetIn(scratch: Scratch, commit: string, files: readonly Stored[]): Promise<Stored[]> {
   const asked = await scratch.git("cat-file", ["cat-file", "--batch-check"], {
-    input: lines(files.map(({ path }) => `${commit}:${path}`)),
+    input: inputLines(files.map(({ path }) => `${commit}:${path}`)),
   });
   // `<hash> <type> <size>` for a path the commit holds, and a line that ends in `missing` for one it lacks.
   const answers = said(asked).split("\n");
@@ -117,7 +106,7 @@ async function push(io: Io, scratch: Scratch, access: Access, records: readonly 
     await scratch.git("read-tree", head === undefined ? ["read-tree", "--empty"] : ["read-tree", head], { index });
     await scratch.git("update-index", ["update-index", "--add", "--index-info"], {
       index,
-      input: lines(added.map(({ path, blob }) => `${RECORD_MODE} blob ${blob}\t${path}`)),
+      input: inputLines(added.map(({ path, blob }) => `${RECORD_MODE} blob ${blob}\t${path}`)),
     });
     const tree = said(await scratch.git("write-tree", ["write-tree"], { index }));
     const parent = head === undefined ? [] : ["-p", head];

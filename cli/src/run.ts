@@ -7,6 +7,7 @@
 //   cairnfield claim <component> --kind review --check <kind> [--number <n>]
 //   cairnfield claim <component> --kind patch --findings <id>[,<id>] --intent <intent> [--number <n>]
 //   cairnfield view <component>
+//   cairnfield patch <component> --finding <id> [--replay]
 //
 // Each takes `--config <file>`. Without it the command reads `cairnfield.json` in the
 // working folder.
@@ -15,6 +16,7 @@ import { parseArgs } from "node:util";
 import type { ParseArgsConfig } from "node:util";
 import { isBranchName, isCommit, isHttpsUrl } from "@cairnfield/protocol";
 import { claim } from "./commands/claim.ts";
+import { patch } from "./commands/patch.ts";
 import { pin } from "./commands/pin.ts";
 import { publish } from "./commands/publish.ts";
 import { validate } from "./commands/validate.ts";
@@ -26,13 +28,16 @@ import { EXIT, failure, outcomeOf, stop } from "./outcome.ts";
 import type { Outcome } from "./outcome.ts";
 
 type Options = { readonly [name: string]: string | undefined };
+type Flags = { readonly [name: string]: boolean | undefined };
 
 interface Command {
   /** The options the command takes beside `--config`. Each has a value. */
   readonly options: readonly string[];
+  /** The options the command takes that have no value. */
+  readonly flags?: readonly string[];
   /** How many arguments the command takes that are no option. */
   readonly arguments: number;
-  run(io: Io, home: Home, args: readonly string[], options: Options): Promise<Outcome>;
+  run(io: Io, home: Home, args: readonly string[], options: Options, flags: Flags): Promise<Outcome>;
 }
 
 const usage = (): never => stop(EXIT.usage, "usage");
@@ -57,6 +62,13 @@ const COMMANDS: { readonly [name: string]: Command } = {
     arguments: 1,
     run: (io, home, [component]) => (isCommit(component) ? view(io, home, component) : usage()),
   },
+  patch: {
+    options: ["finding"],
+    flags: ["replay"],
+    arguments: 1,
+    run: (io, home, [component], { finding }, { replay }) =>
+      isCommit(component) ? patch(io, home, { component, finding, replay: replay === true }) : usage(),
+  },
 };
 
 async function dispatch(io: Io, argv: readonly string[]): Promise<Outcome> {
@@ -65,6 +77,7 @@ async function dispatch(io: Io, argv: readonly string[]): Promise<Outcome> {
   if (!command) return usage();
   const options: NonNullable<ParseArgsConfig["options"]> = { config: { type: "string" } };
   for (const option of command.options) options[option] = { type: "string" };
+  for (const flag of command.flags ?? []) options[flag] = { type: "boolean" };
   let parsed;
   try {
     parsed = parseArgs({ args: rest, options, allowPositionals: true, strict: true });
@@ -72,8 +85,9 @@ async function dispatch(io: Io, argv: readonly string[]): Promise<Outcome> {
     return usage();
   }
   if (parsed.positionals.length !== command.arguments) return usage();
+  // Each option was declared above with a value or without one, and is read as it was declared.
   const values = parsed.values as Options;
-  return command.run(io, await loadHome(io, values["config"]), parsed.positionals, values);
+  return command.run(io, await loadHome(io, values["config"]), parsed.positionals, values, parsed.values as Flags);
 }
 
 /** Runs one command. It never throws: whatever happens comes back as an outcome. */
