@@ -3,11 +3,12 @@
 // commits, and validates none of them.
 
 import { admin } from "./admin.ts";
-import { TEAM_BRANCH, TEAM_REPO, forkOf, issueToken, open } from "./artifacts.ts";
+import { TEAM_REPO, forkOf, issueToken, open } from "./artifacts.ts";
 import type { Store } from "./artifacts.ts";
 import {
   PATHS,
   RECORDS_FOLDER,
+  TEAM_BRANCH,
   blobQuery,
   fileQuery,
   listingQuery,

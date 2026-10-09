@@ -200,6 +200,12 @@ export interface RepoToken {
   readonly expires: number;
 }
 
+/**
+ * The branch of the team repo that records are pushed to. It is set when the repo is
+ * created, and the command pushes to the same one (KTD36).
+ */
+export const TEAM_BRANCH = "main";
+
 // The one index route the node calls: the notice (KTD11). The path joins the index address.
 
 export const NOTICE_PATH = "/notices";

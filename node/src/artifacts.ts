@@ -14,8 +14,6 @@ export type Repo = ArtifactsRepo;
 
 /** The repo that holds the team's records. */
 export const TEAM_REPO = "team";
-/** The branch of the team repo that records are pushed to. It is set when the repo is created (KTD36). */
-export const TEAM_BRANCH = "main";
 /** The pinned import of a component. No write token is ever issued for it (R8). */
 export const copyOf = (component: string): string => `copy-${component}`;
 /** The team's fork of a component copy, which holds its patch commits (KTD4). */

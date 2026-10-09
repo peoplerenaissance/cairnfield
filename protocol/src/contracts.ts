@@ -72,6 +72,12 @@ const count = () => int(0, Number.MAX_SAFE_INTEGER);
 const MAX_VIEW_ENTRIES = 50_000;
 const MAX_CITED_LINE_LENGTH = 65_536;
 
+/**
+ * The branch of a team repo that holds its records. The node reads its head from this
+ * branch and the command pushes to it, because neither relies on a default branch (KTD36).
+ */
+export const TEAM_BRANCH = "main";
+
 // Node contract (KTD7): public routes. The node validates nothing.
 
 /** The node's head commit with a listing of its record files (R7). */
