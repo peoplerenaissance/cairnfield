@@ -4,7 +4,7 @@
 
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
-import { NOTICE_PATH } from "./contract.ts";
+import { NOTICE_PATH, isNodeUrl } from "./contract.ts";
 import type { Notice } from "./contract.ts";
 import type { Env } from "./env.ts";
 
@@ -15,9 +15,12 @@ export class OnPush extends WorkflowEntrypoint<Env> {
     const { INDEX_URL: index, NODE_URL: node } = this.env;
     // A node with no index address sends no notice (KTD40).
     if (!index) return;
-    // A notice names the node. A node that was deployed without its own address cannot
+    // A notice names the node by its base URL in the one accepted spelling (KTD8), and
+    // the index refuses any other. A node that was deployed without that address cannot
     // send one, so the instance ends in an error that says why.
-    if (!node) throw new Error("NODE_URL is not set, so this node cannot name itself in a notice");
+    if (!isNodeUrl(node)) {
+      throw new Error("NODE_URL is not a node base URL in the accepted spelling, so this node cannot name itself in a notice");
+    }
     await step.do("send notice", async () => {
       // Plain `fetch` to the index's public URL (KTD28).
       const response = await fetch(`${index}${NOTICE_PATH}`, {

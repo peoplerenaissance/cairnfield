@@ -204,6 +204,33 @@ export interface RepoToken {
 
 export const NOTICE_PATH = "/notices";
 
+const MAX_HOSTNAME_LENGTH = 253;
+const HOST_LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+// A label that starts with `xn--` is Punycode, which a node hostname never holds.
+const NODE_HOST_LABEL = `(?!xn--)${HOST_LABEL}`;
+// A last label that a URL parser reads as a number, which makes the host an address.
+const NUMBER_LABEL = "(?:[0-9]+|0x[0-9a-f]*)";
+// 1 to 65535 with no zero in front, and never 443, which a URL parser drops.
+const NODE_PORT =
+  "(?!443(?:/|$))(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])";
+const NODE_PATH_PART = "[a-z0-9][a-z0-9._-]*";
+const NODE_URL = new RegExp(
+  `^https://(?=[a-z0-9.-]{1,${MAX_HOSTNAME_LENGTH}}(?:[:/]|$))(?:${NODE_HOST_LABEL}\\.)*(?!${NUMBER_LABEL}(?:[:/]|$))${NODE_HOST_LABEL}(?::${NODE_PORT})?(?:/${NODE_PATH_PART})*$`,
+);
+
+/**
+ * A node's base URL in its one accepted spelling (KTD8): lower-case `https://`, a
+ * hostname that is a name and never an address, a port only when it is not 443, a path
+ * for a node that lives under one, and no slash at the end. The index refuses a notice
+ * that names a node in any other spelling.
+ */
+export function isNodeUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > MAX_URL_LENGTH || !NODE_URL.test(value)) return false;
+  if (!URL.canParse(value)) return false;
+  const { href } = new URL(value);
+  return href === value || href === `${value}/`;
+}
+
 /** A notice names one node by its base URL. */
 export interface Notice {
   readonly node: string;
