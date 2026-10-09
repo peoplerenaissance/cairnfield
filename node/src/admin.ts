@@ -1,9 +1,9 @@
 // The admin routes (KTD10). The command calls them with the node's key to import a
 // component copy, create the team repo and a fork, and get repo tokens.
 
-import { LONGEST_TOKEN_LIFE, TEAM_BRANCH, TEAM_REPO, codeOf, copyOf, forkOf, issueToken, open } from "./artifacts.ts";
+import { LONGEST_TOKEN_LIFE, TEAM_REPO, codeOf, copyOf, forkOf, issueToken, open } from "./artifacts.ts";
 import type { Repo, Store, Unavailable } from "./artifacts.ts";
-import { ADMIN_KEY_HEADER, PATHS, forkRequest, importRequest, refusal, tokenRequest } from "./contract.ts";
+import { ADMIN_KEY_HEADER, PATHS, TEAM_BRANCH, forkRequest, importRequest, refusal, tokenRequest } from "./contract.ts";
 import type { AdminRepo, ForkRequest, ImportRequest, NodeError, TokenRequest } from "./contract.ts";
 import type { Env } from "./env.ts";
 

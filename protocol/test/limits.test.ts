@@ -15,6 +15,7 @@ import {
   isCommit,
   isHostname,
   isHttpsUrl,
+  isIndexUrl,
   isNodeUrl,
   isNamespaceName,
   isPath,
@@ -252,6 +253,28 @@ describe("https url", () => {
     expect(isHttpsUrl(longest)).toBe(true);
     expect(isHttpsUrl(`${longest}a`)).toBe(false);
     expect(isHttpsUrl(new URL(NODE_A))).toBe(false);
+  });
+});
+
+describe("index address", () => {
+  it("accepts an HTTPS origin, with a port or a path when the index has one", () => {
+    const accepted = ["https://index.cairnfield.example", "https://index.cairnfield.example:8443", "https://cairnfield.example/index"];
+    for (const value of accepted) expect(isIndexUrl(value), value).toBe(true);
+  });
+
+  it.each([
+    ["a slash at the end", "https://index.cairnfield.example/"],
+    ["a slash after a path", "https://cairnfield.example/index/"],
+    ["another scheme", "http://index.cairnfield.example"],
+    ["a query", "https://index.cairnfield.example?x=1"],
+    ["an empty query after a path", "https://cairnfield.example/index?"],
+    ["a fragment", "https://index.cairnfield.example#notices"],
+    ["credentials", "https://user:pw@index.cairnfield.example"],
+    ["an upper-case host", "https://Index.Cairnfield.example"],
+    ["no address", ""],
+    ["no string", undefined],
+  ])("rejects %s", (_why, value) => {
+    expect(isIndexUrl(value)).toBe(false);
   });
 });
 

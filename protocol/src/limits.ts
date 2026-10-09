@@ -102,6 +102,15 @@ export function isHttpsUrl(value: unknown): value is string {
   return parsed.href === value || parsed.href === `${value}/`;
 }
 
+/**
+ * The address of an index, as a node and the command are configured with it. A route is
+ * joined to it, so it is an HTTPS URL with no credentials, no query, no fragment and no
+ * slash at its end.
+ */
+export function isIndexUrl(value: unknown): value is string {
+  return isHttpsUrl(value) && !/[?#]/.test(value) && !value.endsWith("/");
+}
+
 const NODE_PATH_PART = "[a-z0-9][a-z0-9._-]*";
 // A label that starts with `xn--` is Punycode. A URL parser refuses one it cannot decode,
 // which a pattern cannot tell, so a node hostname holds none.

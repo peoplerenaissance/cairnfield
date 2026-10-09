@@ -116,8 +116,13 @@ export function isFileMode(mode: string): mode is FileMode {
   return (FILE_MODES as readonly string[]).includes(mode);
 }
 
+/** The mode of a symbolic link. */
+export const LINK_MODE = "120000";
+/** The mode of a submodule entry. */
+export const SUBMODULE_MODE = "160000";
+
 /** Every mode a file listing can hold: regular file, executable, symbolic link, submodule entry. */
-export const ENTRY_MODES = [...FILE_MODES, "120000", "160000"] as const;
+export const ENTRY_MODES = [...FILE_MODES, LINK_MODE, SUBMODULE_MODE] as const;
 export type EntryMode = (typeof ENTRY_MODES)[number];
 
 /** The fixed marker for a deletion (KTD4): the mode and the hash that Git itself writes for a missing file. */
