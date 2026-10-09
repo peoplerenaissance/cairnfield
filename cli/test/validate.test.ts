@@ -150,6 +150,14 @@ describe("validate", () => {
     expect(await on.run("validate")).toEqual({ code: EXIT.failed, output: { error: "bad-checkout", component: first } });
   });
 
+  it("fails when the outbox is there and cannot be read, and does not call it empty", async () => {
+    await pinned(on);
+    writeFileSync(join(on.home, ".cairnfield/outbox"), "a file where the folder should be\n");
+
+    expect(await on.run("validate")).toEqual({ code: EXIT.failed, output: { error: "outbox-unreadable" } });
+    expect(await on.run("publish")).toEqual({ code: EXIT.failed, output: { error: "outbox-unreadable" } });
+  });
+
   it("finds nothing wrong with an outbox that does not exist yet", async () => {
     expect(await on.run("validate")).toEqual({ code: EXIT.ok, output: { records: 0, rejected: [] } });
   });

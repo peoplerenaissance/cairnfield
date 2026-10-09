@@ -14,6 +14,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { INDEX_ROUTES, hunksTouch, isConfirmed, matchGroups, patchConfirmations } from "@cairnfield/protocol";
 import type { Sourced, View } from "@cairnfield/protocol";
+import { inCheckout } from "../config.ts";
 import type { Home } from "../config.ts";
 import type { Io } from "../io.ts";
 import { parseLens } from "../lens.ts";
@@ -24,9 +25,12 @@ import { callIndex, indexFailed } from "../services.ts";
 /** The nodes whose work counts for the team: its own, and those its lens names. */
 async function countedNodes(home: Home): Promise<ReadonlySet<string>> {
   if (home.config.lens === undefined) return stop(EXIT.usage, "no-lens");
+  const file = resolve(home.root, home.config.lens);
+  // A lens says whose work counts. One read from a checkout would be the component's own say.
+  if (await inCheckout(file)) return stop(EXIT.usage, "bad-lens", { reason: "in-checkout" });
   let text: string;
   try {
-    text = await readFile(resolve(home.root, home.config.lens), "utf8");
+    text = await readFile(file, "utf8");
   } catch {
     return stop(EXIT.usage, "no-lens");
   }

@@ -20,6 +20,7 @@ import {
 import type { AnyRecord, RejectionReason } from "@cairnfield/protocol";
 import { citedFileReader, readListing } from "./checkout.ts";
 import type { Home } from "./config.ts";
+import { EXIT, stop } from "./outcome.ts";
 
 /** A record file that passed both layers. */
 export interface Checked {
@@ -51,9 +52,10 @@ async function entries(outbox: string): Promise<{ readonly path: string; readonl
   let found;
   try {
     found = await readdir(outbox, { recursive: true, withFileTypes: true });
-  } catch {
-    // No outbox yet is an empty outbox.
-    return [];
+  } catch (error) {
+    // No outbox yet is an empty outbox. An outbox that cannot be read is not: records may wait in it.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    return stop(EXIT.failed, "outbox-unreadable");
   }
   return found
     .filter((entry) => !entry.isDirectory())

@@ -10,10 +10,10 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { INDEX_ROUTES, NODE_ROUTES, TEAM_BRANCH } from "@cairnfield/protocol";
+import { INDEX_ROUTES, NODE_ROUTES, TEAM_BRANCH, validateRecordFile } from "@cairnfield/protocol";
 import type { FileMode } from "@cairnfield/protocol";
 import type { Home } from "../config.ts";
-import { fetchRef, said, withScratch } from "../git.ts";
+import { fetchRef, readBlobs, said, withScratch } from "../git.ts";
 import type { Access, Scratch } from "../git.ts";
 import type { Io } from "../io.ts";
 import { checkOutbox } from "../outbox.ts";
@@ -59,14 +59,36 @@ async function fetchHead(scratch: Scratch, access: Access): Promise<string | und
   return said(listed) === "" ? undefined : fetchRef(scratch, access, BRANCH);
 }
 
-/** The files a commit does not hold yet. Only these are asked about, however many the commit holds. */
+/**
+ * The files a commit does not hold yet. Only these files are asked about, however many
+ * the commit holds. A path the commit does hold must hold this record already: the same
+ * bytes, or the same record with other spacing. Anything else there ends the command,
+ * because a published record is never written over, and the record is not published.
+ */
 async function notYetIn(scratch: Scratch, commit: string, files: readonly Stored[]): Promise<Stored[]> {
   const asked = await scratch.git("cat-file", ["cat-file", "--batch-check"], {
     input: lines(files.map(({ path }) => `${commit}:${path}`)),
   });
+  // `<hash> <type> <size>` for a path the commit holds, and a line that ends in `missing` for one it lacks.
   const answers = said(asked).split("\n");
   if (answers.length !== files.length) stop(EXIT.git, "git-failed", { step: "cat-file" });
-  return files.filter((_, at) => answers[at]?.endsWith(" missing"));
+  const missing: Stored[] = [];
+  const conflicts: string[] = [];
+  const unlike: { readonly path: string; readonly hash: string }[] = [];
+  files.forEach((file, at) => {
+    const [hash = "", type = ""] = (answers[at] ?? "").split(" ");
+    if (answers[at]?.endsWith(" missing")) missing.push(file);
+    else if (type !== "blob") conflicts.push(file.path);
+    else if (hash !== file.blob) unlike.push({ path: file.path, hash });
+  });
+  const held = await readBlobs(scratch, [...new Set(unlike.map(({ hash }) => hash))]);
+  for (const { path, hash } of unlike) {
+    // The file name is the record's ID, so a valid record file at this path is this record.
+    const there = await validateRecordFile(path, held.get(hash) ?? new Uint8Array(0));
+    if (!there.ok) conflicts.push(path);
+  }
+  if (conflicts.length > 0) stop(EXIT.git, "record-conflict", { records: conflicts.sort() });
+  return missing;
 }
 
 /** Whether the remote turned the push down because the branch is not where the push expects it. */

@@ -2,7 +2,7 @@
 // from a node the lens does not name (R23, KTD38). The index is a fake that serves the
 // protocol's own view shape.
 
-import { cpSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SCHEMA_VERSION, VIEW, conforms, recordId, recordPath } from "@cairnfield/protocol";
@@ -278,6 +278,20 @@ describe("view", () => {
     writeFileSync(join(on.home, "lenses/level-3.json"), JSON.stringify({ patchLevel: 3, teams: [], patchKinds: [], publishRecipes: false }));
     on.configure({ node: NODE, index: INDEX, lens: "lenses/level-3.json" });
     expect(await on.run("view", COMPONENT)).toEqual({ code: EXIT.usage, output: { error: "bad-lens", reason: "level-3-not-built" } });
+    expect(on.requests).toEqual([]);
+  });
+
+  it("never reads a lens from a checkout, where a component could have put one", async () => {
+    const inside = join(on.home, ".cairnfield/checkouts", COMPONENT);
+    mkdirSync(inside, { recursive: true });
+    // A lens of the component's own, which names its author's node as a team to trust.
+    writeFileSync(join(inside, "lens.json"), JSON.stringify({ patchLevel: 2, teams: [THIRD_NODE], patchKinds: [], publishRecipes: false }));
+    symlinkSync(join(inside, "lens.json"), join(on.home, "lenses/linked.json"));
+
+    for (const lens of [`.cairnfield/checkouts/${COMPONENT}/lens.json`, "lenses/linked.json"]) {
+      on.configure({ node: NODE, index: INDEX, lens });
+      expect(await on.run("view", COMPONENT), lens).toEqual({ code: EXIT.usage, output: { error: "bad-lens", reason: "in-checkout" } });
+    }
     expect(on.requests).toEqual([]);
   });
 

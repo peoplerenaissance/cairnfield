@@ -47,8 +47,10 @@ export async function readListing(home: Home, component: string): Promise<Listin
   let text: string;
   try {
     text = await readFile(listingFile(home, component), "utf8");
-  } catch {
-    return undefined;
+  } catch (error) {
+    // No listing means the commit is not pinned here. A listing that cannot be read does not.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    return stop(EXIT.failed, "bad-checkout", { component });
   }
   let listing: unknown;
   try {

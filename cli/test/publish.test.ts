@@ -159,6 +159,25 @@ describe("publish", () => {
     expect(git(on.repo("team"), ["rev-parse", `${TEAM_BRANCH}:${path}`])).toBe(before);
   });
 
+  it("fails when the branch holds something else where a record belongs, and writes over nothing", async () => {
+    const { first } = await pinned(on);
+    await putRecord(on, finding(first));
+    await on.run("publish");
+    const other = await putRecord(on, finding(first, { location: { path: "README.md", start: 1, end: 1 } }));
+    const under = await putRecord(on, finding(first, { location: { path: "README.md", start: 2, end: 2 } }));
+    // Someone pushed a file that is no record to one path, and a folder to the other.
+    pushFromElsewhere(other);
+    pushFromElsewhere(`${under}/stray.json`);
+    const head = git(on.repo("team"), ["rev-parse", TEAM_BRANCH]);
+    const pushes = on.gitCalls.filter(([command]) => command === "push").length;
+
+    const outcome = await on.run("publish");
+
+    expect(outcome).toEqual({ code: EXIT.git, output: { error: "record-conflict", records: [other, under].sort() } });
+    expect(git(on.repo("team"), ["rev-parse", TEAM_BRANCH])).toBe(head);
+    expect(on.gitCalls.filter(([command]) => command === "push")).toHaveLength(pushes);
+  });
+
   it("does nothing for an empty outbox", async () => {
     await pinned(on);
     const requests = on.requests.length;
