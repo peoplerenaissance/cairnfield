@@ -1,0 +1,6 @@
+{
+  "name": "fellbeck-sync",
+  "version": "0.4.0",
+  "description": "Keeps a folder of Markdown notes in step with Fellbeck Notes.",
+  "commands": { "setup": "scripts/setup.sh" }
+}

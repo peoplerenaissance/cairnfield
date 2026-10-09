@@ -116,7 +116,9 @@ export async function runAgent<T>(io: Io, run: AgentRun<T>): Promise<Checked<T>>
       answer = undefined;
     }
     const checked = await run.check(answer);
-    if (checked.ok || retried) return checked;
+    if (checked.ok) return checked;
+    io.warn(`answer-refused ${checked.reason}\n`);
+    if (retried) return checked;
     retried = true;
     messages.push({ role: "user", content: `refused: ${checked.reason}` });
   }

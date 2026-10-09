@@ -95,6 +95,7 @@ describe("the live agent", () => {
 
     expect(on.model.requests).toHaveLength(2);
     expect(sent(1).messages.at(-1)).toEqual({ role: "user", content: "refused: not-fine" });
+    expect(on.warnings).toEqual(["answer-refused not-fine\n"]);
   });
 
   it("gives up after a second answer that fails the check", async () => {

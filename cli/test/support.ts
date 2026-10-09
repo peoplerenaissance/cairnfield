@@ -3,6 +3,7 @@
 // Artifacts repos. Every host, key and token here is invented.
 
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -31,7 +32,8 @@ export const NAMESPACE = "cairnfield-team-a";
 export const ADMIN_KEY = "the-admin-key-of-team-a";
 export const REGISTRATION_KEY = "the-registration-key";
 export const MODEL_API = "https://api.anthropic.com";
-export const MODEL_KEY = "the-model-key-of-team-a";
+// Drawn for each run. It stands in for a model key, and no service ever sees it.
+export const MODEL_KEY = `model-key-${randomUUID()}`;
 // Built here, so the secret scan does not read the source as holding a token.
 export const TOKEN = `art_v2_${"5e".repeat(20)}?expires=1900000000`;
 

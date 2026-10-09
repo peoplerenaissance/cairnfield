@@ -18,8 +18,8 @@ The site describes the launch. This table describes today.
 | Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its two commits are public at https://github.com/peoplerenaissance/fellbeck-sync, so a node can import them. |
 | Team node | built and deployed | The Worker in `node/`: the node contract, the admin routes and the push Workflow. Two demo nodes run on Cloudflare. Each has imported the demo plugin and made its fork, and Artifacts refused a push made with a node's public read token. |
 | Index | planned |  |
-| The command | built in part | `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim` and `view`. It needs a node and no index. |
-| Patch agent | planned | Live, record and replay modes. |
+| The command | built in part | `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim`, `view` and `patch`. It needs a node and no index. |
+| Patch agent | built, live run pending | `cairnfield patch` writes a patch for one of a team's own findings as a checked commit and a patch record, from a live model call or from a recording. The tests use a fake model. The live run and its recording are not made yet. |
 | Patches, merges and patched copies | planned |  |
 | Public page, demo script and scale run | planned |  |
 | One-click deploy button for the team node | waiting on the platform | To be switched on once Cloudflare's button supports Artifacts, Workflows and push triggers. A setup script deploys the node until then. |
@@ -57,12 +57,12 @@ A third idea needs no build step.
 | --- | --- |
 | `protocol/` | The protocol library: every record, limit and check, as pure functions with no platform dependency. |
 | `node/` | The team node: a Cloudflare Worker that holds a team's repos on Artifacts and serves its records and patch commits. |
-| `cli/` | The `cairnfield` command: it pins a component, validates the outbox of record files and publishes it to the team's node. |
-| `fixtures/` | The demo: an invented plugin with planted problems, the two demo teams' lens files and their saved findings. Not for installing. |
+| `cli/` | The `cairnfield` command: it pins a component, validates the outbox of record files, publishes it to the team's node and writes patches with a bundled agent. |
+| `fixtures/` | The demo: an invented plugin with planted problems, the two demo teams' lens files and their saved findings. Also two small components with planted instructions, for checking the patch agent. Not for installing. |
 | `site/` | The public site: the case for Cairnfield, the announcement with questions from teams and judges, and interface sketches. A Cloudflare Worker serving static files. |
 | `AGENTS.md` | Instructions and rules for coding agents working in this repo. |
 
-The rest of the product code arrives unit by unit from the plan, in `index/`, `cli/` and `sim/`. `cli/` holds the first five commands, and the other two hold placeholders. The protocol, the threat model and the platform notes will be in `reference/`.
+The rest of the product code arrives unit by unit from the plan, in `index/`, `cli/` and `sim/`. `cli/` holds the first six commands, and the other two hold placeholders. The protocol, the threat model and the platform notes will be in `reference/`.
 
 ## Running the command
 
