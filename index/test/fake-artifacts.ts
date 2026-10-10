@@ -135,6 +135,8 @@ class RepoState {
   readonly tokens: IssuedToken[] = [];
   /** How many times the index read a blob of this repo. */
   blobReads = 0;
+  /** How many times the index read a tree of this repo. */
+  treeReads = 0;
 }
 
 /** A public repo on another host, for `import` to copy: its branches and what they reach. */
@@ -246,6 +248,11 @@ export class FakeArtifacts implements Store {
     return { blobs: this.#state(repo).blobReads };
   }
 
+  /** How many times the index has read a tree from a repo. */
+  treeReads(repo: string): number {
+    return this.#state(repo).treeReads;
+  }
+
   #state(repo: string): RepoState {
     const state = this.#repos.get(repo);
     if (!state) throw new Error(`the fake has no repo ${repo}`);
@@ -279,6 +286,7 @@ export class FakeArtifacts implements Store {
         return object?.kind === "blob" ? new Blob([object.content]) : null;
       },
       readTree: async (hash) => {
+        state.treeReads += 1;
         const object = state.objects.get(hash);
         return object?.kind === "tree" ? object.entries.map((child) => ({ ...child })) : null;
       },

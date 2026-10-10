@@ -124,7 +124,7 @@ export type Settings = { readonly [K in "GIT_URLS" | "CLAIM_TTL_SECONDS" | "MAX_
 export function bench(settings: Settings = {}): Bench {
   const artifacts = new FakeArtifacts();
   const queue = new FakeQueue();
-  const set = { GIT_URLS: UPSTREAM, CLAIM_TTL_SECONDS: "900", MAX_NODES: "64", MAX_COMPONENTS: "16", REGISTRATION_KEY, RESET_KEY, ...settings };
+  const set = { GIT_URLS: UPSTREAM, CLAIM_TTL_SECONDS: "900", MAX_NODES: "8", MAX_COMPONENTS: "16", REGISTRATION_KEY, RESET_KEY, ...settings };
   const bindings: Env = {
     ARTIFACTS: artifacts,
     DB: env.DB,

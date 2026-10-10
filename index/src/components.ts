@@ -23,6 +23,12 @@ const POLL_SECONDS = 5;
  * A first value.
  */
 const IMPORT_DEADLINE_MS = 5 * 60_000;
+/**
+ * The most folders and the most files that the walk of a copy's tree takes. A copy with
+ * more of either is given up. First values.
+ */
+const MAX_COPY_FOLDERS = 500;
+const MAX_COPY_FILES = 20_000;
 /** One statement holds this many rows of a listing: four values a row, under the limit of 100 a statement. */
 const ROWS_PER_STATEMENT = 25;
 const STATEMENTS_PER_BATCH = 40;
@@ -43,17 +49,31 @@ export function componentOf(env: Env, component: string): Promise<Component | nu
   return env.DB.prepare("SELECT * FROM components WHERE component = ?").bind(component).first<Component>();
 }
 
+/** What one walk of a copy's tree has met so far: the folders below the commit's tree, and the files. */
+interface Walked {
+  folders: number;
+  readonly files: FileEntry[];
+}
+
 /**
- * Every file under a tree, with its path after `prefix`. `readTree` gives the children of
- * one tree per call. The trees below add to the one list.
+ * Every file under a tree, with its path after `prefix`, or nothing when the copy holds
+ * more folders or more files than a walk takes. `readTree` gives the children of one tree
+ * per call. The trees below add to the one list. The walk ends at the first entry past a
+ * cap: it reads no tree and takes no file after it.
  */
-async function filesUnder(repo: Repo, tree: string, prefix: string, files: FileEntry[] = []): Promise<FileEntry[]> {
+async function filesUnder(repo: Repo, tree: string, prefix: string, walked: Walked = { folders: 0, files: [] }): Promise<FileEntry[] | undefined> {
   for (const child of (await repo.readTree(tree)) ?? []) {
     const path = `${prefix}${child.name}`;
-    if (child.type === "tree") await filesUnder(repo, child.hash, `${path}/`, files);
-    else files.push({ path, mode: child.mode, blob: child.hash });
+    if (child.type === "tree") {
+      walked.folders += 1;
+      if (walked.folders > MAX_COPY_FOLDERS) return undefined;
+      if ((await filesUnder(repo, child.hash, `${path}/`, walked)) === undefined) return undefined;
+    } else {
+      if (walked.files.length === MAX_COPY_FILES) return undefined;
+      walked.files.push({ path, mode: child.mode, blob: child.hash });
+    }
   }
-  return files;
+  return walked.files;
 }
 
 /**
@@ -101,10 +121,16 @@ async function rejectLate(env: Env, component: string): Promise<void> {
   ]);
 }
 
-/** Stores the listing of a copy that is ready: each path with its mode and blob (KTD12). */
-async function storeListing(env: Env, component: string, repo: Repo, tree: string): Promise<void> {
+/**
+ * Stores the listing of a copy that is ready: each path with its mode and blob (KTD12).
+ * Returns whether it did. It stores nothing for a copy with more folders or files than a
+ * walk takes.
+ */
+async function storeListing(env: Env, component: string, repo: Repo, tree: string): Promise<boolean> {
+  const walked = await filesUnder(repo, tree, "");
+  if (!walked) return false;
   // A path that no record can cite is left out, and so is an entry with a mode Git does not have.
-  const files = (await filesUnder(repo, tree, "")).filter(({ path, mode }) => isPath(path) && (ENTRY_MODES as readonly string[]).includes(mode));
+  const files = walked.filter(({ path, mode }) => isPath(path) && (ENTRY_MODES as readonly string[]).includes(mode));
   // A commit's tree never changes, so a look that runs twice finds its rows there and leaves them.
   const statements = [];
   for (let at = 0; at < files.length; at += ROWS_PER_STATEMENT) {
@@ -120,6 +146,7 @@ async function storeListing(env: Env, component: string, repo: Repo, tree: strin
   for (let at = 0; at < statements.length; at += STATEMENTS_PER_BATCH) {
     await env.DB.batch(statements.slice(at, at + STATEMENTS_PER_BATCH));
   }
+  return true;
 }
 
 /**
@@ -164,7 +191,8 @@ async function lookAtCopy(env: Env, held: Component, now: number): Promise<"read
   const pinned = await copy.readCommit(component);
   // A copy that finished without the commit never will hold it.
   if (!pinned) return failed("NOT_FOUND");
-  await storeListing(env, component, copy, pinned.treeHash);
+  // A copy too large to list is given up with no error code, as one that ran out of time is.
+  if (!(await storeListing(env, component, copy, pinned.treeHash))) return failed();
   return "ready";
 }
 

@@ -26,7 +26,10 @@
   // between two. An index with none imports nothing. It is set at deploy time.
   // CLAIM_TTL_SECONDS is how long a claim stays live after the index receives it (KTD15).
   // MAX_NODES and MAX_COMPONENTS cap what can be registered (KTD30). First values.
+  // MAX_NODES is 8 because a view with no `teams` query reads every record of a
+  // component. At 8 nodes of 500 records of 4 KB each that is 16 MB at most, under what
+  // the command reads of a view.
   // The registration key and the reset key are secrets, never variables: see
   // `.dev.vars.example`.
-  "vars": { "GIT_URLS": "", "CLAIM_TTL_SECONDS": "900", "MAX_NODES": "64", "MAX_COMPONENTS": "16" }
+  "vars": { "GIT_URLS": "", "CLAIM_TTL_SECONDS": "900", "MAX_NODES": "8", "MAX_COMPONENTS": "16" }
 }
