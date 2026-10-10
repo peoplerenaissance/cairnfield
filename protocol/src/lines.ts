@@ -6,6 +6,12 @@
 
 const LINE_FEED = 10;
 
+/** Lines of one content. Lines count from 1 and the range includes both ends. */
+export interface LineRange {
+  readonly start: number;
+  readonly end: number;
+}
+
 /** The offset at which each line starts. */
 export function lineStarts(content: Uint8Array): number[] {
   const starts: number[] = [];

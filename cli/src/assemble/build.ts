@@ -5,7 +5,8 @@
 // applied against that old content. So patches on adjoining lines compose, and the copy
 // does not depend on the order the patches come in. Two patches that change the same
 // line of one content, or add lines at the same place, do not compose, and the selection
-// is refused. The result goes to every path that holds the old content.
+// is refused. So is a selection whose result changes a line that none of its patches
+// cites (KTD37). The result goes to every path that holds the old content.
 
 import { DELETED_BLOB, DELETED_MODE, MAX_PATCH_LINES, MAX_RECIPE_PATCHES, compare, diffLines, gitBlobHash, linesAreInScope, splitLines } from "@cairnfield/protocol";
 import type { CitedRange, FileEntry, FileListing, Hunk } from "@cairnfield/protocol";
@@ -141,7 +142,7 @@ export async function compose(files: FileListing, patches: readonly Verified[]):
     // so two patches on a run of equal lines can each pass and still move an uncited line
     // together. The patches named are the first two that edit the content.
     if (!linesAreInScope(before, applied.content, cited)) {
-      const [one = "", two = one] = [...wrote.keys()].sort();
+      const [one = "", two = one] = wrote.keys();
       return conflict(one, two);
     }
     const newBlob = await gitBlobHash(applied.content);

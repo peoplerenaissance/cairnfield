@@ -6,7 +6,7 @@ import { MAX_BLOB_BYTES, MAX_PATCH_ADDED_BYTES } from "../src/limits.ts";
 import { countLines } from "../src/lines.ts";
 import { applyChanges, checkPatch, patchId } from "../src/patch-checks.ts";
 import type { CitedRange, PatchVerdict } from "../src/patch-checks.ts";
-import { fileSet, lines, utf8 } from "./fixtures.ts";
+import { fileSet, lines, seeded, utf8 } from "./fixtures.ts";
 import type { Tree } from "./fixtures.ts";
 
 const blobOf = (text: string): Promise<string> => gitBlobHash(utf8(text));
@@ -110,7 +110,7 @@ describe("scope (R11)", () => {
   // Scope is decided from the two contents, so it does not matter which of two equal
   // lines the diff reports as the changed one (KTD37).
   const rules = "rules.txt";
-  const withRules = (rows: readonly string[]): Tree => ({ ...BASE, [rules]: rows.map((row) => `${row}\n`).join("") });
+  const withRules = (rows: readonly string[]): Tree => ({ [rules]: rows.map((row) => `${row}\n`).join("") });
   type Range = readonly [start: number, end: number];
   const scoped = (before: readonly string[], after: readonly string[], ...cited: readonly Range[]): Promise<PatchVerdict> =>
     check(withRules(before), withRules(after), cited.map(([start, end]) => [rules, start, end] as const));
@@ -185,14 +185,7 @@ describe("scope (R11)", () => {
   });
 
   it("passes exactly the patches that keep every uncited line in place, for random contents", async () => {
-    // A fixed sequence, so the run is the same every time.
-    let state = 20261009;
-    const random = (below: number): number => {
-      state = (state + 0x6d2b79f5) | 0;
-      let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
-      mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
-      return ((mixed ^ (mixed >>> 14)) >>> 0) % below;
-    };
+    const random = seeded(20261009);
     const words = ["allow", "deny", "log"];
     const rows = (count: number): string[] => Array.from({ length: count }, () => words[random(words.length)] ?? "allow");
     const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((row, at) => row === b[at]);

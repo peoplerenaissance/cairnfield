@@ -12,7 +12,7 @@ import type { FileEntry, FileListing } from "./files.ts";
 import { gitBlobHash, sha256Hex } from "./hash.ts";
 import { MAX_BLOB_BYTES, MAX_PATCH_ADDED_BYTES, MAX_PATCH_LINES, MAX_PATCH_REPLACEMENTS } from "./limits.ts";
 import { linesOf, splitLines } from "./lines.ts";
-import type { LineRange } from "./match.ts";
+import type { LineRange } from "./lines.ts";
 
 /** The files of one commit, with the content of the blobs a check must read, by blob hash. */
 export interface FileSet {
@@ -153,8 +153,10 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
  * lines it reads and not with their product, whatever a hostile content repeats.
  */
 function findStretch(lines: readonly Uint8Array[], stretch: readonly Uint8Array[], from: number, to: number): number | undefined {
+  // A stretch with no line lies anywhere.
+  if (stretch.length === 0) return from;
   const same = (line: Uint8Array | undefined, at: number): boolean => sameBytes(line ?? NO_CONTENT, stretch[at] ?? NO_CONTENT);
-  // For each start of the stretch, how much of that start is also its own end.
+  // For the stretch up to each line: the longest start of it, short of the whole, that is also its end.
   const fallback = new Int32Array(stretch.length);
   for (let at = 1, held = 0; at < stretch.length; at++) {
     while (held > 0 && !same(stretch[at], held)) held = fallback[held - 1] ?? 0;
@@ -192,14 +194,14 @@ export function linesAreInScope(before: Uint8Array, after: Uint8Array, cited: re
   const last = old.slice(next);
   const holdsAt = (stretch: readonly Uint8Array[], at: number): boolean =>
     stretch.every((line, i) => sameBytes(line, now[at + i] ?? NO_CONTENT));
-  const first = stretches.shift();
+  const [first, ...between] = stretches;
   // With no cited range the whole content is one stretch, and nothing may change.
   if (first === undefined) return now.length === last.length && holdsAt(last, 0);
   const under = now.length - last.length;
   if (under < first.length || !holdsAt(first, 0) || !holdsAt(last, under)) return false;
   // Each stretch between two ranges is looked for after the one before it.
   let from = first.length;
-  for (const stretch of stretches) {
+  for (const stretch of between) {
     const found = findStretch(now, stretch, from, under);
     if (found === undefined) return false;
     from = found + stretch.length;

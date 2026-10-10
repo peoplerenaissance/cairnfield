@@ -249,6 +249,20 @@ export function without(record: object, field: string): { [key: string]: unknown
 }
 
 /** Text with the given number of lines, each ending in a line break. */
+/**
+ * Whole numbers below a bound, in a fixed sequence for a seed, so a test with random
+ * input runs the same every time.
+ */
+export function seeded(seed: number): (below: number) => number {
+  let state = seed;
+  return (below) => {
+    state = (state + 0x6d2b79f5) | 0;
+    let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+    mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+    return ((mixed ^ (mixed >>> 14)) >>> 0) % below;
+  };
+}
+
 export function lines(count: number, text: (line: number) => string = (line) => `line ${line}`): string {
   let out = "";
   for (let line = 1; line <= count; line++) {
