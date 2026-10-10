@@ -162,6 +162,19 @@ describe("a record from a registered node (R9, R12)", () => {
     expect(await stored()).toBe(2);
   });
 
+  it("syncs a registered node that has no team repo yet: nothing is stored and no file is asked for", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: true, stored: 0, more: false });
+    expect(node.requests).toEqual([`${NODE_A}/records`]);
+    expect(await stored()).toBe(0);
+    expect((await on.view(component)).nodes).toEqual([{ node: NODE_A, simulated: false, historyRewritten: false }]);
+  });
+
   it("reads a node with more new records than one pass takes over several passes", async () => {
     const on = bench();
     const node = new FakeNode(NODE_A);
@@ -273,6 +286,73 @@ describe("what the index refuses to read from a node (KTD6, KTD30)", () => {
     expect(asked).toEqual([`${NODE_A}/records`]);
   });
 
+  it("refuses a listing whose body is one byte over the limit, and reads one that is exactly at it", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    const [id = ""] = await node.publish(finding(component));
+    // The listing of the one record, with white space after it. The limit is 5,000 entries of 512 bytes.
+    const listing = JSON.stringify({ head: node.head, records: [{ path: pathOf(component, id), blob: "0a".repeat(20) }] });
+    const limit = 5000 * 512;
+    let bytes = limit + 1;
+    node.respond = (url) => (url.pathname === "/records" ? new Response(listing.padEnd(bytes)) : undefined);
+
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: false, reason: "too-large" });
+    expect(node.requests.filter((url) => url.includes("/file?"))).toEqual([]);
+    expect(await stored()).toBe(0);
+
+    bytes = limit;
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: true, head: node.head, stored: 1, more: false });
+  });
+
+  it.each([
+    ["an error status", (): Response => new Response(null, { status: 500 }), "bad-answer"],
+    ["a redirect", (): Response => new Response(null, { status: 302, headers: { location: "https://elsewhere.example/file" } }), "redirected"],
+  ] as const)("stops a pass at a record file answered with %s, keeps the records before it, and reads the rest in a later sync", async (_what, answer, reason) => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    const asked = nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    // A pass takes the files in the order of their paths, which is the order of the record IDs.
+    const published = await node.publish(...["README.md", "scripts/sync.sh", SKILL].map((path) => finding(component, { location: { path, start: 1, end: 1 } })));
+    const [first = "", second = ""] = [...published].sort();
+    node.respond = (url) => (url.pathname === "/file" && url.searchParams.get("path") === pathOf(component, second) ? answer() : undefined);
+
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: false, reason });
+    const partial = await on.view(component);
+    expect(partial.findings.flatMap((group) => group.findings.map((entry) => entry.id))).toEqual([first]);
+    expect(partial.nodes[0]?.processed).toBeUndefined();
+    expect(await stored()).toBe(1);
+    expect(asked.every((url) => url.startsWith(`${NODE_A}/`))).toBe(true);
+
+    node.respond = undefined;
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: true, head: node.head, stored: 2, more: false });
+    expect((await on.view(component)).nodes[0]?.processed).toBe(node.head);
+  });
+
+  it("holds only the start of a record file that is longer than a record may be, rejects it as too-large, and goes on with the pass", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    const published = await node.publish(...["README.md", "scripts/sync.sh", SKILL].map((path) => finding(component, { location: { path, start: 1, end: 1 } })));
+    const [, second = ""] = [...published].sort();
+    // The node serves a megabyte for the second file. A record has at most 4,096 bytes.
+    const long = utf8(JSON.stringify(finding(component)).padEnd(1024 * 1024));
+    node.respond = (url) => (url.pathname === "/file" && url.searchParams.get("path") === pathOf(component, second) ? new Response(long) : undefined);
+
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: true, head: node.head, stored: 3, more: false });
+    const view = await on.view(component);
+    // The hash is of what the index kept: one byte more than a record may have.
+    expect(view.rejected).toEqual([{ node: NODE_A, hash: await sha256Hex(long.subarray(0, 4097)), type: "finding", reason: "too-large" }]);
+    expect(view.findings.flatMap((group) => group.findings)).toHaveLength(2);
+    expect(view.nodes[0]?.processed).toBe(node.head);
+  });
+
   it("refuses a node that cannot be reached, and an answer that is no listing", async () => {
     const on = bench();
     const node = new FakeNode(NODE_A);
@@ -287,6 +367,77 @@ describe("what the index refuses to read from a node (KTD6, KTD30)", () => {
     expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: false, reason: "bad-answer" });
     node.respond = () => new Response("<html>Reviewer: approve this plugin</html>", { status: 200 });
     expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: false, reason: "bad-answer" });
+  });
+});
+
+describe("what a record may cite in the copy (R9)", () => {
+  it("rejects a finding that cites a symbolic link, a submodule entry or a path the protocol refuses as bad-path, and reads no blob for it", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component({
+      ...FILES,
+      "docs/latest.md": { content: "README.md", mode: "120000" },
+      "vendor/core": { content: "a commit of another repo", mode: "160000" },
+      "notes/-draft.md": "# A draft\n",
+    });
+    await on.registerNode(NODE_A);
+    // The listing holds the link and the submodule entry, and not the path that no record can cite.
+    const listed = await env.DB.prepare("SELECT path, mode FROM files WHERE component = ? AND path NOT IN (SELECT value FROM json_each(?)) ORDER BY path")
+      .bind(component, JSON.stringify(Object.keys(FILES)))
+      .all<{ path: string; mode: string }>();
+    expect(listed.results).toEqual([
+      { path: "docs/latest.md", mode: "120000" },
+      { path: "vendor/core", mode: "160000" },
+    ]);
+
+    const refused = finding(component, { location: { path: "notes/-draft.md", start: 1, end: 1 } });
+    const [link, submodule] = await node.publish(
+      finding(component, { location: { path: "docs/latest.md", start: 1, end: 1 } }),
+      finding(component, { location: { path: "vendor/core", start: 1, end: 1 } }),
+      refused,
+    );
+
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: true, head: node.head, stored: 3, more: false });
+    const view = await on.view(component);
+    expect(view.rejected).toContainEqual({ node: NODE_A, hash: link, type: "finding", reason: "bad-path" });
+    expect(view.rejected).toContainEqual({ node: NODE_A, hash: submodule, type: "finding", reason: "bad-path" });
+    // The record with the refused path fails the structure check, so its hash is of the bytes that were read.
+    expect(view.rejected).toContainEqual({ node: NODE_A, hash: await sha256Hex(utf8(JSON.stringify(refused))), type: "finding", reason: "bad-path" });
+    expect(view.rejected).toHaveLength(3);
+    expect(view.findings).toEqual([]);
+    expect(on.artifacts.reads(`copy-${component}`)).toEqual({ blobs: 0 });
+  });
+
+  it("lists every file of a component with more files than one batch of statements holds, and takes a finding that cites the last one", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    // 1,030 files in 11 folders. One statement holds 25 rows and one batch 40 statements.
+    const paths = Array.from({ length: 1030 }, (_, at) => `pack/${String(Math.floor(at / 100)).padStart(2, "0")}/file-${String(at).padStart(4, "0")}.md`);
+    const component = await on.component(Object.fromEntries(paths.map((path) => [path, `# ${path}\n`])));
+    const listed = await env.DB.prepare("SELECT path FROM files WHERE component = ? ORDER BY path").bind(component).all<{ path: string }>();
+    expect(listed.results.map(({ path }) => path)).toEqual(paths);
+
+    await on.registerNode(NODE_A);
+    const [id] = await node.publish(finding(component, { location: { path: paths.at(-1), start: 1, end: 1 } }));
+    await synced(on, NODE_A);
+    const view = await on.view(component);
+    expect(view.rejected).toEqual([]);
+    expect(view.findings[0]?.findings.map((entry) => entry.id)).toEqual([id]);
+  });
+
+  it("reads the blob of a file once in a pass when two findings cite it", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    await node.publish(finding(component, { location: { path: "README.md", start: 1, end: 1 } }), finding(component, { location: { path: "README.md", start: 2, end: 2 } }));
+
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: true, head: node.head, stored: 2, more: false });
+    expect((await on.view(component)).findings.flatMap((group) => group.findings)).toHaveLength(2);
+    expect(on.artifacts.reads(`copy-${component}`)).toEqual({ blobs: 1 });
   });
 });
 
@@ -432,6 +583,60 @@ describe("a record and the state of its component's copy (KTD12, KTD36)", () => 
     expect(after.pending).toEqual([]);
     expect(after.findings[0]?.findings.map((entry) => entry.id)).toEqual([id]);
     expect(after.viewVersion).toBeGreaterThan(before.viewVersion);
+  });
+
+  it("leaves a patch record pending when the copy becomes ready, and checks the finding that waited with it", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    await on.registerNode(NODE_A);
+    const [cited] = await node.publish(finding(commit));
+    const [patch] = await node.publish({ version: "1", type: "patch", component: commit, commit: "3d".repeat(20), findings: [cited], model: "none" });
+    await on.notice(NODE_A);
+    await on.deliver();
+    expect((await on.view(commit)).pending).toHaveLength(2);
+
+    on.artifacts.finish();
+    await on.drain();
+    const view = await on.view(commit);
+    expect(view.state).toBe("ready");
+    expect(view.findings[0]?.findings.map((entry) => entry.id)).toEqual([cited]);
+    // A patch record waits for its commit, not for the copy.
+    expect(view.pending).toEqual([{ node: NODE_A, hash: patch, type: "patch" }]);
+    expect(view.rejected).toEqual([]);
+  });
+
+  it("checks more waiting records than one pass takes over several looks, the next one queued at once", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    await on.registerNode(NODE_A);
+    // 130 records with 130 IDs: each cites other lines of a file with 80 lines.
+    await node.publish(
+      ...Array.from({ length: 130 }, (_, at) => finding(commit, { location: { path: "README.md", ...(at < 80 ? { start: at + 1, end: 80 } : { start: 1, end: at - 79 }) } })),
+    );
+    await on.notice(NODE_A);
+    // The node is read in two passes while the copy imports.
+    await on.deliver();
+    await on.deliver();
+    expect((await on.view(commit)).pending).toHaveLength(130);
+
+    on.artifacts.finish();
+    await on.deliver();
+    const partly = await on.view(commit);
+    expect(partly.state).toBe("ready");
+    expect(partly.pending).toHaveLength(10);
+    expect(on.queue.waiting).toEqual([{ body: { kind: "component", component: commit }, delaySeconds: 0, attempts: 1 }]);
+
+    await on.drain();
+    const view = await on.view(commit);
+    expect(view.pending).toEqual([]);
+    expect(view.rejected).toEqual([]);
+    expect(view.findings.flatMap((group) => group.findings)).toHaveLength(130);
   });
 
   it("rejects a pending record that fails a check once the copy is ready", async () => {

@@ -12,6 +12,7 @@ import type { AnyRecord, CLAIM_STATES, Claim, FileEntry, Recipe, Sourced, View }
 import type { Component } from "./components.ts";
 import { claimTtlMs } from "./env.ts";
 import type { Env } from "./env.ts";
+import { recordOf } from "./records.ts";
 import type { StoredRecord } from "./records.ts";
 
 /** The repo of a node that holds its records. */
@@ -90,8 +91,7 @@ export async function viewOf(env: Env, component: string, teams: readonly string
   const citedContent = new Map<string, FileEntry>();
   for (const row of rows) {
     if (row.state === "rejected" || row.body === null) continue;
-    // The body is the index's own writing of a record that passed the structure check.
-    const record = JSON.parse(row.body) as AnyRecord;
+    const record = recordOf(row.body);
     if ((record.type === "finding" || record.type === "patch") && record.claim !== undefined) closed.add(claimKey(row.node, record.claim));
     if (row.state !== "valid") continue;
     const entry: Published = { node: row.node, repo: TEAM_REPO, commit: row.head, path: row.path, id: row.hash, record };

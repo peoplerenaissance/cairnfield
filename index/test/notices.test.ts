@@ -2,8 +2,10 @@
 // node. The index pulls from the registered URL, once for a burst of notices, and again
 // for a notice that arrives after a sync has read the node's head.
 
+import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { NODE_A, NODE_B, START, bench, clockAt, finding, freshIndexForEachTest } from "./bench.ts";
+import worker from "../src/index.ts";
+import { INDEX, NODE_A, NODE_B, START, bench, clockAt, finding, freshIndexForEachTest } from "./bench.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
 
 freshIndexForEachTest();
@@ -34,6 +36,23 @@ describe("a push notice (KTD11)", () => {
     expect(await on.call("POST", "/notices", { node: NODE_A, fetch: "https://elsewhere.example/records" })).toEqual(refused);
     expect(await on.call("POST", "/notices", "not json")).toEqual(refused);
     expect(on.queue.sent).toEqual([]);
+  });
+
+  it("is refused when its body is over 8 KB, with nothing queued or written down, and taken at exactly 8 KB", async () => {
+    const on = bench();
+    await on.registerNode(NODE_A);
+    // A notice that is right in every way, with white space after it.
+    const post = (bytes: number): Promise<Response> =>
+      worker.fetch(new Request(`${INDEX}/notices`, { method: "POST", body: JSON.stringify({ node: NODE_A }).padEnd(bytes) }), on.env);
+
+    const over = await post(8 * 1024 + 1);
+    expect([over.status, await over.json()]).toEqual([400, { version: "1", error: "bad-request" }]);
+    expect(on.queue.sent).toEqual([]);
+    const marked = await env.DB.prepare("SELECT COUNT(*) AS rows FROM nodes WHERE noticed_at IS NOT NULL OR queued_at IS NOT NULL").first<{ rows: number }>();
+    expect(marked?.rows).toBe(0);
+
+    expect((await post(8 * 1024)).status).toBe(200);
+    expect(on.queue.sent).toHaveLength(1);
   });
 
   it("causes one sync for fifty notices for one node within 5 seconds", async () => {

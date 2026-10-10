@@ -2,7 +2,8 @@
 // components, and the reset route.
 
 import { describe, expect, it } from "vitest";
-import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, START, UPSTREAM, bench, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import worker from "../src/index.ts";
+import { BRANCH, FILES, INDEX, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, START, UPSTREAM, bench, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
 
 const MINUTE = 60_000;
@@ -51,6 +52,22 @@ describe("node registration (KTD8, KTD30)", () => {
     expect(await on.registerNode(`${NODE_A}/`)).toEqual(refused);
     const component = await on.component();
     expect((await on.view(component)).nodes.map(({ node }) => node)).toEqual([NODE_A]);
+  });
+
+  it("refuses a body over 8 KB with the key, and registers nothing", async () => {
+    const on = bench();
+    // A registration that is right in every way, with white space after it.
+    const post = (bytes: number): Promise<Response> =>
+      worker.fetch(
+        new Request(`${INDEX}/nodes`, { method: "POST", headers: { [REGISTRATION_HEADER]: REGISTRATION_KEY }, body: JSON.stringify({ url: NODE_A }).padEnd(bytes) }),
+        on.env,
+      );
+
+    const over = await post(8 * 1024 + 1);
+    expect([over.status, await over.json()]).toEqual([400, { version: "1", error: "bad-request" }]);
+    // The node is not registered: the same body at exactly 8 KB registers it, and is not told it is there already.
+    const within = await post(8 * 1024);
+    expect([within.status, await within.json()]).toEqual([200, { version: "1", node: NODE_A }]);
   });
 
   it("refuses a body that is not the registration of a node", async () => {

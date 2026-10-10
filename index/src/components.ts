@@ -6,11 +6,11 @@
 // is delivered twice, or that fails halfway, changes nothing it should not.
 
 import { ENTRY_MODES, IMPORT_ERRORS, isPath } from "@cairnfield/protocol";
-import type { AnyRecord, FileEntry } from "@cairnfield/protocol";
+import type { FileEntry } from "@cairnfield/protocol";
 import { codeOf, copyOf, open } from "./artifacts.ts";
 import type { Repo } from "./artifacts.ts";
 import type { Env } from "./env.ts";
-import { Copy, PASS_RECORDS, bump, settle } from "./records.ts";
+import { Copy, PASS_RECORDS, bump, recordOf, settle } from "./records.ts";
 import type { ComponentState, Judged } from "./records.ts";
 
 type ImportError = (typeof IMPORT_ERRORS)[number];
@@ -188,8 +188,7 @@ async function checkWaiting(env: Env, component: string): Promise<boolean> {
   for (const { node, path, body } of pass) {
     let judged: Judged;
     try {
-      // The body is the index's own writing of a record that passed the structure check.
-      judged = await copy.check(JSON.parse(body) as AnyRecord);
+      judged = await copy.check(recordOf(body));
     } catch (error) {
       // The copy could not be read. The records judged before this one are settled first,
       // so the look that is tried next starts after them.

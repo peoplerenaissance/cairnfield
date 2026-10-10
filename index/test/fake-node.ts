@@ -94,16 +94,24 @@ export class FakeNode {
 
 /**
  * Puts the nodes behind `fetch` for the rest of the test. A request to any other host
- * fails as a network would. Returns every URL that was asked for, in order.
+ * fails as a network would. As `fetch` does, it hands a redirect back only to a caller
+ * that asked for that, and follows it for any other. Returns every URL that was asked
+ * for, in order.
  */
 export function nodesBehindFetch(...nodes: readonly FakeNode[]): string[] {
   const asked: string[] = [];
+  const ask = async (url: string, redirect: string): Promise<Response> => {
+    asked.push(url);
+    const node = nodes.find((held) => url === held.url || url.startsWith(`${held.url}/`));
+    if (!node) throw new TypeError(`no such host: ${new URL(url).host}`);
+    const response = await node.answer(new URL(url));
+    const location = response.status >= 300 && response.status < 400 ? response.headers.get("location") : null;
+    if (location === null || redirect === "manual") return response;
+    return ask(new URL(location, url).href, redirect);
+  };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const request = new Request(input, init);
-    asked.push(request.url);
-    const node = nodes.find(({ url }) => request.url === url || request.url.startsWith(`${url}/`));
-    if (!node) throw new TypeError(`no such host: ${new URL(request.url).host}`);
-    return node.answer(new URL(request.url));
+    return ask(request.url, request.redirect);
   });
   return asked;
 }

@@ -42,6 +42,11 @@ export interface StoredRecord {
   readonly rebuilt: number;
 }
 
+/** The record of a stored body. The body is the index's own writing of a record that passed the structure check. */
+export function recordOf(body: string): AnyRecord {
+  return JSON.parse(body) as AnyRecord;
+}
+
 /** Adds one to a component's view version, or to every component's when none is named (KTD11). */
 export function bump(db: D1Database, component?: string): D1PreparedStatement {
   return component === undefined

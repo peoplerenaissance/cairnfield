@@ -15,7 +15,11 @@ import type { Repo, Store } from "../src/artifacts.ts";
 
 const DAY = 86_400;
 
-/** The files of one commit: each path with its content, and its mode when it is not a plain file. */
+/**
+ * The files of one commit: each path with its content, and its mode when it is not a
+ * plain file. A submodule entry has no content in the repo: what is given for it only
+ * tells one entry from another.
+ */
 export interface Files {
   readonly [path: string]: string | { readonly content: string; readonly mode: string };
 }
@@ -63,6 +67,11 @@ async function writeTree(objects: Objects, files: Files): Promise<string> {
       continue;
     }
     const { content, mode } = typeof file === "string" ? { content: file, mode: "100644" } : file;
+    if (mode === "160000") {
+      // A submodule entry names a commit of another repo. This repo holds no object for it.
+      entries.push(entry(path, mode, await hashOf("commit", content)));
+      continue;
+    }
     const hash = await blobHash(content);
     objects.set(hash, { kind: "blob", content });
     entries.push(entry(path, mode, hash));
@@ -126,8 +135,6 @@ class RepoState {
   readonly tokens: IssuedToken[] = [];
   /** How many times the index read a blob of this repo. */
   blobReads = 0;
-  /** How many times the index read a tree of this repo. */
-  treeReads = 0;
 }
 
 /** A public repo on another host, for `import` to copy: its branches and what they reach. */
@@ -229,20 +236,14 @@ export class FakeArtifacts implements Store {
     }
   }
 
-  /** The repos of the namespace, by name. */
-  repos(): string[] {
-    return [...this.#repos.keys()];
-  }
-
   /** Every token of a repo. */
   tokens(repo: string): SeenToken[] {
     return this.#state(repo).tokens.map((token) => ({ scope: token.scope, state: stateOf(token) }));
   }
 
-  /** How many blobs and trees the index has read from a repo. */
-  reads(repo: string): { readonly blobs: number; readonly trees: number } {
-    const state = this.#state(repo);
-    return { blobs: state.blobReads, trees: state.treeReads };
+  /** How many times the index has read a blob from a repo. */
+  reads(repo: string): { readonly blobs: number } {
+    return { blobs: this.#state(repo).blobReads };
   }
 
   #state(repo: string): RepoState {
@@ -278,7 +279,6 @@ export class FakeArtifacts implements Store {
         return object?.kind === "blob" ? new Blob([object.content]) : null;
       },
       readTree: async (hash) => {
-        state.treeReads += 1;
         const object = state.objects.get(hash);
         return object?.kind === "tree" ? object.entries.map((child) => ({ ...child })) : null;
       },

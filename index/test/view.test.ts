@@ -237,6 +237,36 @@ describe("a view narrowed by a teams query (KTD38)", () => {
     expect(both.findings).toEqual(whole.findings);
   });
 
+  it("refuses a query of 101 teams, and takes one of 100", async () => {
+    const on = bench();
+    const component = await on.component();
+    const query = (count: number): string => Array.from({ length: count }, (_, at) => `teams=${encodeURIComponent(`https://node-${at}.teams.example`)}`).join("&");
+    expect(await on.call("GET", `/components/${component}/view?${query(101)}`)).toEqual({ status: 400, body: { version: "1", error: "bad-request" } });
+    expect((await on.call("GET", `/components/${component}/view?${query(100)}`)).status).toBe(200);
+  });
+
+  it("counts a team that a query names twice once in the view, and twice against the most a query may name", async () => {
+    const on = bench();
+    const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];
+    nodesBehindFetch(one, other);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    await on.registerNode(NODE_B);
+    await one.publish(finding(component));
+    await other.publish(finding(component, { location: { path: SKILL, start: 2, end: 3 } }));
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+
+    const twice = await on.view(component, [NODE_A, NODE_A]);
+    expect(twice).toEqual(await on.view(component, [NODE_A]));
+    expect(twice.organizations).toBe(1);
+    expect(twice.findings[0]).toMatchObject({ nodes: [NODE_A], confirmed: false });
+
+    const repeated = (count: number): string => Array.from({ length: count }, () => `teams=${encodeURIComponent(NODE_A)}`).join("&");
+    expect((await on.call("GET", `/components/${component}/view?${repeated(100)}`)).status).toBe(200);
+    expect(await on.call("GET", `/components/${component}/view?${repeated(101)}`)).toEqual({ status: 400, body: { version: "1", error: "bad-request" } });
+  });
+
   it("refuses a team in no accepted spelling, and any other query", async () => {
     const on = bench();
     const component = await on.component();
@@ -283,6 +313,22 @@ describe("a rebuild from the nodes (R12, KTD13)", () => {
     const [fresh] = await one.publish(claim(component, 9));
     await synced(on, NODE_A);
     expect((await on.view(component)).claims.find((entry) => entry.id === fresh)?.state).toBe("live");
+  });
+
+  it("ends the rebuild of a node that has no team repo yet, so a claim the node then publishes is live", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    expect((await on.call("POST", "/reset", undefined, [RESET_HEADER, RESET_KEY])).status).toBe(200);
+    // The reset queued a sync of the node, which finds no team repo.
+    await on.drain();
+    expect(node.requests).toEqual([`${NODE_A}/records`]);
+
+    const [open] = await node.publish(claim(component, 1));
+    await synced(on, NODE_A);
+    expect((await on.view(component)).claims).toMatchObject([{ id: open, state: "live" }]);
   });
 
   it("shows a claim as expired when the reset came while a sync of its node was waiting for the node's listing", async () => {
