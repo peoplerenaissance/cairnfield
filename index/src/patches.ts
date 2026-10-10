@@ -14,17 +14,7 @@
 // a set number of times (KTD11). After that it stays pending, and is looked at once more
 // at each later sync of its node and when a finding it names becomes valid.
 
-import {
-  DELETED_MODE,
-  MAX_PATCH_REPLACEMENTS,
-  applyChanges,
-  changedPaths,
-  checkPatch,
-  citedRanges,
-  isInScope,
-  modesAreRegular,
-  replacementsOf,
-} from "@cairnfield/protocol";
+import { DELETED_MODE, applyChanges, checkPatch, citedRanges, planPatch } from "@cairnfield/protocol";
 import type { CitedRange, FileListing, Finding, Patch, PatchFacts, PatchKind, RejectionReason, Replacement } from "@cairnfield/protocol";
 import { MAX_BATCH_MESSAGES } from "./env.ts";
 import type { Env } from "./env.ts";
@@ -161,15 +151,12 @@ const rejected = (reason: RejectionReason): Checked => ({ state: "rejected", rea
 
 /**
  * The replacements whose content the patch checks will read: those that change a content,
- * and none for a commit that fails a check that reads no content. It follows the order
- * of `checkPatch`, and `cli/src/assemble/verify.ts` does the same before it reads content.
+ * and none for a commit that fails a check that reads no content. The protocol's
+ * `planPatch` runs those checks, and `checkPatch` runs it first, so the two agree.
  */
 function contentToRead(base: FileListing, patched: FileListing, cited: readonly CitedRange[]): Replacement[] {
-  const paths = changedPaths(base, patched);
-  if (!modesAreRegular(paths) || !isInScope(paths, cited)) return [];
-  const replacements = replacementsOf(base, paths);
-  if (replacements === undefined || replacements.length > MAX_PATCH_REPLACEMENTS) return [];
-  return replacements.filter(({ oldBlob, newBlob }) => newBlob !== oldBlob);
+  const plan = planPatch(base, patched, cited);
+  return plan.ok ? plan.replacements.filter(({ oldBlob, newBlob }) => newBlob !== oldBlob) : [];
 }
 
 /**

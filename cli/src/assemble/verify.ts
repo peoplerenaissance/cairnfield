@@ -16,17 +16,13 @@ import {
   MAX_BLOB_BYTES,
   MAX_FETCH_BYTES,
   MAX_LISTING_ENTRIES,
-  MAX_PATCH_REPLACEMENTS,
   applyChanges,
-  changedPaths,
   checkPatch,
   citedPaths,
   citedRanges,
-  isInScope,
   isPath,
-  modesAreRegular,
+  planPatch,
   recordPath,
-  replacementsOf,
   validateAgainstFiles,
 } from "@cairnfield/protocol";
 import type { CitedFiles, CitedRange, FileEntry, Finding, NodeListing, Patch, PatchFacts } from "@cairnfield/protocol";
@@ -187,18 +183,14 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
     changes.push(changedEntry(change, path));
   }
 
-  // The checks that read no content run first, in the order the protocol runs them, so
-  // a commit cannot make the command read content for a patch it refuses anyway.
+  // The protocol's checks that read no content run first, so a commit cannot make the
+  // command read content for a patch it refuses anyway.
   const patched = applyChanges(listing.files, changes);
-  const paths = changedPaths(listing.files, patched);
-  if (!modesAreRegular(paths)) return refuse("bad-mode");
-  if (!isInScope(paths, cited)) return refuse("patch-out-of-scope");
-  const replacements = replacementsOf(listing.files, paths);
-  if (!replacements) return refuse("patch-incomplete");
-  if (replacements.length > MAX_PATCH_REPLACEMENTS) return refuse("patch-too-large");
+  const plan = planPatch(listing.files, patched, cited);
+  if (!plan.ok) return refuse(plan.reason);
 
   // The old content comes from the checkout, and the new content from the commit.
-  const rewritten = replacements.filter((replacement) => replacement.newBlob !== replacement.oldBlob);
+  const rewritten = plan.replacements.filter((replacement) => replacement.newBlob !== replacement.oldBlob);
   const before = new Map<string, Uint8Array>();
   for (const { oldBlob } of rewritten) {
     const path = listing.files.find((file) => file.blob === oldBlob)?.path ?? "";
