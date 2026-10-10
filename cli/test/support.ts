@@ -439,7 +439,7 @@ export function bench(sharing?: Bench): Bench {
         sleeps.push(ms);
       },
       random: (bound) => Math.min(made.nextRandom, bound - 1),
-      warn: (text) => {
+      warn: async (text) => {
         warnings.push(text);
       },
     },

@@ -2,6 +2,8 @@ node_modules/
 
 # Wrangler output and local Worker state
 .wrangler/
+# Written by `wrangler types` from a Worker's config and the installed runtime
+worker-configuration.d.ts
 
 # Local secret files. Only the `.example` files are committed.
 .dev.vars

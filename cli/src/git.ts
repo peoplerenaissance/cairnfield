@@ -203,7 +203,7 @@ export interface Scratch {
   /** Runs Git on the repo. A failure ends the command, and names `step`. */
   git(step: string, args: readonly string[], options?: GitOptions): Promise<GitRun>;
   /** Passes what Git wrote to standard error on to the operator, with no token in it. */
-  report(run: GitRun): void;
+  report(run: GitRun): Promise<void>;
 }
 
 /** How often a bounded transfer is looked at. */
@@ -264,8 +264,8 @@ export async function withScratch<T>(io: Io, work: (scratch: Scratch) => Promise
   const tokens = new Set<string>();
   const scratch: Scratch = {
     dir,
-    report: (run) => {
-      if (run.stderr !== "") io.warn(redact(run.stderr, [...tokens]));
+    report: async (run) => {
+      if (run.stderr !== "") await io.warn(redact(run.stderr, [...tokens]));
     },
     git: async (step, args, options = {}) => {
       if (options.access) tokens.add(options.access.token);
@@ -280,7 +280,7 @@ export async function withScratch<T>(io: Io, work: (scratch: Scratch) => Promise
         : await io.git(args, call);
       if (run.overflowed) return stop(EXIT.failed, limit.error);
       if (run.code !== 0 && options.mayFail !== true) {
-        scratch.report(run);
+        await scratch.report(run);
         return stop(EXIT.git, "git-failed", { step });
       }
       return run;

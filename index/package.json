@@ -6,7 +6,11 @@
   "description": "Index Worker: builds one validated view per component commit.",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "types": "wrangler types --strict-vars=false",
+    "typecheck": "npm run types && tsc -p tsconfig.json",
+    "check": "wrangler deploy --dry-run",
+    "migrate": "wrangler d1 migrations apply cairnfield-index --remote",
+    "deploy": "wrangler deploy --var \"GIT_URLS:${GIT_URLS:?set GIT_URLS to the Git URLs this index may import, with a space between two}\" ${CLAIM_TTL_SECONDS:+--var CLAIM_TTL_SECONDS:$CLAIM_TTL_SECONDS}"
   },
   "dependencies": {
     "@cairnfield/protocol": "*"

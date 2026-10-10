@@ -132,7 +132,7 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
     if (entries(inCommit) !== entries(composed.changes)) return stop(EXIT.failed, "assembly-failed");
     const content = new Map<string, Uint8Array>(composed.blobs);
     for (const { before } of selected) for (const [blob, bytes] of before) content.set(blob, bytes);
-    io.warn(renderDiff(listing.files, composed.changes, (blob) => content.get(blob)));
+    await renderDiff(listing.files, composed.changes, (blob) => content.get(blob), io.warn);
 
     // The copy is exported before anything is published, so a copy that cannot be exported
     // publishes nothing. It counts as built only when what the lens asked for was done, so

@@ -71,6 +71,8 @@ const count = () => int(0, Number.MAX_SAFE_INTEGER);
 // First values for the list sizes of a response. The plan sets none.
 const MAX_VIEW_ENTRIES = 50_000;
 const MAX_CITED_LINE_LENGTH = 65_536;
+/** A view is narrowed to at most this many teams. A first value. */
+export const MAX_VIEW_TEAMS = 100;
 
 /**
  * The branch of a team repo that holds its records. The node reads its head from this
@@ -395,10 +397,12 @@ export const INDEX_ROUTES = {
   },
   lookup: { method: "GET", path: "/components", query: { url: url() }, response: COMPONENT_LOOKUP },
   notice: { method: "POST", path: "/notices", request: NOTICE, response: ACCEPTED },
+  // `teams` narrows the view to the nodes it lists (KTD38). It is given once for each node.
   view: {
     method: "GET",
     path: "/components/{component}/view",
     params: { component: gitHash() },
+    query: { teams: optional(listOf(nodeUrl(), MAX_VIEW_TEAMS)) },
     response: VIEW,
   },
   criteria: {

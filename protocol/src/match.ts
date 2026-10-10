@@ -105,7 +105,8 @@ export interface MatchGroup {
   readonly criteria: readonly CriterionCount[];
 }
 
-function bySource(a: Sourced, b: Sourced): number {
+/** Orders records by ID, and two with one ID by node. */
+export function bySource(a: Sourced, b: Sourced): number {
   return compare(a.id, b.id) || compare(a.node, b.node);
 }
 

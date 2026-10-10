@@ -8,7 +8,7 @@
 // names the Git URL the commit was pinned from, which names the component across its
 // commits.
 
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { FILE_MODES, LINK_MODE, SUBMODULE_MODE, conforms, field, gitBlobHash, isFileMode, isPath } from "@cairnfield/protocol";
 import type { CitedFile, CitedFiles, ContractKind, Infer } from "@cairnfield/protocol";
@@ -57,15 +57,22 @@ const listingFile = (home: Home, component: string): string => join(home.checkou
 /**
  * Reads a JSON file the command keeps and holds it to its shape. Returns nothing when
  * there is no file. A file that cannot be read, or that has another form, is not the
- * same as no file: `bad` ends the command for it.
+ * same as no file: `bad` ends the command for it. So does a file of more than `limit`
+ * bytes, which is not read.
  */
-export async function readWhole<K extends ContractKind>(file: string, kind: K, bad: () => never): Promise<Infer<K> | undefined> {
-  let text: string;
+export async function readWhole<K extends ContractKind>(file: string, kind: K, bad: () => never, limit = Infinity): Promise<Infer<K> | undefined> {
+  let text: string | undefined;
   try {
-    text = await readFile(file, "utf8");
+    const handle = await open(file, "r");
+    try {
+      if ((await handle.stat()).size <= limit) text = await handle.readFile("utf8");
+    } finally {
+      await handle.close();
+    }
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : bad();
   }
+  if (text === undefined) return bad();
   let value: unknown;
   try {
     value = JSON.parse(text);

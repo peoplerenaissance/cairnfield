@@ -4,7 +4,7 @@ Cairnfield lets agents from many teams change the same shared code at once. Team
 
 ## Where things stand
 
-The repo holds a static site, the workspace scaffold, the protocol library in `protocol/`, the team node Worker in `node/`, the demo fixtures in `fixtures/` and the first commands of `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim`, `view`, `patch`, `assemble`, `decide`, `approvals` and `verify`. Two demo nodes are deployed, and no index is. The other packages hold placeholders. Product code arrives unit by unit from a build plan.
+The repo holds a static site, the workspace scaffold, the protocol library in `protocol/`, the team node Worker in `node/`, the demo fixtures in `fixtures/` and the first commands of `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim`, `view`, `patch`, `assemble`, `decide`, `approvals` and `verify`. `index/` holds the index Worker: registration, the sync path and the data endpoint. It has no patch intake and no page yet, so a patch record shows as pending in a view. Two demo nodes are deployed, and no index is. `sim/` holds a placeholder. Product code arrives unit by unit from a build plan.
 
 - The build plan is a private planning document. It lives under `docs/`, which Git ignores, so it is not part of this repo. Never commit a file under `docs/`.
 - When `docs/plans/` exists in your checkout, the plan there is the source of truth. Read its Goal Capsule first, then the unit you are working on and the requirements (R) and decisions (KTD) that unit cites. Do not read the whole file to find your way; scan its headings.
@@ -30,8 +30,11 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 | `npm run deploy:site` | repo root | Deploys the site. Ask the developer first |
 | `npm install` | repo root, and again in `node/` | Installs the workspace. `node/` and `site/` install on their own |
 | `npm test` | repo root, and in `node/` | Runs the Vitest suites |
-| `npm run typecheck` | repo root, and in `node/` | Type-checks every package and `scripts/`. In `node/` it first writes the binding types with `wrangler types` |
+| `npm run typecheck` | repo root, and in `node/` | Type-checks every package and `scripts/`. In `node/` and `index/` it first writes the binding types with `wrangler types` |
 | `npm run check` | `node/` | Dry-run of the node deploy: the default config and both demo environments |
+| `npm run check` | `index/` | Dry-run of the index deploy |
+| `npm run migrate` | `index/` | Applies the migrations in `index/migrations/` to the deployed index's database. Ask the developer first |
+| `npm run deploy` | `index/` | Deploys the index. `GIT_URLS` must be set in the shell to the Git URLs the index may import, with a space between two. `CLAIM_TTL_SECONDS` is optional. Ask the developer first |
 | `npm run deploy` | `node/` | Deploys one team node from the default config. `NODE_URL` must be set in the shell to the node's base URL. `INDEX_URL` is optional. Ask the developer first |
 | `npm run deploy:demo` | `node/` | Deploys the two demo nodes. `TEAM_A_NODE_URL` and `TEAM_B_NODE_URL` must be set. Ask the developer first |
 | `node scripts/check-node-contract.ts <node-url> <component-commit> <patch-commit>` | repo root | Checks a deployed node against the protocol's node contract |
@@ -39,9 +42,17 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 | `node cli/evals/injection.ts fixtures/injection/<name>` | repo root | Runs the live patch agent on one injection fixture. It calls a model with the developer's key. Ask the developer first |
 | `npm run scan:secrets` | repo root | Scans the repo for secrets |
 
-Later units add the index dry-run, demo and scale commands listed in the plan's Verification Contract.
+Later units add the demo and scale commands listed in the plan's Verification Contract.
 
-The Workers test pool reaches Artifacts through a session on the developer's Cloudflare account, because Artifacts has no local simulation. `remoteBindings: false` in `node/vitest.config.ts` stops that, and the tests use an in-memory fake. Keep the setting, and set it in every Worker package that binds Artifacts.
+The Workers test pool reaches Artifacts through a session on the developer's Cloudflare account, because Artifacts has no local simulation. `remoteBindings: false` in `node/vitest.config.ts` and `index/vitest.config.ts` stops that, and the tests use an in-memory fake. Keep the setting, and set it in every Worker package that binds Artifacts.
+
+The index's tests in `index/test/` call the Worker's own handlers over a local D1 database, with stand-ins for the Artifacts binding and the queue, and fake nodes behind `fetch`. A test delivers the queued messages itself. No test reaches a network.
+
+`index/wrangler.jsonc` names its database and its queue and holds no database ID: Wrangler finds both by name. Do not write an ID into it. The index's registration key and reset key are Worker secrets, `REGISTRATION_KEY` and `RESET_KEY`, and the same rule holds for them as for the node's admin key.
+
+The order of an index release matters, and each step is the developer's. For the first release: create the queue and the database with `npx wrangler queues create cairnfield-index-sync` and `npx wrangler d1 create cairnfield-index` in `index/`, run `npm run migrate`, then `npm run deploy`, then set the two secrets. For a later release: run `npm run migrate` before `npm run deploy`, and keep each migration additive, so the Worker that is still running works on the new schema.
+
+Registering a failed component with the index again retries its import with the Git URL and branch the index stored for it. A component whose finished copy does not hold the commit fails again until that copy is deleted by hand. A new URL or branch for a commit is not taken.
 
 The command's tests in `cli/test/` run real Git against local repos that stand in for a node's Artifacts repos. A fake node and a fake index sit behind `fetch`. No test reaches a network.
 
