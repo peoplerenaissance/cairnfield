@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SCHEMA_VERSION, VIEW, conforms, recordId, recordPath } from "@cairnfield/protocol";
 import type { AnyRecord } from "@cairnfield/protocol";
 import { EXIT } from "../src/outcome.ts";
-import { FIXTURES, INDEX, NODE, OTHER_NODE, THIRD_NODE, bench } from "./support.ts";
+import { FIXTURES, INDEX, NODE, OTHER_NODE, PLUGIN_URL, THIRD_NODE, bench } from "./support.ts";
 import type { Bench } from "./support.ts";
 
 const COMPONENT = "1f".repeat(20);
@@ -52,6 +52,7 @@ async function served(): Promise<object> {
   return {
     version: SCHEMA_VERSION,
     component: COMPONENT,
+    gitUrl: PLUGIN_URL,
     state: "ready",
     viewVersion: 9,
     lag: 0,
@@ -147,6 +148,7 @@ describe("view", () => {
     expect(outcome.output).toEqual({
       version: SCHEMA_VERSION,
       component: COMPONENT,
+      gitUrl: PLUGIN_URL,
       state: "ready",
       viewVersion: 9,
       lag: 0,

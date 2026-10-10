@@ -187,6 +187,7 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
   const view: View = {
     version: "1",
     component: COMPONENT,
+    gitUrl: "https://git.fellbeck-tools.example/demo-plugin.git",
     state: "ready",
     viewVersion: 12,
     lag: 0,

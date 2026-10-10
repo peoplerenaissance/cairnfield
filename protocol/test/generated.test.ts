@@ -324,6 +324,7 @@ describe("OpenAPI description of the index routes (R34)", () => {
     const body = {
       version: SCHEMA_VERSION,
       component: finding().component,
+      gitUrl: "https://git.fellbeck-tools.example/demo-plugin.git",
       state: "ready",
       viewVersion: 1,
       lag: 0,
