@@ -59,7 +59,7 @@ export async function pin(io: Io, home: Home, component: Component): Promise<Out
     const access = await repoAccess(io, home, { repo: "copy", component: commit, scope: "read" });
     listing = await withScratch(io, async (scratch) => {
       await fetchCommit(scratch, access, commit);
-      return exportCheckout(home, scratch, commit);
+      return exportCheckout(home, scratch, component);
     });
   }
   return done({

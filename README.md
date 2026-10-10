@@ -21,7 +21,7 @@ The site describes the launch. This table describes today.
 | The command | built in part | `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim`, `view`, `patch`, `assemble`, `decide`, `approvals` and `verify`. A team working alone needs a node and no index. |
 | Patch agent | built and run live | `cairnfield patch` writes a patch for one of a team's own findings as a checked commit and a patch record, from a live model call or from a recording. The tests use a fake model. A live run on a deployed node patched the demo plugin's any-host rule, and its recording is in `fixtures/recordings/`. A replay gave the same commit and the same records. Live runs on both injection fixtures changed only the cited line. |
 | Patched copies | built and run live | `cairnfield assemble` builds a team's copy from the patches its lens lets in. It fetches each patch from the fork of the team that wrote it and checks it again. The copy is one commit, and any team with the same pinned commit and the same patches gets the same file-tree hash. The command prints the full diff of the copy. A lens that publishes recipes has it push the copy to the team's fork and publish a recipe record. On a deployed node with no index, one demo team built its copy of the demo plugin twice with one file-tree hash and published its recipe. Taking another team's patch is tested against a stand-in for the index, which is not built yet. A merged patch is not built. |
-| Verdicts and checking an installed copy | built, not yet run live | `cairnfield decide` writes down the verdict a person gave for a commit, with the file-tree hash of the copy the team built. `approvals` prints the team's table, one entry for each component. `verify` works out the file-tree hash of a folder and compares it with the approved entry in the approvals file it is given. It runs no Git and reads no config file, so it runs on any machine with Node. The table is a local file and is never published. |
+| Verdicts and checking an installed copy | built, not yet run live | `cairnfield decide` writes down the verdict a person gave for a commit, under the Git URL it was pinned from, with the file-tree hash of the copy the team built. The person names that hash, so a copy built again since is not approved by mistake. `approvals` prints the team's table, one entry for each component. `verify` works out the file-tree hash of a folder and compares it with the approved entry in the approvals file it is given. It runs no Git and reads no config file, so it runs on any machine with Node. The table is a local file and is never published. |
 | Public page, demo script and scale run | planned |  |
 | One-click deploy button for the team node | waiting on the platform | To be switched on once Cloudflare's button supports Artifacts, Workflows and push triggers. A setup script deploys the node until then. |
 | Carry-forward to new versions, domain verification, sealed findings | not in the prototype | Described in the repository. |
@@ -67,7 +67,7 @@ The rest of the product code arrives unit by unit from the plan, in `index/`, `c
 
 ## Running the command
 
-The command needs Node 22.22 and Git, and is written for macOS and Linux. Windows is not supported in the prototype. It reads `cairnfield.json` in the working folder, which names the team's node and, for a team that shares, an index:
+The command needs Node 22.22 and Git, and is written for macOS and Linux. Windows is not supported in the prototype. Every command but `verify` reads `cairnfield.json` in the working folder, which names the team's node and, for a team that shares, an index:
 
 ```json
 { "node": "https://node.team-a.example" }
@@ -89,11 +89,11 @@ A team with a lens file builds its copy and records what it decided:
 
 ```
 npx cairnfield assemble <full-commit-hash>
-npx cairnfield decide <git-url> --commit <full-commit-hash> --verdict approved-with-required-mitigations
+npx cairnfield decide <full-commit-hash> --verdict approved-with-required-mitigations --tree <tree-hash>
 npx cairnfield approvals
 ```
 
-`assemble` prints the diff of the copy against the original and writes the copy under `.cairnfield/copies/`. A person reads the diff and gives the verdict: `approved`, `approved-with-required-mitigations` or `not-approved`. `decide` writes it to `.cairnfield/decisions.json` with the copy's file-tree hash. That file is the team's table of what it may install. It is never published, and the team shares it by its own means.
+`assemble` prints the diff of the copy against the original, writes the copy under `.cairnfield/copies/` and gives the copy's file-tree hash. A person reads the diff and gives the verdict: `approved`, `approved-with-required-mitigations` or `not-approved`. `decide` takes that tree hash, so the verdict is for the copy whose diff was read and for no later one. It writes the verdict to `.cairnfield/decisions.json`, under the Git URL the commit was pinned from. That file is the team's table of what it may install, with one entry for each component. It is never published, and the team shares it by its own means.
 
 An engineer who holds a copy of that file checks an installed copy against it, on any machine:
 
@@ -101,7 +101,7 @@ An engineer who holds a copy of that file checks an installed copy against it, o
 npx cairnfield verify <git-url> <folder> --approvals <file>
 ```
 
-`verify` passes only when the folder's file-tree hash is the one the team approved. It reads the folder and the file and nothing else.
+`verify` passes only when the folder's file-tree hash is the one the team approved. It reads the folder and the file and nothing else. It skips the `.git` folder at the top of a clone, and says nothing about what that folder holds. When a component's tree holds a link, the folder under `.cairnfield/copies/` leaves it out, and only a clone of the published copy has the approved hash.
 
 ## Running the site locally
 

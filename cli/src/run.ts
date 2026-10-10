@@ -9,7 +9,7 @@
 //   cairnfield view <component>
 //   cairnfield patch <component> --finding <id> [--replay]
 //   cairnfield assemble <component>
-//   cairnfield decide <git-url> --commit <full-hash> --verdict <verdict>
+//   cairnfield decide <component> --verdict <verdict> [--tree <tree-hash>]
 //   cairnfield approvals
 //   cairnfield verify <git-url> <folder> --approvals <file>
 //
@@ -18,7 +18,7 @@
 
 import { parseArgs } from "node:util";
 import type { ParseArgsConfig } from "node:util";
-import { isBranchName, isCommit, isHttpsUrl } from "@cairnfield/protocol";
+import { isBranchName, isCommit, isGitHash, isHttpsUrl } from "@cairnfield/protocol";
 import { approvals } from "./commands/approvals.ts";
 import { assemble } from "./commands/assemble.ts";
 import { claim } from "./commands/claim.ts";
@@ -92,9 +92,10 @@ const COMMANDS: { readonly [name: string]: Command } = {
     run: (io, home, [component]) => (isCommit(component) ? assemble(io, home, component) : usage()),
   },
   decide: {
-    options: ["commit", "verdict"],
+    options: ["verdict", "tree"],
     arguments: 1,
-    run: (io, home, [url], { commit, verdict }) => (isHttpsUrl(url) && isCommit(commit) ? decide(io, home, { url, commit, verdict }) : usage()),
+    run: (io, home, [component], { verdict, tree }) =>
+      isCommit(component) && (tree === undefined || isGitHash(tree)) ? decide(io, home, { component, verdict, tree }) : usage(),
   },
   approvals: { options: [], arguments: 0, run: (_io, home) => approvals(home) },
 };

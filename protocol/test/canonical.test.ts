@@ -82,6 +82,18 @@ describe("hashes", () => {
     expect(await gitTreeHash(entries)).toBe("6ea097eaaa5b71158b71532e4081853896098ca3");
     expect(await gitTreeHash([...entries].reverse())).toBe("6ea097eaaa5b71158b71532e4081853896098ca3");
   });
+
+  it("orders a file whose name starts other names in front of them, and a byte above 127 after every ASCII one", async () => {
+    // `git write-tree` gives this value for a file `lib` beside the folders `lib-d` and `libs`, and a name with a letter that is no ASCII.
+    const entries: FolderEntry[] = [
+      { name: utf8("li\u00df.txt"), mode: "100644", hash: "d905d9da82c97264ab6f4920e20242e088850ce9" },
+      { name: utf8("libs"), mode: TREE_MODE, hash: "f8f7aefc2900a3d737cea9eee45729fd55761e1a" },
+      { name: utf8("lib.txt"), mode: "100644", hash: "718f4d2ff533cf8ead8d3556cf43912bd245fbc4" },
+      { name: utf8("lib-d"), mode: TREE_MODE, hash: "abc366656a510a2a2f9f848d218d7dc5a7ee5ef7" },
+      { name: utf8("lib"), mode: "100644", hash: "6a69f92020f5df77af6e8813ff1232493383b708" },
+    ];
+    expect(await gitTreeHash(entries)).toBe("38dc1146092989e1d7e243f4247ac431cb8f907d");
+  });
 });
 
 describe("record ID", () => {

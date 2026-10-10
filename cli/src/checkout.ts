@@ -4,7 +4,9 @@
 // for it at the pinned commit, whatever the component's attribute files say.
 //
 // Beside the folder sits a listing of what the checkout holds, with each file's mode and
-// blob hash, and of what the pinned tree holds that the checkout leaves out.
+// blob hash, and of what the pinned tree holds that the checkout leaves out. It also
+// names the Git URL the commit was pinned from, which names the component across its
+// commits.
 
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -35,6 +37,8 @@ const MAX_TREE_LISTING_BYTES = 64 * 1024 * 1024;
 
 const LISTING = field.shape({
   component: field.gitHash(),
+  /** The Git URL the node imported the commit from. */
+  url: field.url(),
   files: field.listOf(
     field.shape({ path: field.path(), mode: field.oneOf(FILE_MODES), blob: field.gitHash() }),
     MAX_ENTRIES,
@@ -116,11 +120,14 @@ export function decoded(path: Uint8Array): string | undefined {
   }
 }
 
+/** What an exported folder holds, and what of its commit's tree it leaves out. */
+export type Exported = Pick<Listing, "files" | "leftOut">;
+
 /**
  * Exports a commit that the scratch repo holds to a folder, in place of what the folder
  * held. Returns what the folder holds now, and what of the commit's tree it leaves out.
  */
-export async function exportTree(scratch: Scratch, commit: string, dir: string): Promise<Listing> {
+export async function exportTree(scratch: Scratch, commit: string, dir: string): Promise<Exported> {
   const regular: Listing["files"][number][] = [];
   const leftOut: Listing["leftOut"][number][] = [];
   const sizeOf = new Map<string, number>();
@@ -190,7 +197,7 @@ export async function exportTree(scratch: Scratch, commit: string, dir: string):
   await write(batch, batched);
   await rm(dir, { recursive: true, force: true });
   await rename(partial, dir);
-  return { component: commit, files, leftOut };
+  return { files, leftOut };
 }
 
 /** Writes a file whole under another name first, so a run that is cut short leaves no file. */
@@ -201,11 +208,13 @@ export async function writeWhole(file: string, value: object): Promise<void> {
 }
 
 /**
- * Exports the checkout of a commit that the scratch repo holds, and writes its listing.
- * The listing is written last, so a checkout that was cut short is made again.
+ * Exports the checkout of a commit that the scratch repo holds, and writes its listing
+ * with the Git URL the commit was pinned from. The listing is written last, so a
+ * checkout that was cut short is made again.
  */
-export async function exportCheckout(home: Home, scratch: Scratch, commit: string): Promise<Listing> {
-  const listing = await exportTree(scratch, commit, checkoutDir(home, commit));
+export async function exportCheckout(home: Home, scratch: Scratch, pinned: { readonly url: string; readonly commit: string }): Promise<Listing> {
+  const { url, commit } = pinned;
+  const listing: Listing = { component: commit, url, ...(await exportTree(scratch, commit, checkoutDir(home, commit))) };
   await writeWhole(listingFile(home, commit), listing);
   return listing;
 }

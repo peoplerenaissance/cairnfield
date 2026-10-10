@@ -1,7 +1,8 @@
 // `verify`: an installed copy is held to the team's approved entry by its file-tree hash
 // (R36). It reads the approvals file it is given and the folder, and nothing else.
 
-import { appendFileSync, chmodSync, cpSync, mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { appendFileSync, chmodSync, cpSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEAM_BRANCH } from "@cairnfield/protocol";
@@ -47,14 +48,15 @@ interface Approved {
  * A team patches the small component, builds and publishes its copy and approves it. The
  * second machine gets the team's decisions file and a clone of the published copy.
  */
-async function approvedCopy(tree: readonly Entry[] = TREE, verdict = "approved-with-required-mitigations"): Promise<Approved> {
-  const component = await pinnedWith(on, { patchLevel: 1, publishRecipes: true }, tree);
+async function approvedCopy(entries: readonly Entry[] = TREE, verdict = "approved-with-required-mitigations"): Promise<Approved> {
+  const component = await pinnedWith(on, { patchLevel: 1, publishRecipes: true }, entries);
   await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
   const built = await on.run("assemble", component);
-  const decided = await on.run("decide", PLUGIN_URL, "--commit", component, "--verdict", verdict);
+  const tree = String(built.output["tree"]);
+  const decided = await on.run("decide", component, "--verdict", verdict, "--tree", tree);
   if (built.code !== EXIT.ok || decided.code !== EXIT.ok) throw new Error(`no approved copy: ${JSON.stringify([built.output, decided.output])}`);
   cpSync(join(on.home, DECISIONS), join(elsewhere, "approvals.json"));
-  return { component, tree: String(built.output["tree"]), copy: clone(on.repo(`fork-${component}`), `copy/${component}`, "installed") };
+  return { component, tree, copy: clone(on.repo(`fork-${component}`), `copy/${component}`, "installed") };
 }
 
 describe("verify", () => {
@@ -101,6 +103,27 @@ describe("verify", () => {
     expect(outcome.output["found"]).not.toBe(tree);
   });
 
+  it("passes when the copy holds an empty folder, which no tree holds, and fails on a `.git` folder below its top", async () => {
+    const { tree, copy } = await approvedCopy();
+    mkdirSync(join(copy, "config/empty/deeper"), { recursive: true });
+
+    expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toMatchObject({ code: EXIT.ok, output: { tree } });
+
+    mkdirSync(join(copy, "config/.git"));
+    writeFileSync(join(copy, "config/.git/HEAD"), "ref: refs/heads/main\n");
+    expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toMatchObject({ code: EXIT.differs, output: { error: "copy-differs" } });
+  });
+
+  it("fails on a copy that holds what no tree can, with no hash to show for it", async () => {
+    const { component, tree, copy } = await approvedCopy();
+    execFileSync("mkfifo", [join(copy, "config/pipe")]);
+
+    expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toEqual({
+      code: EXIT.differs,
+      output: { error: "copy-differs", url: PLUGIN_URL, commit: component, approved: tree },
+    });
+  });
+
   it("fails on a clone of the original", async () => {
     const { component } = await approvedCopy();
     const original = clone(on.repo(`copy-${component}`), TEAM_BRANCH, "original");
@@ -123,6 +146,43 @@ describe("verify", () => {
     expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toEqual({ code: EXIT.notApproved, output: { error: "not-approved", url: PLUGIN_URL } });
   });
 
+  it("fails with that exit code for an approved commit the team built no copy of, whatever the folder holds", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 });
+    expect((await on.run("decide", component, "--verdict", "approved")).code).toBe(EXIT.ok);
+    cpSync(join(on.home, DECISIONS), join(elsewhere, "approvals.json"));
+    const original = clone(on.repo(`copy-${component}`), TEAM_BRANCH, "original");
+
+    expect(await verify(PLUGIN_URL, original, "--approvals", "approvals.json")).toEqual({ code: EXIT.notApproved, output: { error: "not-approved", url: PLUGIN_URL } });
+  });
+
+  it("fails once the team has withdrawn its approval", async () => {
+    const { component, tree, copy } = await approvedCopy();
+    expect((await on.run("decide", component, "--verdict", "not-approved", "--tree", tree)).code).toBe(EXIT.ok);
+    cpSync(join(on.home, DECISIONS), join(elsewhere, "approvals.json"));
+
+    expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toEqual({ code: EXIT.notApproved, output: { error: "not-approved", url: PLUGIN_URL } });
+  });
+
+  it.each([
+    ["two entries for one component", (entry: object) => JSON.stringify({ version: "1", decisions: [entry, { ...entry, verdict: "not-approved" }] })],
+    ["a date that is no time", (entry: object) => JSON.stringify({ version: "1", decisions: [{ ...entry, date: "yesterday" }] })],
+    ["another version", (entry: object) => JSON.stringify({ version: "2", decisions: [entry] })],
+    ["text that is cut short", (entry: object) => JSON.stringify({ version: "1", decisions: [entry] }).slice(0, -9)],
+  ])("stops at an approvals file that holds %s", async (_what, written) => {
+    const { component, tree, copy } = await approvedCopy();
+    const entry = { url: PLUGIN_URL, commit: component, verdict: "approved", date: new Date(0).toISOString(), tree };
+    writeFileSync(join(elsewhere, "approvals.json"), written(entry));
+
+    expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toEqual({ code: EXIT.failed, output: { error: "bad-decisions" } });
+  });
+
+  it("fails for a folder that is not there, or that is a file", async () => {
+    const { copy } = await approvedCopy();
+
+    expect(await verify(PLUGIN_URL, "nowhere", "--approvals", "approvals.json")).toEqual({ code: EXIT.usage, output: { error: "no-folder" } });
+    expect(await verify(PLUGIN_URL, join(copy, "notes.md"), "--approvals", "approvals.json")).toEqual({ code: EXIT.usage, output: { error: "no-folder" } });
+  });
+
   it("fails when it is given no approvals file, and reads no published recipe in its place", async () => {
     const { copy } = await approvedCopy();
     const requests = on.requests.length;
@@ -132,11 +192,17 @@ describe("verify", () => {
     expect(on.requests).toHaveLength(requests);
   });
 
-  it("refuses an approvals file that lies in the copy it checks", async () => {
-    const { copy } = await approvedCopy();
+  it("refuses an approvals file that lies in the copy it checks, or among the files of any component", async () => {
+    const { component, copy } = await approvedCopy();
     cpSync(join(elsewhere, "approvals.json"), join(copy, "approvals.json"));
+    const inCheckout = join(on.home, ".cairnfield/checkouts", component, "approvals.json");
+    cpSync(join(elsewhere, "approvals.json"), inCheckout);
+    // A link to such a file is that file.
+    symlinkSync(inCheckout, join(elsewhere, "linked.json"));
 
-    expect(await verify(PLUGIN_URL, copy, "--approvals", join(copy, "approvals.json"))).toEqual({ code: EXIT.usage, output: { error: "bad-approvals" } });
+    for (const file of [join(copy, "approvals.json"), inCheckout, "linked.json"]) {
+      expect(await verify(PLUGIN_URL, copy, "--approvals", file), file).toEqual({ code: EXIT.usage, output: { error: "bad-approvals" } });
+    }
   });
 });
 
@@ -152,10 +218,11 @@ describe("a team working alone, with no index", () => {
       await on.run("publish"),
       await on.run("patch", component, "--finding", "72b5c551a1e4d6e2a878068dfd3dc3eceac11ed32d56e0110d54dcc67fd83ba9", "--replay"),
       await on.run("assemble", component),
-      await on.run("decide", plugin.url, "--commit", component, "--verdict", "approved-with-required-mitigations"),
-      await on.run("approvals"),
     ];
+    steps.push(await on.run("decide", component, "--verdict", "approved-with-required-mitigations", "--tree", String(steps[2]?.output["tree"])));
+    steps.push(await on.run("approvals"));
     expect(steps.map(({ code }) => code)).toEqual([EXIT.ok, EXIT.ok, EXIT.ok, EXIT.ok, EXIT.ok]);
+    expect(steps[4]?.output["approvals"]).toMatchObject([{ url: plugin.url, commit: component, verdict: "approved-with-required-mitigations" }]);
     // No step asked an index for anything.
     expect([...new Set(on.requests.map((seen) => new URL(seen.url).origin))]).toEqual([NODE]);
 

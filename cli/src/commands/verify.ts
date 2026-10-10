@@ -6,12 +6,12 @@
 // own means. Nothing else is read: no config file, no node, no index and no published
 // recipe, so this runs on any machine that holds the folder and the file.
 
-import { realpath } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { amongComponentFiles } from "../config.ts";
 import { readDecisions } from "../decisions.ts";
 import type { Io } from "../io.ts";
-import { EXIT, done, stop } from "../outcome.ts";
+import { EXIT, Stop, done, stop } from "../outcome.ts";
 import type { Outcome } from "../outcome.ts";
 import { folderTree } from "../tree.ts";
 
@@ -30,7 +30,9 @@ export async function verify(io: Io, request: VerifyRequest): Promise<Outcome> {
   let folder: string;
   try {
     folder = await realpath(resolve(io.cwd, request.folder));
-  } catch {
+    if (!(await stat(folder)).isDirectory()) return stop(EXIT.usage, "no-folder");
+  } catch (error) {
+    if (error instanceof Stop) throw error;
     return stop(EXIT.usage, "no-folder");
   }
   const file = resolve(io.cwd, request.approvals);

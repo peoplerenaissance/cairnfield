@@ -35,7 +35,7 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 | `npm run deploy` | `node/` | Deploys one team node from the default config. `NODE_URL` must be set in the shell to the node's base URL. `INDEX_URL` is optional. Ask the developer first |
 | `npm run deploy:demo` | `node/` | Deploys the two demo nodes. `TEAM_A_NODE_URL` and `TEAM_B_NODE_URL` must be set. Ask the developer first |
 | `node scripts/check-node-contract.ts <node-url> <component-commit> <patch-commit>` | repo root | Checks a deployed node against the protocol's node contract |
-| `npx cairnfield <command>` | a folder with a `cairnfield.json` | Runs the command. `npm install` links it. `cli/src/run.ts` lists the commands and `cli/src/outcome.ts` the exit codes |
+| `npx cairnfield <command>` | a folder with a `cairnfield.json`. `verify` needs none | Runs the command. `npm install` links it. `cli/src/run.ts` lists the commands and `cli/src/outcome.ts` the exit codes |
 | `node cli/evals/injection.ts fixtures/injection/<name>` | repo root | Runs the live patch agent on one injection fixture. It calls a model with the developer's key. Ask the developer first |
 | `npm run scan:secrets` | repo root | Scans the repo for secrets |
 

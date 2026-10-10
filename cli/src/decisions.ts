@@ -26,7 +26,7 @@ const MAX_DECISIONS = 10_000;
 const TIME = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/;
 
 const DECISION = field.shape({
-  /** The Git URL the component is pinned from, which names it across its commits. */
+  /** The Git URL the commit was pinned from, which names the component across its commits. */
   url: field.url(),
   /** The commit the verdict is for. */
   commit: field.gitHash(),
@@ -47,8 +47,11 @@ const TABLE = field.shape({ version: field.version(), decisions: field.listOf(DE
  */
 export async function readDecisions(file: string): Promise<Decision[] | undefined> {
   const bad = (): never => stop(EXIT.failed, "bad-decisions");
-  const table = await readWhole(file, TABLE, bad);
-  return table?.decisions.some(({ date }) => !TIME.test(date)) ? bad() : table?.decisions;
+  const decisions = (await readWhole(file, TABLE, bad))?.decisions;
+  if (!decisions) return undefined;
+  // A component has one entry. A table with two for one URL, merged by hand, could hold an approval that was withdrawn.
+  const repeats = new Set(decisions.map(({ url }) => url)).size !== decisions.length;
+  return repeats || decisions.some(({ date }) => !TIME.test(date)) ? bad() : decisions;
 }
 
 /**

@@ -501,11 +501,11 @@ export const PLUGIN_URL = "https://git.fellbeck-tools.example/plugin.git";
 export const OTHER_PLUGIN_URL = "https://git.fellbeck-tools.example/another-plugin.git";
 
 /** Makes the node's copy of a component from the given tree, and pins it. */
-export async function pinTree(on: Bench, tree: readonly Entry[]): Promise<{ readonly commit: string; readonly outcome: Outcome }> {
+export async function pinTree(on: Bench, tree: readonly Entry[], url: string = PLUGIN_URL): Promise<{ readonly commit: string; readonly outcome: Outcome }> {
   const source = on.createRepo("source");
   const commit = commitEntries(source, tree);
   git(source, ["push", "--quiet", on.createRepo(`copy-${commit}`), TEAM_BRANCH]);
-  const outcome = await on.run("pin", PLUGIN_URL, "--branch", TEAM_BRANCH, "--commit", commit);
+  const outcome = await on.run("pin", url, "--branch", TEAM_BRANCH, "--commit", commit);
   return { commit, outcome };
 }
 

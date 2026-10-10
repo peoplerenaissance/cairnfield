@@ -114,7 +114,7 @@ describe("the agent's tools", () => {
     const component = checkout.slice(checkout.lastIndexOf("/") + 1);
     writeFileSync(join(checkout, "last.txt"), "the needle\n");
 
-    const answer = await checkoutTools(home, { component, files, leftOut: [] }, TARGET).call("search_files", { text: "the needle" });
+    const answer = await checkoutTools(home, { component, url: "https://git.fellbeck-tools.example/plugin.git", files, leftOut: [] }, TARGET).call("search_files", { text: "the needle" });
 
     expect(answer).toEqual({ isError: false, content: found });
   });

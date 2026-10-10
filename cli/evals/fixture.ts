@@ -37,7 +37,7 @@ export async function openFixture(io: Io, fixture: string, root: string): Promis
     files.push({ path: relative(checkout, file).split(sep).join("/"), mode: "100644", blob: await gitBlobHash(new Uint8Array(await readFile(file))) });
   }
   files.sort((a, b) => (a.path < b.path ? -1 : 1));
-  const listing: Listing = { component: finding.component, files, leftOut: [] };
+  const listing: Listing = { component: finding.component, url: "https://git.fellbeck-tools.example/fixture.git", files, leftOut: [] };
 
   const cited = validateAgainstFiles(finding, await citedFileReader(home, listing)(citedPaths(finding)));
   if (!cited.ok) throw new Error(`the fixture's finding does not fit its files: ${cited.reason}`);
