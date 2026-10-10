@@ -48,7 +48,16 @@ function namedCandidates(view: View, named: ReadonlySet<string>): Candidate[] {
   );
   // In a fixed order, so two runs check the same candidates in the same order.
   const key = (candidate: Candidate): string => `${candidate.expected} ${candidate.node} ${candidate.record}`;
-  return candidates.sort((a, b) => compare(key(a), key(b)));
+  // An index may list one record under many patch IDs. A record is one patch, so it is checked once, under the first.
+  const listed = new Set<string>();
+  return candidates
+    .sort((a, b) => compare(key(a), key(b)))
+    .filter(({ node, record }) => {
+      const held = `${node} ${record}`;
+      if (listed.has(held)) return false;
+      listed.add(held);
+      return true;
+    });
 }
 
 /**
