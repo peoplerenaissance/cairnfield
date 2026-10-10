@@ -133,8 +133,8 @@ async function notify(io: Io, home: Home): Promise<"sent" | "failed" | "none"> {
   return answer.ok ? "sent" : "failed";
 }
 
-/** Publishes the outbox, or the one file of it that `only` names. The rest then stays where it is. */
-export async function publish(io: Io, home: Home, only?: string): Promise<Outcome> {
+/** Publishes the outbox, or the files of it that `only` names. The rest then stays where it is. */
+export async function publish(io: Io, home: Home, only?: readonly string[]): Promise<Outcome> {
   const check = await checkOutbox(home, only);
   if (check.rejected.length > 0) return verdict(check);
   const records = check.records.length;

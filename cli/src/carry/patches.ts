@@ -1,0 +1,88 @@
+// Which of a team's own patches move to a newer commit of a component (R37, KTD39).
+//
+// A patch is a set of content replacements (KTD4). It names no commit and no path, so it
+// carries when the newer commit still holds every content it replaces, with the mode it
+// replaces, and every finding it cites carried. Its replacements then go to every path
+// of the newer commit that holds them, and the patch checks run on the result against
+// the carried findings. The patch ID covers the replacements and nothing else, so it
+// comes out the same.
+//
+// A patch is read as assembly reads one (see `assemble/verify.ts`): its record from the
+// team's own repo and its commit from the team's own fork, checked again as a patch on
+// the older commit. So what is carried is what the commit does, not what a record says.
+
+import { applyChanges, checkPatch, citedRanges, compare } from "@cairnfield/protocol";
+import type { FileEntry, Patch } from "@cairnfield/protocol";
+import type { Candidate } from "../assemble/select.ts";
+import { verify } from "../assemble/verify.ts";
+import type { Assembly } from "../assemble/verify.ts";
+import type { Listing } from "../checkout.ts";
+import { EXIT, stop } from "../outcome.ts";
+import type { Carried } from "./findings.ts";
+
+/** What the output says of a patch that does not carry. */
+type NotCarried =
+  /** The newer commit lacks a content the patch replaces, or a finding the patch cites did not carry. */
+  | { readonly patchId: string; readonly carried: false; readonly reason: "content-changed" | "finding-not-carried" }
+  /** A check refused the patch, at the older commit or on the newer one. `check` is that check's code. A patch refused at the older commit has no patch ID. */
+  | { readonly patchId?: string; readonly carried: false; readonly reason: "refused"; readonly check: string };
+
+/** What became of one patch record of the team's at the older commit. A reason is a code from a closed list. */
+export type PatchEntry = { readonly patch: string } & (
+  /** Built again on the newer commit as `commit`, and announced there by the record `as`. */
+  | { readonly patchId: string; readonly carried: true; readonly reason: "content-unchanged"; readonly as: string; readonly commit: string }
+  | NotCarried
+);
+
+/** A patch that carries, before it is a commit on the newer commit. */
+export interface Carrying {
+  readonly patchId: string;
+  /** Every path of the newer commit that the patch changes, with its new mode and blob, or the deletion marker. */
+  readonly changes: readonly FileEntry[];
+  /** The content of each new blob, by its hash. */
+  readonly blobs: ReadonlyMap<string, Uint8Array>;
+  /** The patch record for the newer commit, short of the commit, which is not built yet. */
+  readonly record: Omit<Patch, "commit">;
+}
+
+export type Decided = ({ readonly carried: true } & Carrying) | NotCarried;
+
+/**
+ * Decides one patch record of the team's own. `run` is the older commit as assembly
+ * works with one, and `findings` holds what each finding that carried became, by the ID
+ * it had at the older commit. Nothing is written here: the caller builds the commit.
+ */
+export async function carryPatch(run: Assembly, newer: Listing, findings: ReadonlyMap<string, Carried>, candidate: Candidate): Promise<Decided> {
+  const verdict = await verify(run, candidate);
+  if (!verdict.ok) return { carried: false, reason: "refused", check: verdict.reason };
+  const { facts, before, after } = verdict;
+  const { patchId, replacements } = facts;
+
+  const held = new Set(newer.files.map((file) => `${file.blob} ${file.mode}`));
+  if (!replacements.every(({ oldBlob, oldMode }) => held.has(`${oldBlob} ${oldMode}`))) return { patchId, carried: false, reason: "content-changed" };
+  // A carried patch cites no claim of the older commit, and each finding by its ID at the newer
+  // one. What else its record says stays: its model, and the sources of a merged patch, which are patch IDs.
+  const { claim, commit, ...announced } = verdict.record;
+  const cited = announced.findings.flatMap((id) => findings.get(id) ?? []);
+  if (cited.length < announced.findings.length) return { patchId, carried: false, reason: "finding-not-carried" };
+
+  // Every path that holds a replaced content with the replaced mode gets the new ones.
+  const replacing = new Map(replacements.map((replacement) => [`${replacement.oldBlob} ${replacement.oldMode}`, replacement]));
+  const changes = newer.files.flatMap(({ path, mode, blob }): FileEntry[] => {
+    const replacement = replacing.get(`${blob} ${mode}`);
+    return replacement ? [{ path, mode: replacement.newMode, blob: replacement.newBlob }] : [];
+  });
+  // The newer commit may hold a copy the older one did not, so the patch is checked again
+  // where it lands. A copy with a mode the patch does not replace leaves it incomplete.
+  const checked = await checkPatch({
+    base: { files: newer.files, content: before },
+    patched: { files: applyChanges(newer.files, changes), content: after },
+    cited: citedRanges(cited.map(({ record }) => record), newer.files),
+  });
+  if (!checked.ok) return { patchId, carried: false, reason: "refused", check: checked.reason };
+  // The same replacements give the same patch ID (KTD4). Any other ID is not this patch.
+  if (checked.patchId !== patchId) return stop(EXIT.failed, "carry-failed");
+
+  const record = { ...announced, component: newer.component, findings: [...new Set(cited.map(({ id }) => id))].sort(compare) };
+  return { carried: true, patchId, changes, blobs: after, record };
+}

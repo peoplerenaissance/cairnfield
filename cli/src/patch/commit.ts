@@ -15,11 +15,11 @@ const MESSAGE = "Cairnfield patch";
 export const patchRef = (component: string, patchId: string): string => `refs/heads/patch/${component}/${patchId}`;
 
 /**
- * Builds the commit of a draft in a scratch repo that holds the pinned commit. Returns
- * its hash. The tree is the pinned tree with the draft's new blobs at the paths it changes.
+ * Builds the commit of a patch in a scratch repo that holds the pinned commit. Returns
+ * its hash. The tree is the pinned tree with the patch's new blobs at the paths it changes.
  */
-export function commitPatch(scratch: Scratch, component: string, draft: Draft): Promise<string> {
-  return commitChanges(scratch, component, draft.changes, draft.blobs, MESSAGE);
+export function commitPatch(scratch: Scratch, component: string, patch: Pick<Draft, "changes" | "blobs">): Promise<string> {
+  return commitChanges(scratch, component, patch.changes, patch.blobs, MESSAGE);
 }
 
 /** Pushes a patch commit to its ref in the fork. A ref that holds the commit already stays as it is. */

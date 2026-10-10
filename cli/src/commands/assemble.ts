@@ -60,7 +60,7 @@ async function publishCopy(io: Io, home: Home, scratch: Scratch, key: string, co
 
   const record: Recipe = { version: SCHEMA_VERSION, type: "recipe", component, patches: [...patches], tree };
   const recipe = await addRecord(home, record);
-  const published = await outcomeOf(() => publish(io, home, recordPath(record, recipe)));
+  const published = await outcomeOf(() => publish(io, home, [recordPath(record, recipe)]));
   return done({ recipe, ...published.output }, published.code);
 }
 
@@ -112,7 +112,7 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
       if (settled.has(patchId)) continue;
       settled.add(patchId);
       if (lens.patchKinds.includes(kind)) taken.set(patchId, verdict);
-      else skipped.push({ patchId, node: verdict.node, commit: verdict.commit, kind });
+      else skipped.push({ patchId, node: verdict.node, commit: verdict.record.commit, kind });
     }
     if (taken.size === 0) return none();
     if (taken.size > MAX_RECIPE_PATCHES) return stop(EXIT.invalid, "too-many-patches", { patches: taken.size });
@@ -153,7 +153,7 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
       {
         component,
         level,
-        patches: selected.map(({ node: from, commit: patch, facts }) => ({ patchId: facts.patchId, node: from, commit: patch, kind: facts.kind, size: facts.size })),
+        patches: selected.map(({ node: from, record, facts }) => ({ patchId: facts.patchId, node: from, commit: record.commit, kind: facts.kind, size: facts.size })),
         refused,
         skipped,
         tree: copy.tree,

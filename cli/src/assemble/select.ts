@@ -32,7 +32,7 @@ export function namedTeams(lens: Lens, own: string): string[] {
 }
 
 /** The patch records of one component that the team's own repo lists. */
-function ownCandidates(node: string, component: string, held: NodeListing | undefined): Candidate[] {
+export function ownCandidates(node: string, component: string, held: NodeListing | undefined): Candidate[] {
   return (held?.records ?? []).flatMap(({ path }) => {
     const named = parseRecordPath(path);
     return named?.component === component && named.type === "patch" ? [{ node, record: named.id }] : [];

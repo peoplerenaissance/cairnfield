@@ -61,7 +61,8 @@ export interface Assembly {
 /** A candidate that passed every check, with what the copy is built from. */
 export interface Verified {
   readonly node: string;
-  readonly commit: string;
+  /** The patch record, as the repo of the team that published it holds it. It names the commit. */
+  readonly record: Patch;
   readonly facts: PatchFacts;
   /** The lines the patch's findings cite, which are the lines it may change. */
   readonly cited: readonly CitedRange[];
@@ -216,5 +217,5 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   const { ok, ...facts } = checked;
   // The index may be wrong about a patch, or lie about it. Its patch ID only says which one it meant.
   if (candidate.expected !== undefined && candidate.expected !== facts.patchId) return refuse("patch-id-mismatch");
-  return { ok, node: candidate.node, commit, facts, cited, before, after: after.value };
+  return { ok, node: candidate.node, record: announced.value, facts, cited, before, after: after.value };
 }
