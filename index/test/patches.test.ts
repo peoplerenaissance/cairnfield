@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { PATCH_TRIES, PATCH_WAIT_SECONDS } from "../src/patches.ts";
 import { PASS_RECORDS } from "../src/records.ts";
 import { syncNode } from "../src/sync.ts";
-import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, demoPlugin, edited, finding, fixture, fixturesUnder, freshIndexForEachTest, patchRecord, publishPatch, synced } from "./bench.ts";
+import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, README, README_TEXT, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, SKILL_FIXED, SKILL_TEXT, START, SYNC_HOST, UPSTREAM, bench, demoPlugin, edited, finding, fixture, fixturesUnder, freshIndexForEachTest, idOf, onReadme, patchRecord, publishPatch, synced } from "./bench.ts";
 import type { Bench } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
 import type { Files } from "./fake-artifacts.ts";
@@ -18,22 +18,7 @@ import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
 
 freshIndexForEachTest();
 
-const SKILL_TEXT = FILES[SKILL] as string;
-const README = "README.md";
-const README_TEXT = FILES[README] as string;
-
-/** The skill file without the hidden instruction on its line 3. */
-const SKILL_FIXED = edited(SKILL_TEXT, { 3: undefined });
-
 const patchPath = (component: string, id: string | undefined): string => `records/${component}/patch/${id}.json`;
-
-/** The ID of the patch that replaces one content of a plain file with another. */
-async function idOf(before: string, after: string, mode = "100644"): Promise<string> {
-  return patchIdOf([{ oldBlob: await blobHash(before), oldMode: mode, newBlob: await blobHash(after), newMode: mode }]);
-}
-
-/** A finding on one line of the readme. */
-const onReadme = (line: number): { readonly [field: string]: unknown } => ({ location: { path: README, start: line, end: line } });
 
 /**
  * One index with one registered node behind `fetch` and a component, ready: the small

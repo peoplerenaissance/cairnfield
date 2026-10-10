@@ -4,34 +4,19 @@
 // the page as a tree of elements, which the script turns into the document. No test runs
 // a browser.
 
-import { VIEW, conforms, patchId as patchIdOf, recordId } from "@cairnfield/protocol";
+import { VIEW, conforms, recordId } from "@cairnfield/protocol";
 import type { View } from "@cairnfield/protocol";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { NOTHING_READ, draw, placeOf, readOf } from "../src/page/render.ts";
 import type { Drawing, Drawn, Held, Place } from "../src/page/render.ts";
-import { BRANCH, FILES, HOST, INDEX, NODE_A, NODE_B, NODE_C, SKILL, START, UPSTREAM, bench, claim, clockAt, demoPlugin, edited, finding, fixture, fixturesUnder, freshIndexForEachTest, patchRecord, publishPatch, synced } from "./bench.ts";
+import { BRANCH, FILES, HOST, INDEX, NODE_A, NODE_B, NODE_C, README, README_TEXT, SKILL, SKILL_FIXED, SKILL_TEXT, START, UPSTREAM, bench, claim, clockAt, demoPlugin, edited, finding, fixture, fixturesUnder, freshIndexForEachTest, idOf, onReadme, patchRecord, publishPatch, synced } from "./bench.ts";
 import type { Bench } from "./bench.ts";
-import { blobHash } from "./fake-artifacts.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
 
 const MINUTE = 60_000;
 
 freshIndexForEachTest();
-
-const README = "README.md";
-const README_TEXT = FILES[README] as string;
-const SKILL_TEXT = FILES[SKILL] as string;
-/** The skill file without the hidden instruction on its line 3. */
-const SKILL_FIXED = edited(SKILL_TEXT, { 3: undefined });
-
-/** A finding on one line of the readme. */
-const onReadme = (line: number): { readonly [field: string]: unknown } => ({ location: { path: README, start: line, end: line } });
-
-/** The ID of the patch that replaces one content of a plain file with another. */
-async function idOf(before: string, after: string): Promise<string> {
-  return patchIdOf([{ oldBlob: await blobHash(before), oldMode: "100644", newBlob: await blobHash(after), newMode: "100644" }]);
-}
 
 // The page, as its script reads and draws it.
 

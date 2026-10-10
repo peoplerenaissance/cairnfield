@@ -62,7 +62,7 @@ section { background: var(--paper); border: 1px solid var(--line); border-radius
 h2 { display: inline-block; font: 600 11.5px/1 var(--mono); letter-spacing: 0.02em; color: var(--muted); margin: 0 10px 12px 0; }
 h2 + .count { font: 600 11.5px/1 var(--mono); }
 h3 { font: 600 13px/1.2 var(--body); margin: 12px 0 2px; }
-h2 + h3, h2 + .count + h3 { margin-top: 0; }
+h2 + h3 { margin-top: 0; }
 h3 code { font-weight: 500; background: var(--fog); padding: 3px 6px; }
 .empty { color: var(--muted); font-size: 14px; }
 .note { color: var(--muted); font-size: 12.5px; margin-top: 4px; }

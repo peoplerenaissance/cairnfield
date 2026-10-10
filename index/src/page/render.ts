@@ -36,8 +36,8 @@ export type Read = { readonly kind: "view"; readonly view: View } | { readonly k
 
 /** What the page holds between two reads. */
 export interface Held {
-  /** What the last read that worked gave, and when. Nothing before the first one. */
-  readonly last?: { readonly shown: View | "unknown"; readonly at: number };
+  /** The version of the view the last read that worked gave, or `unknown` for a commit that is not registered, and when. Nothing before the first one. */
+  readonly last?: { readonly version: number | "unknown"; readonly at: number };
   /** Whether the read after it failed. */
   readonly failed: boolean;
 }
@@ -311,7 +311,7 @@ function findings(reading: Reading): Drawing {
 function patch(reading: Reading, entry: PatchEntry): Drawing {
   // The organizations that wrote it, in the order of their addresses, so an entry reads the same after every read.
   const authors = [...new Set(entry.records.map(({ node }) => node))].sort();
-  const named = distinct(entry.records.flatMap(({ record }) => record.findings), (id) => id);
+  const named = [...new Set(entry.records.flatMap(({ record }) => record.findings))];
   return el(
     "article",
     { class: "patch", id: `patch-${entry.patchId}` },
@@ -353,7 +353,7 @@ function patches(reading: Reading): Drawing {
         el(
           "div",
           { class: "group-head" },
-          el("span", { class: "paths" }, distinct(group.patches.flatMap(({ paths }) => paths), (path) => path).map(code)),
+          el("span", { class: "paths" }, [...new Set(group.patches.flatMap(({ paths }) => paths))].map(code)),
           el("span", { class: "count" }, counted(group.patches.length, " patch", " patches side by side")),
         ),
         el("div", { class: "cols" }, group.patches.map((entry) => patch(reading, entry))),
@@ -380,7 +380,7 @@ function recipes(reading: Reading): Drawing {
       el("div", { class: "used" }, el("b", {}, String(nodes.length)), nodes.length === 1 ? " organization published this copy" : " organizations published this copy"),
       el("div", { class: "tree" }, "tree ", code(tree), el("span", { class: "tag un" }, "published, not checked")),
       organizations(reading, nodes),
-      el("ul", { class: "taken" }, distinct(records.flatMap(({ record }) => record.patches), (id) => id).map((id) => el("li", {}, patchLink(reading, id)))),
+      el("ul", { class: "taken" }, [...new Set(records.flatMap(({ record }) => record.patches))].map((id) => el("li", {}, patchLink(reading, id)))),
     ),
   );
   return section("recipes", "Recipes", el("ul", { class: "recipes" }, shown));
@@ -433,8 +433,6 @@ function status(held: Held): Drawing {
   return el("p", { id: "status", class: "status" }, "Read at ", time(held.last.at));
 }
 
-const versionOf = (shown: View | "unknown"): number | "unknown" => (shown === "unknown" ? shown : shown.viewVersion);
-
 /**
  * What the page shows after one read. A read that failed leaves what is on screen and
  * says when that was read. A view is drawn again only when its version changed (KTD11):
@@ -446,11 +444,8 @@ export function draw(place: Place, held: Held, read: Read, now: number): Drawn {
     const after: Held = { ...held, failed: true };
     return { held: after, status: status(after) };
   }
-  const shown: View | "unknown" = read.kind === "view" ? read.view : "unknown";
-  if (held.last !== undefined && versionOf(held.last.shown) === versionOf(shown)) {
-    const after: Held = { last: { shown: held.last.shown, at: now }, failed: false };
-    return { held: after, status: status(after) };
-  }
-  const after: Held = { last: { shown, at: now }, failed: false };
-  return { held: after, status: status(after), body: shown === "unknown" ? unregistered(place) : viewed(place, shown) };
+  const version = read.kind === "view" ? read.view.viewVersion : "unknown";
+  const after: Held = { last: { version, at: now }, failed: false };
+  if (held.last !== undefined && held.last.version === version) return { held: after, status: status(after) };
+  return { held: after, status: status(after), body: read.kind === "view" ? viewed(place, read.view) : unregistered(place) };
 }
