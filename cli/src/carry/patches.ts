@@ -18,9 +18,9 @@
 // Every patch here is the team's own, so a read of the team's node that fails is no
 // refusal. It ends the command with the failure's own outcome, and is never an entry. A
 // patch is `refused` for what a check found in it, or for what the node answered: a
-// record it lists and does not serve, or a fork it does not have. A fetch of its commit
-// from the fork that fails is `refused` too, with `git-failed`. That is how a fetch
-// failure is reported today.
+// record it lists and answers not-found for, or a fork it does not have. A fetch of its
+// commit from the fork that fails is `refused` too, with `git-failed`. That is how a
+// fetch failure is reported today.
 
 import { applyChanges, checkPatch, citedRanges, compare } from "@cairnfield/protocol";
 import type { FileEntry, Patch } from "@cairnfield/protocol";

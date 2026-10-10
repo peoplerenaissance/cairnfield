@@ -3,11 +3,12 @@
 // still holds that content, at the same path or at another.
 
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
 import { NARROWED, bothRules, pinnedWith } from "../assemble/team.ts";
-import { NODE, bench, finding, holdRecords } from "../support.ts";
+import { NODE, OUTBOX, bench, finding, holdRecords } from "../support.ts";
 import type { Bench } from "../support.ts";
 import { carry, findingsSaid, patchCiting, patchesSaid, recordOf, recordsAt, release, tree } from "./release.ts";
 
@@ -132,5 +133,35 @@ describe("carry, for a finding", () => {
     expect(patchesSaid(outcome)).toEqual([{ patch: made.id, carried: false, reason: "refused", check: "unresolved-reference" }]);
     expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
     expect(recordsAt(on, newer)).toEqual([]);
+  });
+
+  // Not-found is the node's answer for a record. Any other answer that is no success is a
+  // read that failed: it says nothing of the finding, and ends the command.
+  it.each([
+    ["a status that is no success and no code of the node's", () => new Response("unavailable", { status: 503 }), { error: "node-bad-answer" }],
+    ["a refusal other than not-found", () => Response.json({ error: "not-ready" }, { status: 409 }), { error: "node-refused", reason: "not-ready" }],
+  ])("stops with the node's failure when the node answers for a finding record it lists with %s, writes no record, and carries the finding on the next run", async (_what, answer, output) => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    const cited = finding(older, { location: { path: "config/rules.txt", start: 3, end: 3 } });
+    const [id = ""] = await holdRecords(on, [cited]);
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+    const listed = `records/${older}/finding/${id}.json`;
+    on.respond = (seen) => {
+      const { origin, pathname, searchParams } = new URL(seen.url);
+      return origin === NODE && pathname === "/file" && searchParams.get("path") === listed ? answer() : undefined;
+    };
+
+    // The output is the failure alone. It holds no entry for the finding.
+    expect(await carry(on, older, newer)).toEqual({ code: EXIT.node, output });
+    expect(recordsAt(on, newer)).toEqual([]);
+    expect(existsSync(join(on.home, OUTBOX, "records", newer))).toBe(false);
+
+    on.respond = undefined;
+    const again = await carry(on, older, newer);
+
+    const as = await recordId({ ...cited, component: newer });
+    expect(again.code).toBe(EXIT.ok);
+    expect(findingsSaid(again)).toEqual([{ finding: id, carried: true, reason: "content-unchanged", as, path: "config/rules.txt" }]);
+    expect(recordsAt(on, newer)).toEqual([`records/${newer}/finding/${as}.json`]);
   });
 });

@@ -8,7 +8,9 @@
 // the same bytes count as the same content. No rename and no likeness is looked for.
 //
 // The findings are read from the team's own repo. The node validates nothing (KTD7), so
-// each is held to the checks the outbox runs, against the older checkout.
+// each is held to the checks the outbox runs, against the older checkout. A record the
+// node lists and answers not-found for is refused. Any other answer that is no success is
+// a read that failed: it says nothing of the finding, and ends the command.
 
 import { citedPaths, compare, parseRecordPath, recordId, recordPath, validateAgainstFiles } from "@cairnfield/protocol";
 import type { CitedFiles, FileListing, Finding, NodeListing } from "@cairnfield/protocol";
@@ -79,8 +81,9 @@ export async function carryFindings(
     return named?.component === older.component && named.type === "finding" ? [named.id] : [];
   });
   for (const id of ids.sort(compare)) {
-    const file = await readRecord(io, node, held.head, recordPath({ component: older.component, type: "finding" }, id));
-    // A file the node lists and does not serve is no record, and neither is one that is not valid.
+    // The node is the team's own, so a read of it that fails ends the command.
+    const file = await readRecord(io, node, held.head, recordPath({ component: older.component, type: "finding" }, id), true);
+    // A file the node lists and answers not-found for is no record, and neither is one that is not valid.
     if (!file?.ok || file.record.type !== "finding") {
       entries.push({ finding: id, carried: false, reason: "refused", check: file && !file.ok ? file.reason : "unresolved-reference" });
       continue;

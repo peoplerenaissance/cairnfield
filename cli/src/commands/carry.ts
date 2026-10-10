@@ -24,12 +24,13 @@
 //   refused                  not carried: a check refused it, and `check` holds that check's code
 //
 // `refused` says something of the record or its commit: what a check found there, or what
-// the node answered when asked for it, as for a record it lists and does not serve, or a
-// fork it does not have. A read of the team's own node that fails says nothing of either.
-// It ends the command with the failure's own outcome and exit code, and is never an
-// entry, so a caller that reads only the exit code does not go on to build a copy without
-// the patch. What carried before it waits in the outbox, and a run whose reads succeed
-// finishes.
+// the node answered when asked for it, as for a record it lists and answers not-found
+// for, or a fork it does not have. A read of the team's own node that fails says nothing
+// of either: the node cannot be reached, or it answers for a record it lists with a
+// failure that is not not-found. Such a read ends the command with the failure's own
+// outcome and exit code, and is never an entry, so a caller that reads only the exit code
+// does not go on to build a copy without the finding or the patch. What carried before it
+// waits in the outbox, and a run whose reads succeed finishes.
 //
 // A fetch of a patch commit from the team's own fork that fails is still an entry,
 // `refused` with `git-failed`, and the run goes on. That is how a fetch failure is
@@ -51,9 +52,13 @@
 // fork that cannot be asked ends the command, and no patch is then named as left behind.
 //
 // It ends with the counts of paths the newer commit added, changed and removed. `carry`
-// reviews none of them.
+// reviews none of them. The counts hold the files of each checkout and the entries it
+// leaves out: a link, a submodule entry, a path it refuses. A path that moved between the
+// two, or that is left out for another reason than it was, counts as changed. A path that
+// both checkouts leave out for the same reason is not counted as changed: a listing keeps
+// no hash for it, so the two cannot be compared.
 
-import { changedPaths, compare, recordPath } from "@cairnfield/protocol";
+import { compare, recordPath } from "@cairnfield/protocol";
 import type { Patch } from "@cairnfield/protocol";
 import { ownCandidates } from "../assemble/select.ts";
 import type { Assembly } from "../assemble/verify.ts";
@@ -62,6 +67,7 @@ import type { CarriedFindings } from "../carry/findings.ts";
 import { carryPatch } from "../carry/patches.ts";
 import type { PatchEntry } from "../carry/patches.ts";
 import { citedFileReader, readListing } from "../checkout.ts";
+import type { Listing } from "../checkout.ts";
 import type { Home } from "../config.ts";
 import { readCopy } from "../copy.ts";
 import { fetchCommit, withScratch } from "../git.ts";
@@ -94,6 +100,17 @@ async function pushedBy(io: Io, node: string, component: string): Promise<Readon
   const fork = await forkAccess(io, node, component);
   if (!fork.ok) return fork.error === "refused" && fork.reason === "not-found" ? new Set() : nodeFailed(fork);
   return withScratch(io, (scratch) => pushedPatches(scratch, fork.body, component));
+}
+
+/**
+ * What a commit's tree holds at each path, as its listing knows it: a file's mode and
+ * blob, or the reason the checkout leaves the entry out.
+ */
+function entriesOf(listing: Listing): Map<string, string> {
+  return new Map([
+    ...listing.files.map(({ path, mode, blob }): [string, string] => [path, `${mode} ${blob}`]),
+    ...listing.leftOut.map(({ path, reason }): [string, string] => [path, reason]),
+  ]);
 }
 
 export async function carry(io: Io, home: Home, request: CarryRequest): Promise<Outcome> {
@@ -158,11 +175,14 @@ export async function carry(io: Io, home: Home, request: CarryRequest): Promise<
   // The fork is asked only when there is a patch to tell apart, so a run whose entries name every patch of the copy makes no call for it.
   const pushed = unnamed.length > 0 ? await pushedBy(io, node, older.component) : new Set<string>();
   const leftBehind = unnamed.filter((patchId) => !pushed.has(patchId));
-  const changes = changedPaths(older.files, newer.files);
+  // The counts say how much of the release was not reviewed, so they hold what a checkout leaves out too.
+  const before = entriesOf(older);
+  const after = entriesOf(newer);
   const paths = {
-    added: changes.filter((change) => !change.old).length,
-    changed: changes.filter((change) => change.old && change.new).length,
-    removed: changes.filter((change) => !change.new).length,
+    added: [...after.keys()].filter((path) => !before.has(path)).length,
+    // A path left out of both commits for the same reason is not counted: a listing keeps no hash for it, so the two cannot be compared.
+    changed: [...before].filter(([path, entry]) => after.has(path) && after.get(path) !== entry).length,
+    removed: [...before.keys()].filter((path) => !after.has(path)).length,
   };
 
   // When publishing stops, the output still says what carried, and the records wait in the outbox.

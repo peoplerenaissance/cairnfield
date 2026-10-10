@@ -13,10 +13,12 @@
 //
 // A caller whose candidates are all the team's own may ask for more (`failedReadEnds`). A
 // read of the team's own node that fails says nothing of the patch, so it then ends the
-// command with its own outcome, and the next run reads again. A fetch from the fork that
-// fails still refuses the candidate, with `git-failed`. That is how a fetch failure is
-// reported today: Git gives one failure for a fetch that failed and for a commit the fork
-// does not hold.
+// command with its own outcome, and the next run reads again. A record the node lists and
+// answers for with a failure is such a read, unless the answer is not-found, which is the
+// node's word that it holds no such record. A fetch from the fork that fails still
+// refuses the candidate, with `git-failed`. That is how a fetch failure is reported
+// today: Git gives one failure for a fetch that failed and for a commit the fork does not
+// hold.
 
 import {
   DELETED_MODE,
@@ -116,7 +118,7 @@ async function patchRecordOf(run: Assembly, candidate: Candidate): Promise<Patch
   if (!held.ok) return `node-${held.error}`;
   const path = recordPath({ component: run.listing.component, type: "patch" }, candidate.record);
   if (!held.body.records.some((record) => record.path === path)) return "unresolved-reference";
-  const file = await readRecord(run.io, candidate.node, held.body.head, path);
+  const file = await readRecord(run.io, candidate.node, held.body.head, path, run.failedReadEnds);
   if (!file) return "unresolved-reference";
   if (!file.ok) return file.reason;
   return file.record.type === "patch" ? file.record : "unresolved-reference";
@@ -137,7 +139,7 @@ async function findingsOf(run: Assembly, author: string, ids: readonly string[])
     for (const node of nodes) {
       const held = await listingOf(run, node);
       if (!held.ok || !held.body.records.some((record) => record.path === path)) continue;
-      const file = await readRecord(run.io, node, held.body.head, path);
+      const file = await readRecord(run.io, node, held.body.head, path, run.failedReadEnds);
       if (file?.ok && file.record.type === "finding") {
         found = file.record;
         break;

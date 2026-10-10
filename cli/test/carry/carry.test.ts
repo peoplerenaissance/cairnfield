@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCHEMA_VERSION, TEAM_BRANCH, recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
-import { NARROWED, bothRules, otherTeam, ownPatch, patchBy, pinnedWith, refsOf, rules, serveView } from "../assemble/team.ts";
+import { NARROWED, TREE, bothRules, otherTeam, ownPatch, patchBy, pinnedWith, refsOf, rules, serveView } from "../assemble/team.ts";
 import type { Lens, Made } from "../assemble/team.ts";
 import {
   INDEX,
@@ -27,7 +27,7 @@ import {
   putRecord,
   remoteOf,
 } from "../support.ts";
-import type { Bench } from "../support.ts";
+import type { Bench, Entry } from "../support.ts";
 import { carry, findingsSaid, onPatchRef, patchRefs, patchesSaid, recordsAt, release, tree } from "./release.ts";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -41,6 +41,9 @@ afterEach(() => {
 });
 
 const OTHER_NOTES = "# Notes\n\nSomething new.\n";
+
+/** A symbolic link, which a checkout leaves out. */
+const link = (path: string, to: string): Entry => ({ path, content: to, mode: "120000" });
 
 /** Every file under the outbox, by its path there. */
 const waiting = (): string[] => readdirSync(join(on.home, OUTBOX), { recursive: true, encoding: "utf8" }).filter((path) => path.endsWith(".json")).sort();
@@ -57,6 +60,24 @@ describe("carry", () => {
     const imports = on.requests.slice(requests).filter((seen) => seen.url.endsWith("/admin/import"));
     expect(imports.map((seen) => seen.body)).toEqual([{ url: PLUGIN_URL, branch: TEAM_BRANCH, commit: newer }]);
     expect(existsSync(join(on.home, ".cairnfield/checkouts", newer, "notes.md"))).toBe(true);
+  });
+
+  // The counts say how much of the release `carry` did not review, so they hold what a checkout leaves out too.
+  it.each<[string, readonly Entry[], readonly Entry[], object]>([
+    ["adds a symbolic link", TREE, [...TREE, link("current-rules", "config/rules.txt")], { added: 1, changed: 0, removed: 0 }],
+    ["turns a regular file into a symbolic link", TREE, [...tree({ "notes.md": undefined }), link("notes.md", "config/rules.txt")], { added: 0, changed: 1, removed: 0 }],
+    [
+      // The link that stays points elsewhere now. A listing keeps no hash for an entry it leaves out, so that change is not counted.
+      "keeps one link, turns one into a submodule entry and takes one out",
+      [...TREE, link("kept", "config/rules.txt"), link("turned", "notes.md"), link("gone", "run.sh")],
+      [...TREE, link("kept", "docs/rules.txt"), { path: "turned", hash: "12".repeat(20), mode: "160000" }],
+      { added: 0, changed: 1, removed: 1 },
+    ],
+  ])("counts the paths a checkout leaves out when the newer commit %s", async (_what, before, after, paths) => {
+    const older = await pinnedWith(on, { patchLevel: 1 }, before);
+    const newer = release(on, older, after);
+
+    expect(await carry(on, older, newer)).toMatchObject({ code: EXIT.ok, output: { paths } });
   });
 
   it("never carries a finding or a patch of another team, and names another team's patch in the copy last built at the older commit", async () => {
@@ -347,6 +368,26 @@ describe("carry", () => {
       expect(again.code).toBe(EXIT.ok);
       expect(patchesSaid(again)).toMatchObject([{ patch: mine.id, patchId: mine.patchId, carried: true, reason: "content-unchanged" }]);
       expect(again.output["published"]).toEqual([cited, `records/${newer}/patch/${patchesSaid(again)[0]?.as}.json`]);
+    });
+
+    it.each([
+      ["the patch record", "patch", 1],
+      // The run read the finding record once already, when it carried the finding itself.
+      ["a finding record the patch cites", "finding", 2],
+    ] as const)("stops with the node's failure when the node answers for %s with a failure as the patch is checked", async (_what, type, nth) => {
+      const id = type === "patch" ? mine.id : await recordId(finding(older, { location: { path: "config/rules.txt", start: 3, end: 3 } }));
+      const listed = `records/${older}/${type}/${id}.json`;
+      let reads = 0;
+      on.respond = (seen) => {
+        const { origin, pathname, searchParams } = new URL(seen.url);
+        if (origin !== NODE || pathname !== "/file" || searchParams.get("path") !== listed) return undefined;
+        reads += 1;
+        // The node lists the file, and answers for it with a failure that is not not-found.
+        return reads === nth ? new Response("unavailable", { status: 503 }) : undefined;
+      };
+
+      expect(await carry(on, older, newer)).toEqual({ code: EXIT.node, output: { error: "node-bad-answer" } });
+      stoppedBeforeThePatch();
     });
 
     it("reports the patch as refused with Git's code when the fetch of its commit from the team's fork fails, and publishes what carried", async () => {

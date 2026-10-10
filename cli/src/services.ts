@@ -40,6 +40,8 @@ export type Answer<T> =
   /** The service refused, with a code from its closed list. */
   | { readonly ok: false; readonly error: "refused"; readonly reason: string };
 
+type Failed = Exclude<Answer<never>, { readonly ok: true }>;
+
 /** A route that answers with JSON in a shape of the protocol. */
 type JsonRoute = Route & { readonly response: ShapeKind };
 
@@ -70,6 +72,21 @@ async function readUpTo(response: Response, max: number): Promise<Uint8Array | u
   return Buffer.concat(chunks);
 }
 
+/** What a service sent, read as JSON. Nothing for an answer that was cut off at its limit or is no JSON. */
+function parsed(bytes: Uint8Array | undefined): unknown {
+  try {
+    return bytes === undefined ? undefined : JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return undefined;
+  }
+}
+
+/** An answer that is no success, held to the service's closed list of refusals. */
+function refusalOf(refusal: ShapeKind, body: unknown): Failed {
+  if (conforms(refusal, body)) return { ok: false, error: "bad-answer" };
+  return { ok: false, error: "refused", reason: (body as { readonly error: string }).error };
+}
+
 async function call<R extends JsonRoute>(
   io: Io,
   base: string,
@@ -98,17 +115,11 @@ async function call<R extends JsonRoute>(
   } catch {
     return { ok: false, error: "unreachable" };
   }
-  let body: unknown;
-  try {
-    body = bytes === undefined ? undefined : JSON.parse(new TextDecoder().decode(bytes));
-  } catch {
-    body = undefined;
-  }
+  const body = parsed(bytes);
   if (status === 200) {
     return conforms(route.response, body) ? { ok: false, error: "bad-answer" } : { ok: true, body: body as Infer<R["response"]> };
   }
-  if (conforms(refusal, body)) return { ok: false, error: "bad-answer" };
-  return { ok: false, error: "refused", reason: (body as { readonly error: string }).error };
+  return refusalOf(refusal, body);
 }
 
 /** Calls a node by its base URL. The node may be another team's. */
@@ -124,8 +135,6 @@ export function callNode<R extends JsonRoute>(io: Io, home: Home, route: R, sent
 export function callIndex<R extends JsonRoute>(io: Io, index: string, route: R, sent: Sent = {}) {
   return call(io, index, route, INDEX_REFUSAL, sent);
 }
-
-type Failed = Exclude<Answer<never>, { readonly ok: true }>;
 
 function failed(code: ExitCode, service: string, answer: Failed): never {
   return answer.error === "refused"
@@ -147,28 +156,43 @@ export function nodeListing(io: Io, node: string): Promise<Answer<NodeListing>> 
  * Reads one record file of a node's team repo as the node serves it at a commit. The
  * node validates nothing (KTD7), so the caller checks the bytes. Returns nothing for a
  * file the node does not serve, or one too large to be a record.
+ *
+ * With `failedReadEnds`, only a node that answers not-found does not serve the file. Any
+ * other answer that is no success is a read that failed, and ends the command.
  */
-async function readRecordFile(io: Io, node: string, commit: string, path: string): Promise<Uint8Array | undefined> {
+async function readRecordFile(io: Io, node: string, commit: string, path: string, failedReadEnds: boolean): Promise<Uint8Array | undefined> {
   const query = new URLSearchParams({ commit, path });
-  let response: Response;
+  let status: number;
+  let bytes: Uint8Array | undefined;
   try {
-    response = await io.fetch(`${node}/${NODE_ROUTES.file.path}?${query}`, {
+    const response = await io.fetch(`${node}/${NODE_ROUTES.file.path}?${query}`, {
       redirect: "manual",
       signal: AbortSignal.timeout(DEADLINE_MS),
     });
-    return response.status === 200 ? await readUpTo(response, MAX_RECORD_BYTES) : undefined;
+    status = response.status;
+    if (status !== 200 && !failedReadEnds) return undefined;
+    // A refusal is smaller than a record, so one limit holds for both.
+    bytes = await readUpTo(response, MAX_RECORD_BYTES);
   } catch {
     return nodeFailed({ ok: false, error: "unreachable" });
   }
+  if (status === 200) return bytes;
+  const refused = refusalOf(NODE_REFUSAL, parsed(bytes));
+  return refused.error === "refused" && refused.reason === "not-found" ? undefined : nodeFailed(refused);
 }
 
 /**
  * Reads one record file of a node's team repo and holds it to its path. A record file's
  * name is the hash of its content (KTD1), so a valid file at a path is that record,
  * whichever node serves it. Returns nothing for a file the node does not serve.
+ *
+ * `failedReadEnds` is for a read of the team's own node, where a node that fails says
+ * nothing of the record: any answer but the file and not-found then ends the command.
+ * Without it, every answer that is no success reads as a file the node does not serve,
+ * so a node of another team that fails ends no command.
  */
-export async function readRecord(io: Io, node: string, commit: string, path: string): Promise<RecordFileVerdict | undefined> {
-  const content = await readRecordFile(io, node, commit, path);
+export async function readRecord(io: Io, node: string, commit: string, path: string, failedReadEnds = false): Promise<RecordFileVerdict | undefined> {
+  const content = await readRecordFile(io, node, commit, path, failedReadEnds);
   return content === undefined ? undefined : validateRecordFile(path, content);
 }
 
