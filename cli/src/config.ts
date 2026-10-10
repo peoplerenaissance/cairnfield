@@ -58,6 +58,8 @@ export interface Home {
   readonly checkouts: string;
   /** Where the copy the team built of each pinned commit is kept (KTD22). */
   readonly copies: string;
+  /** The team's table of what it may install (R32). It is never published. */
+  readonly decisions: string;
   /** Where the patch agent's saved edits are kept (KTD18). */
   readonly recordings: string;
 }
@@ -107,6 +109,7 @@ export async function loadHome(io: Io, named: string | undefined): Promise<Home>
     outbox: join(state, "outbox"),
     checkouts: join(state, CHECKOUTS_FOLDER),
     copies: join(state, COPIES_FOLDER),
+    decisions: join(state, "decisions.json"),
     recordings: resolve(root, recordings ?? join(STATE_FOLDER, "recordings")),
   };
 }

@@ -24,6 +24,10 @@ export const EXIT = {
   git: 8,
   /** The bundled agent gave no answer to use: it refused, ran past a limit, or its service failed. */
   agent: 9,
+  /** The approvals file holds no approval of a built copy for the component. */
+  notApproved: 10,
+  /** The folder is not the copy the team approved: its file-tree hash differs. */
+  differs: 11,
 } as const;
 export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
 

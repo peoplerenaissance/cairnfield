@@ -9,19 +9,25 @@
 //   cairnfield view <component>
 //   cairnfield patch <component> --finding <id> [--replay]
 //   cairnfield assemble <component>
+//   cairnfield decide <git-url> --commit <full-hash> --verdict <verdict>
+//   cairnfield approvals
+//   cairnfield verify <git-url> <folder> --approvals <file>
 //
 // Each takes `--config <file>`. Without it the command reads `cairnfield.json` in the
-// working folder.
+// working folder. `verify` reads no config file, so it runs on a machine that has none.
 
 import { parseArgs } from "node:util";
 import type { ParseArgsConfig } from "node:util";
 import { isBranchName, isCommit, isHttpsUrl } from "@cairnfield/protocol";
+import { approvals } from "./commands/approvals.ts";
 import { assemble } from "./commands/assemble.ts";
 import { claim } from "./commands/claim.ts";
+import { decide } from "./commands/decide.ts";
 import { patch } from "./commands/patch.ts";
 import { pin } from "./commands/pin.ts";
 import { publish } from "./commands/publish.ts";
 import { validate } from "./commands/validate.ts";
+import { verify } from "./commands/verify.ts";
 import { view } from "./commands/view.ts";
 import { loadHome } from "./config.ts";
 import type { Home } from "./config.ts";
@@ -40,6 +46,13 @@ interface Command {
   /** How many arguments the command takes that are no option. */
   readonly arguments: number;
   run(io: Io, home: Home, args: readonly string[], options: Options, flags: Flags): Promise<Outcome>;
+}
+
+/** A command that reads no config file, so it runs on a machine that has none. */
+interface Standalone {
+  readonly options: readonly string[];
+  readonly arguments: number;
+  run(io: Io, args: readonly string[], options: Options): Promise<Outcome>;
 }
 
 const usage = (): never => stop(EXIT.usage, "usage");
@@ -76,24 +89,43 @@ const COMMANDS: { readonly [name: string]: Command } = {
     arguments: 1,
     run: (io, home, [component]) => (isCommit(component) ? assemble(io, home, component) : usage()),
   },
+  decide: {
+    options: ["commit", "verdict"],
+    arguments: 1,
+    run: (io, home, [url], { commit, verdict }) => (isHttpsUrl(url) && isCommit(commit) ? decide(io, home, { url, commit, verdict }) : usage()),
+  },
+  approvals: { options: [], arguments: 0, run: (_io, home) => approvals(home) },
+};
+
+const STANDALONE: { readonly [name: string]: Standalone } = {
+  verify: {
+    options: ["approvals"],
+    arguments: 2,
+    run: (io, [url, folder], { approvals: file }) => (isHttpsUrl(url) && folder !== undefined ? verify(io, { url, folder, approvals: file }) : usage()),
+  },
 };
 
 async function dispatch(io: Io, argv: readonly string[]): Promise<Outcome> {
   const [name = "", ...rest] = argv;
+  const standalone = Object.hasOwn(STANDALONE, name) ? STANDALONE[name] : undefined;
   const command = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined;
-  if (!command) return usage();
-  const options: NonNullable<ParseArgsConfig["options"]> = { config: { type: "string" } };
-  for (const option of command.options) options[option] = { type: "string" };
-  for (const flag of command.flags ?? []) options[flag] = { type: "boolean" };
+  const declared = standalone ?? command;
+  if (!declared) return usage();
+  // A command that reads no config file takes no `--config` either.
+  const options: NonNullable<ParseArgsConfig["options"]> = standalone ? {} : { config: { type: "string" } };
+  for (const option of declared.options) options[option] = { type: "string" };
+  for (const flag of command?.flags ?? []) options[flag] = { type: "boolean" };
   let parsed;
   try {
     parsed = parseArgs({ args: rest, options, allowPositionals: true, strict: true });
   } catch {
     return usage();
   }
-  if (parsed.positionals.length !== command.arguments) return usage();
+  if (parsed.positionals.length !== declared.arguments) return usage();
   // Each option was declared above with a value or without one, and is read as it was declared.
   const values = parsed.values as Options;
+  if (standalone) return standalone.run(io, parsed.positionals, values);
+  if (!command) return usage();
   return command.run(io, await loadHome(io, values["config"]), parsed.positionals, values, parsed.values as Flags);
 }
 
