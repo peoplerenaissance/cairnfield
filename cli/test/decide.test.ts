@@ -136,6 +136,20 @@ describe("decide", () => {
   });
 });
 
+describe("the decisions table", () => {
+  it("takes no entry past its limit, and stays a file the command can read", async () => {
+    const commit = await pinnedWith(on, { patchLevel: 1 });
+    const entry = (at: number) => ({ url: `https://git.fellbeck-tools.example/plugin-${at}.git`, commit, verdict: "approved", date: new Date(0).toISOString() });
+    const full = JSON.stringify({ version: SCHEMA_VERSION, decisions: Array.from({ length: 10_000 }, (_, at) => entry(at)) });
+    mkdirSync(join(on.home, ".cairnfield"), { recursive: true });
+    writeFileSync(join(on.home, DECISIONS), full);
+
+    expect(await decide(commit, "approved")).toEqual({ code: EXIT.invalid, output: { error: "too-many-decisions" } });
+    expect(readFileSync(join(on.home, DECISIONS), "utf8")).toBe(full);
+    expect((await on.run("approvals")).code).toBe(EXIT.ok);
+  });
+});
+
 describe("approvals", () => {
   it("lists nothing for a team that has given no verdict", async () => {
     expect(await on.run("approvals")).toEqual({ code: EXIT.ok, output: { approvals: [] } });

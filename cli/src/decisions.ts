@@ -60,6 +60,8 @@ export async function readDecisions(file: string): Promise<Decision[] | undefine
  */
 export async function recordDecision(home: Home, decision: Decision): Promise<void> {
   const others = ((await readDecisions(home.decisions)) ?? []).filter(({ url }) => url !== decision.url);
+  // Refused before the file is replaced: a table past its limit could not be read back.
+  if (others.length >= MAX_DECISIONS) return stop(EXIT.invalid, "too-many-decisions");
   const decisions = [...others, decision].sort((a, b) => compare(a.url, b.url));
   await writeWhole(home.decisions, { version: SCHEMA_VERSION, decisions });
 }

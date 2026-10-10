@@ -242,6 +242,20 @@ describe("pin", () => {
     expect(readFileSync(join(checkout(commit), "README.md"), "utf8")).toBe("# A plugin\n");
   });
 
+  it("refuses to pin a commit again from another URL, before any call, and keeps the first", async () => {
+    const tree = [{ path: "README.md", content: "# A plugin\n" }];
+    const { commit } = await pinTree(tree);
+    const requests = on.requests.length;
+
+    const again = await pin(on, tree, "https://git.fellbeck-tools.example/a-mirror.git");
+
+    expect(again.outcome).toEqual({
+      code: EXIT.invalid,
+      output: { error: "pinned-from-another-url", component: commit, url: "https://git.fellbeck-tools.example/plugin.git" },
+    });
+    expect(on.requests).toHaveLength(requests);
+  });
+
   it("refuses a remote that is not HTTPS, or not on an Artifacts host, before Git runs", async () => {
     const plugin = demoPlugin(on);
     const wrong = ["http://0123456789abcdef0123456789abcdef.artifacts.cloudflare.net/git/a-team/copy.git", "https://git.other-host.example/git/a-team/copy.git"];

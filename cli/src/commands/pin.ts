@@ -44,6 +44,14 @@ export async function pin(io: Io, home: Home, component: Component): Promise<Out
   // Read before any call, so a missing key stops the command before the node imports anything.
   const registration = index === undefined ? undefined : { index, key: keyFrom(io, REGISTRATION_KEY) };
 
+  const { commit } = component;
+  // A listing that cannot be read as one is made again with its checkout: one that was
+  // damaged, or one written before a listing named its URL. Every other command stops at it.
+  let listing = await readListing(home, commit).catch((error: unknown) => (error instanceof Stop ? undefined : Promise.reject(error)));
+  // A commit is pinned from one URL, which names its component in the team's table. A second
+  // URL for the same commit would give one component two names, so it is refused before any call.
+  if (listing && listing.url !== component.url) return stop(EXIT.invalid, "pinned-from-another-url", { component: commit, url: listing.url });
+
   const copy = await untilReady(io, () => callNode(io, home, NODE_ROUTES.importCopy, { key, body: component }));
   if (!copy.ok) {
     // The node says this of a finished copy without the commit, and of a repo that is not there.
@@ -54,10 +62,6 @@ export async function pin(io: Io, home: Home, component: Component): Promise<Out
   }
   if (registration) await register(io, home, registration.index, registration.key, component);
 
-  const { commit } = component;
-  // A listing that cannot be read as one is made again with its checkout: one that was
-  // damaged, or one written before a listing named its URL. Every other command stops at it.
-  let listing = await readListing(home, commit).catch((error: unknown) => (error instanceof Stop ? undefined : Promise.reject(error)));
   if (!listing) {
     const access = await repoAccess(io, home, { repo: "copy", component: commit, scope: "read" });
     listing = await withScratch(io, async (scratch) => {
