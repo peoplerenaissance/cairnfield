@@ -10,7 +10,7 @@ import { EXIT } from "../../src/outcome.ts";
 import { NARROWED, bothRules, otherTeam, ownPatch, patchBy, pinnedWith, refsOf, rules, serveView } from "../assemble/team.ts";
 import { OTHER_NODE, OUTBOX, PLUGIN_URL, bench, finding, git, published, putFile } from "../support.ts";
 import type { Bench } from "../support.ts";
-import { carry, findingsSaid, patchesSaid, recordsAt, release, tree } from "./release.ts";
+import { carry, findingsSaid, patchRefs, patchesSaid, recordsAt, release, tree } from "./release.ts";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -63,9 +63,7 @@ describe("carry", () => {
     expect(findingsSaid(outcome).map(({ as }) => as)).toEqual([own]);
     expect(patchesSaid(outcome)).toMatchObject([{ patch: mine.id, patchId: mine.patchId, carried: true }]);
     expect(recordsAt(on, newer)).toEqual([`records/${newer}/finding/${own}.json`, `records/${newer}/patch/${patchesSaid(outcome)[0]?.as}.json`]);
-    expect(refsOf(on.repo(`fork-${newer}`)).filter((ref) => ref.includes("/patch/"))).toEqual([
-      `refs/heads/patch/${newer}/${mine.patchId} ${patchesSaid(outcome)[0]?.commit}`,
-    ]);
+    expect(patchRefs(on, newer)).toEqual([`refs/heads/patch/${newer}/${mine.patchId} ${patchesSaid(outcome)[0]?.commit}`]);
     // Nothing was written to the other team's node.
     expect(git(other.repo("team"), ["ls-tree", "-r", "--name-only", TEAM_BRANCH])).toBe(theirRecords);
     expect(existsSync(other.repo(`fork-${newer}`))).toBe(false);

@@ -4,7 +4,7 @@
 
 import { SCHEMA_VERSION, TEAM_BRANCH } from "@cairnfield/protocol";
 import type { Outcome } from "../../src/outcome.ts";
-import { TREE } from "../assemble/team.ts";
+import { TREE, refsOf } from "../assemble/team.ts";
 import { commitEntries, forkCommit, git, holdRecords, patchIdOf, published } from "../support.ts";
 import type { Bench, Change, Entry } from "../support.ts";
 
@@ -74,7 +74,4 @@ export function recordOf(on: Bench, component: string, type: string, id: string)
 }
 
 /** Each patch ref of a fork with the commit it points to. */
-export function patchRefs(on: Bench, component: string): string[] {
-  const listed = git(on.repo(`fork-${component}`), ["for-each-ref", "--format=%(refname) %(objectname)", "refs/heads/patch/"]);
-  return listed === "" ? [] : listed.split("\n");
-}
+export const patchRefs = (on: Bench, component: string): string[] => refsOf(on.repo(`fork-${component}`)).filter((ref) => ref.startsWith("refs/heads/patch/"));
