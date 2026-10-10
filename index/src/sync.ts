@@ -57,12 +57,13 @@ async function examine(copy: Copy, state: ComponentState, path: string, bytes: U
  * importing. The copy may have become ready, or failed, after the pass read the
  * component's state, and then nothing else would look at the record again. Every sync
  * asks, not only the one that stored the record: that one may have ended before its look
- * was queued. A patch record is not asked for: it waits for its commit, and every sync
- * queues a look at it by itself (see `waitingPatchesOf`).
+ * was queued. A patch record is asked for only when its component failed, and the look
+ * rejects it with the rest (KTD12). On a ready copy it waits for its commit, and every
+ * sync queues a look at it by itself (see `waitingPatchesOf`).
  */
 async function lookAtSettled(env: Env, node: string): Promise<void> {
   const settled = await env.DB.prepare(
-    "SELECT component FROM components WHERE state != 'importing' AND component IN (SELECT component FROM records WHERE node = ? AND state = 'pending' AND type != 'patch')",
+    "SELECT DISTINCT components.component FROM components JOIN records ON records.component = components.component WHERE records.node = ? AND records.state = 'pending' AND components.state != 'importing' AND (records.type != 'patch' OR components.state = 'failed')",
   )
     .bind(node)
     .all<{ component: string }>();

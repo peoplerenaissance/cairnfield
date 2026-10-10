@@ -234,7 +234,8 @@ export async function lookAtPatch(env: Env, name: PatchName): Promise<boolean> {
   if (!held || held.body === null) return false;
   const { component } = held;
   // Without a ready copy there is nothing to check the commit against. The look that
-  // finds the copy ready queues a look at this record again.
+  // finds the copy ready queues a look at this record again. When the component failed,
+  // each sync of the record's node queues a look at the component, which rejects the record.
   if (held.state !== "ready") return false;
   const record = recordOf(held.body);
   if (record.type !== "patch") return false;

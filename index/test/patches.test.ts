@@ -84,6 +84,23 @@ async function oneNode(files?: Files): Promise<{ on: Bench; node: FakeNode; comp
   return { on, node, component, fetched };
 }
 
+/**
+ * One index with one registered node behind `fetch` and a component whose import has
+ * started and will fail: the branch it names does not reach the commit, so the copy
+ * finishes without it.
+ */
+async function failingImport(): Promise<{ on: Bench; node: FakeNode; component: string }> {
+  const on = bench();
+  const node = new FakeNode(NODE_A);
+  nodesBehindFetch(node);
+  const component = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+  await on.artifacts.host(UPSTREAM, "other", { [README]: "# Another branch\n" });
+  await on.registerComponent({ url: UPSTREAM, branch: "other", commit: component });
+  await on.deliver();
+  await on.registerNode(NODE_A);
+  return { on, node, component };
+}
+
 /** The requests the index made to a node's patch route or its blob route. */
 const asked = (node: FakeNode, route: "patch" | "blob"): string[] => node.requests.filter((url) => url.startsWith(`${node.url}/${route}?`));
 
@@ -175,6 +192,26 @@ describe("a patch record and its commit (KTD7, KTD11)", () => {
     const view = await on.view(component);
     expect(view.pending).toEqual([]);
     expect(view.patches.map((group) => group.patches.map((entry) => entry.records.map(({ id }) => id)))).toEqual([[[patch]]]);
+  });
+
+  it("rejects a patch record that was stored as pending just as its component failed", async () => {
+    const { on, node, component } = await failingImport();
+    // The node's one record of the component, so no other record waits for the copy.
+    const [patch] = await node.publish(patchRecord(component, "5e".repeat(20), [await recordId(finding(component))]));
+    // The component fails while the sync fetches the record, after it read the component as importing.
+    node.onFile = async () => {
+      node.onFile = undefined;
+      on.artifacts.finish();
+      await on.deliver();
+    };
+    expect(await syncNode(on.env, NODE_A)).toMatchObject({ ok: true, stored: 1 });
+    expect((await on.view(component)).state).toBe("failed");
+
+    await on.drain();
+    const view = await on.view(component);
+    expect(view.pending).toEqual([]);
+    expect(view.rejected).toEqual([{ node: NODE_A, hash: patch, type: "patch", reason: "unknown-component" }]);
+    expect(asked(node, "patch")).toEqual([]);
   });
 
   it("reads no content from its own copy while the node serves the commit and not the content it puts in place", async () => {
@@ -309,6 +346,28 @@ describe("a patch record that still waits when its tries are spent or its look w
     const view = await on.view(component);
     expect(view.pending).toEqual([]);
     expect(shown(view)).toEqual([[patch]]);
+  });
+
+  it("rejects a patch record that waits for a failed component at the node's next sync, when the sync that stored it could queue no look", async () => {
+    const { on, node, component } = await failingImport();
+    const [patch] = await node.publish(patchRecord(component, "5e".repeat(20), [await recordId(finding(component))]));
+    // The component fails while the sync fetches the record. Then the queue takes no message from the sync.
+    node.onFile = async () => {
+      node.onFile = undefined;
+      on.artifacts.finish();
+      await on.deliver();
+      on.queue.failures = 1;
+    };
+    await expect(syncNode(on.env, NODE_A)).rejects.toThrow("the queue took no message");
+    expect((await on.view(component)).pending).toEqual([{ node: NODE_A, hash: patch, type: "patch" }]);
+    expect(on.queue.waiting).toEqual([]);
+
+    // The sync is tried again. It finds no file it has not read, and the record still waits.
+    expect(await syncNode(on.env, NODE_A)).toEqual({ ok: true, head: node.head, stored: 0, more: false });
+    await on.drain();
+    const view = await on.view(component);
+    expect(view.pending).toEqual([]);
+    expect(view.rejected).toEqual([{ node: NODE_A, hash: patch, type: "patch", reason: "unknown-component" }]);
   });
 
   it("checks a patch record whose tries are spent when another node publishes the finding it names", async () => {
