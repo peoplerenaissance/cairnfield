@@ -151,8 +151,9 @@ describe("the decisions table", () => {
 });
 
 describe("approvals", () => {
-  it("lists nothing for a team that has given no verdict", async () => {
-    expect(await on.run("approvals")).toEqual({ code: EXIT.ok, output: { approvals: [] } });
+  it("lists nothing for a team that has given no verdict, in the form of the decisions file", async () => {
+    expect(await on.run("approvals")).toEqual({ code: EXIT.ok, output: { version: SCHEMA_VERSION, decisions: [] } });
+    expect(existsSync(join(on.home, DECISIONS))).toBe(false);
   });
 
   it("lists one entry for each component: after a verdict for a newer commit, only the newer one", async () => {
@@ -165,14 +166,18 @@ describe("approvals", () => {
     await decide(later, "approved");
 
     expect(later).not.toBe(first);
-    expect(await on.run("approvals")).toEqual({
+    const outcome = await on.run("approvals");
+    expect(outcome).toEqual({
       code: EXIT.ok,
       output: {
-        approvals: [
+        version: SCHEMA_VERSION,
+        decisions: [
           { url: OTHER_PLUGIN_URL, commit: another.commit, verdict: "approved", date: now() },
           { url: PLUGIN_URL, commit: later, verdict: "approved", date: now() },
         ],
       },
     });
+    // What it prints is what the decisions file holds, and nothing beside it.
+    expect(outcome.output).toEqual(table());
   });
 });

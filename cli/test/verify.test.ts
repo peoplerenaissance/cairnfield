@@ -1,11 +1,12 @@
 // `verify`: an installed copy is held to the team's approved entry by its file-tree hash
 // (R36). It reads the approvals file it is given and the folder, and nothing else.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, chmodSync, cpSync, mkdirSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TEAM_BRANCH } from "@cairnfield/protocol";
+import { SCHEMA_VERSION, TEAM_BRANCH } from "@cairnfield/protocol";
 import { EXIT } from "../src/outcome.ts";
 import type { Outcome } from "../src/outcome.ts";
 import { run } from "../src/run.ts";
@@ -36,6 +37,20 @@ function clone(repo: string, branch: string, name: string): string {
 
 /** Runs `verify` on the second machine. */
 const verify = (...argv: string[]): Promise<Outcome> => run({ ...on.io, cwd: elsewhere }, ["verify", ...argv]);
+
+const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
+
+/**
+ * Saves what `approvals` prints to a file on the second machine, as a shell does for
+ * `cairnfield approvals > <file>`: the command's own file runs in the team's folder, with
+ * no key, and what it wrote to standard output is the file. Returns that text.
+ */
+function saveApprovals(name: string): string {
+  const ran = spawnSync(process.execPath, [MAIN, "approvals"], { cwd: on.home, env: {}, encoding: "utf8" });
+  if (ran.status !== EXIT.ok) throw new Error(`approvals printed no table: ${ran.stdout}${ran.stderr}`);
+  writeFileSync(join(elsewhere, name), ran.stdout);
+  return ran.stdout;
+}
 
 interface Approved {
   readonly component: string;
@@ -226,6 +241,30 @@ describe("verify", () => {
   });
 });
 
+describe("what `approvals` prints, saved to a file", () => {
+  it("is an approvals file: `verify` passes on a clone of the copy the team approved", async () => {
+    const { component, tree, copy } = await approvedCopy();
+
+    // The second machine also holds a copy of the decisions file. This check is given the saved output, and not that copy.
+    saveApprovals("printed.json");
+
+    expect(await verify(PLUGIN_URL, copy, "--approvals", "printed.json")).toEqual({
+      code: EXIT.ok,
+      output: { url: PLUGIN_URL, commit: component, verdict: "approved-with-required-mitigations", tree },
+    });
+  });
+
+  it("is a table with no entry for a team that has given no verdict, and `verify` finds the component not approved", async () => {
+    const folder = join(elsewhere, "installed");
+    mkdirSync(folder);
+
+    const printed = saveApprovals("printed.json");
+
+    expect(await verify(PLUGIN_URL, folder, "--approvals", "printed.json")).toEqual({ code: EXIT.notApproved, output: { error: "not-approved", url: PLUGIN_URL } });
+    expect(JSON.parse(printed)).toEqual({ version: SCHEMA_VERSION, decisions: [] });
+  });
+});
+
 describe("a team working alone, with no index", () => {
   it("goes from pin to verify on the demo plugin (AE18)", async () => {
     cpSync(`${FIXTURES}lenses`, join(on.home, "lenses"), { recursive: true });
@@ -242,7 +281,7 @@ describe("a team working alone, with no index", () => {
     steps.push(await on.run("decide", component, "--verdict", "approved-with-required-mitigations", "--tree", String(steps[2]?.output["tree"])));
     steps.push(await on.run("approvals"));
     expect(steps.map(({ code }) => code)).toEqual([EXIT.ok, EXIT.ok, EXIT.ok, EXIT.ok, EXIT.ok]);
-    expect(steps[4]?.output["approvals"]).toMatchObject([{ url: plugin.url, commit: component, verdict: "approved-with-required-mitigations" }]);
+    expect(steps[4]?.output["decisions"]).toMatchObject([{ url: plugin.url, commit: component, verdict: "approved-with-required-mitigations" }]);
     // No step asked an index for anything.
     expect([...new Set(on.requests.map((seen) => new URL(seen.url).origin))]).toEqual([NODE]);
 
