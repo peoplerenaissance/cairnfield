@@ -315,7 +315,12 @@ function findings(reading: Reading): Drawing {
 function patch(reading: Reading, entry: PatchEntry): Drawing {
   // The organizations that wrote it, in the order of their addresses, so an entry reads the same after every read.
   const authors = [...new Set(entry.records.map(({ node }) => node))].sort();
-  const named = [...new Set(entry.records.flatMap(({ record }) => record.findings))];
+  // The findings it is for, in the order its records name them. Each team's record names
+  // that team's own finding records, and two of them can be records of one group of
+  // matching findings. The entry links once to each group, by the first of the group's
+  // records that is named. A finding the view does not hold stands for itself.
+  const cited = entry.records.flatMap(({ record }) => record.findings);
+  const named = distinct(cited, (id) => reading.findings.get(id) ?? id);
   return el(
     "article",
     { class: "patch", id: `patch-${entry.patchId}` },
