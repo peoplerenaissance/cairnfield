@@ -2,10 +2,10 @@
 // provider (KTD18). It calls the Claude API directly, with tools of the command's own
 // (KTD16).
 //
-// The system turn is the agent's prompt, and the first user turn is a fixed line. What a
-// tool read reaches the model in a tool result and nowhere else. The key travels in the
-// request's own header: it is in no prompt and no tool result, and the agent has no tool
-// that could read it (R18).
+// The system turn is the agent's prompt, and the first user turn is a fixed line. The
+// command puts what a tool read in a tool result and nowhere else. The model's own turns
+// go back to it as they came. The key travels in the request's own header: it is in no
+// prompt and no tool result, and the agent has no tool that could read it (R18).
 //
 // An answer that fails the caller's check is asked for once more, with the check's code
 // and nothing else. A refusal is never asked again (KTD19). Each run has a turn limit, a
@@ -118,7 +118,11 @@ export async function runAgent<T>(io: Io, run: AgentRun<T>): Promise<Checked<T>>
     }
     if (response.stop_reason === "max_tokens") return stop(EXIT.agent, "agent-limit", { limit: "max-tokens" });
     if (tokens > MAX_RUN_TOKENS) return stop(EXIT.agent, "agent-limit", { limit: "tokens" });
-    // The model's turn goes back as it came, with every block it holds.
+    // The model's turn goes back as it came, with every block it holds. The API pairs each
+    // tool result with the tool call before it, and ties the model's thinking to a history
+    // that has not changed. So a path the model named, or text it repeated from a tool
+    // result, travels in its own turn. The command still adds a checkout's text in tool
+    // results only.
     messages.push({ role: "assistant", content: response.content });
 
     if (response.stop_reason === "tool_use") {

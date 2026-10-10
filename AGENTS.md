@@ -74,7 +74,7 @@ These come from the plan. Each names the requirement or decision that owns it.
 
 1. **No free text in a record.** Every field is an enumerated value, a hash, a number, a path in the pinned copy, or a hostname that appears in the cited lines (R2).
 2. **The command pushes, never the agent.** Reviewer agents get read-only file tools, no shell and no network tool, and no credential within reach (R18, KTD16).
-3. **Hostile text reaches a model only inside a tool result.** That covers file content, patch diffs and other teams' record fields (KTD16).
+3. **The command gives a model hostile text only inside a tool result.** That covers file content, patch diffs and other teams' record fields (KTD16). The system turn and every user turn the command writes hold none of it. A model's own earlier turn goes back to it unchanged, because the API pairs each tool result with the tool call before it.
 4. **A component is its full commit hash.** No write token is ever issued for a component copy (R8).
 5. **Records are immutable and named by the hash of their content** (KTD1). Nothing edits or deletes a published record.
 6. **The index is untrusted.** Assembly fetches patches and confirmations from the nodes and re-checks them locally (R25, KTD23).
