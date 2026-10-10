@@ -10,6 +10,8 @@ import type { Drawing, Drawn } from "./render.ts";
 
 /** The page reads the view this often (KTD14). */
 const POLL_MS = 2000;
+/** One read may take this long. A read that has not ended by then counts as failed, so an answer that never comes cannot stop the reading. */
+const READ_MS = 10_000;
 
 function build(drawing: Drawing | string): Node {
   if (typeof drawing === "string") return document.createTextNode(drawing);
@@ -34,10 +36,11 @@ if (place !== undefined && view !== null) {
 
   const poll = async (): Promise<void> => {
     try {
-      const response = await fetch(place.viewPath, { cache: "no-store" });
+      // The limit covers the answer's body too: reading it ends with the same signal.
+      const response = await fetch(place.viewPath, { cache: "no-store", signal: AbortSignal.timeout(READ_MS) });
       show(draw(place, held, readOf(await response.json()), Date.now()));
     } catch {
-      // No answer, an answer that is no JSON, or a view that could not be drawn: the last view stays.
+      // No answer, an answer past its time, an answer that is no JSON, or a view that could not be drawn: the last view stays.
       show(draw(place, held, { kind: "failed" }, Date.now()));
     } finally {
       // The next read is set whatever came of this one, so the page never stops reading without a word.
