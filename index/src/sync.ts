@@ -68,7 +68,7 @@ async function lookAtSettled(env: Env, node: string): Promise<void> {
 }
 
 /** Reads what a registered node holds that the index has not read yet. */
-export async function syncNode(env: Env, node: string, now: number): Promise<SyncOutcome> {
+export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   const db = env.DB;
   // Before the head is read: the mark of a queued sync goes, so a notice from here on
   // queues a sync of its own, and the notices so far are the ones this sync stands for (KTD11).
@@ -141,9 +141,14 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
   for (let at = 0; at < pass.length && failure === undefined; at += FETCH_AHEAD) {
     // The files are fetched together. Each is then checked by itself, in the order of the pass.
     const fetched = await Promise.all(
-      pass.slice(at, at + FETCH_AHEAD).map(async (listed) => ({ listed, file: await readRecordFile(node, head, listed.path) })),
+      pass.slice(at, at + FETCH_AHEAD).map(async (listed) => {
+        const file = await readRecordFile(node, head, listed.path);
+        // The index receives a record when its file arrives, however long the pass has run
+        // by then. A claim's time counts from here (KTD15).
+        return { listed, file, receivedAt: Date.now() };
+      }),
     );
-    for (const { listed, file } of fetched) {
+    for (const { listed, file, receivedAt } of fetched) {
       // The pass stops at the first file that was not read, and keeps nothing that came after it.
       if (!file.ok) {
         failure = file.reason;
@@ -168,9 +173,13 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
           .prepare(
             // Whether the node is being rebuilt is read as the record is stored. A reset
             // may have come since this sync started, and its records count as rebuilt then.
-            "INSERT INTO records (node, path, component, type, state, reason, hash, head, body, cited, received_at, rebuilt) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, (SELECT rebuilding FROM nodes WHERE url = ?1)) ON CONFLICT (node, path) DO NOTHING",
+            // Whether a failed component is still failed is read then too. A registration
+            // may have started it over since this sync read its state. A record that was
+            // rejected for the failed component is then not stored, so the node's next sync
+            // reads it again, like the records the registration dropped.
+            "INSERT INTO records (node, path, component, type, state, reason, hash, head, body, cited, received_at, rebuilt) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, (SELECT rebuilding FROM nodes WHERE url = ?1) WHERE ?6 IS NOT 'unknown-component' OR EXISTS (SELECT 1 FROM components WHERE component = ?3 AND state = 'failed') ON CONFLICT (node, path) DO NOTHING",
           )
-          .bind(node, path, component, type, state, reason, hash, head, body, cited, now),
+          .bind(node, path, component, type, state, reason, hash, head, body, cited, receivedAt),
       );
       touched.add(component);
       if (type === "patch" && state === "pending") patches.push({ node, path });
