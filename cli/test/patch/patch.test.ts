@@ -427,6 +427,10 @@ describe("patch", () => {
     ["another finding", (good: object): object => ({ ...good, finding: HIDDEN })],
     ["another component", (good: object): object => ({ ...good, component: "2e".repeat(20) })],
     ["another schema version", (good: object): object => ({ ...good, version: "2" })],
+    [
+      "edits of the right form that are larger than a recording can be",
+      (good: object): object => ({ ...good, edits: [{ path: "plugin.json", start: 12, end: 12, lines: ["x".repeat(60_000), "y".repeat(60_000)] }] }),
+    ],
   ])("refuses a recording that holds %s, before anything is published", async (_what, spoil) => {
     const first = await team();
     record(first, ANY_HOST, spoil({ version: "1", component: first, finding: ANY_HOST, claim: 31, model: "claude-sonnet-5-5", edits: NAME_THE_HOST.edits }));

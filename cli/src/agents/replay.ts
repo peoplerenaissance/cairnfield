@@ -6,12 +6,12 @@
 // A recording is kept by team label, component commit and finding ID. It holds no node
 // URL, so a reader's own deployment finds the same one.
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { MAX_CLAIM_NUMBER, MODELS, conforms, field } from "@cairnfield/protocol";
 import type { Infer } from "@cairnfield/protocol";
 import type { Home } from "../config.ts";
-import { EXIT, stop } from "../outcome.ts";
+import { EXIT, Stop, stop } from "../outcome.ts";
 import { EDITS } from "../patch/edits.ts";
 
 const RECORDING = field.shape({
@@ -25,6 +25,9 @@ const RECORDING = field.shape({
 });
 export type Recording = Infer<typeof RECORDING>;
 
+/** A recording holds the edits of one patch, and a patch adds at most 8 KB. A larger file is no recording. */
+const MAX_RECORDING_BYTES = 64 * 1024;
+
 /** Where the recording of one finding is kept. */
 export function recordingFile(home: Home, team: string, component: string, finding: string): string {
   return join(home.recordings, team, component, `${finding}.json`);
@@ -34,8 +37,11 @@ export function recordingFile(home: Home, team: string, component: string, findi
 export async function readRecording(file: string, component: string, finding: string): Promise<Recording | undefined> {
   let text: string;
   try {
+    // Checked before the file is read, so a file that is no recording is never held in memory.
+    if ((await stat(file)).size > MAX_RECORDING_BYTES) return stop(EXIT.failed, "bad-recording");
     text = await readFile(file, "utf8");
   } catch (error) {
+    if (error instanceof Stop) throw error;
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     return stop(EXIT.failed, "bad-recording");
   }
