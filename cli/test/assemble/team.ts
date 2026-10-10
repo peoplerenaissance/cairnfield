@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { SCHEMA_VERSION, recordPath } from "@cairnfield/protocol";
 import type { AnyRecord } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
-import { INDEX, NODE, OTHER_NODE, THIRD_NODE, finding, forkCommit, git, holdRecords, patchIdOf, pinTree } from "../support.ts";
+import { INDEX, NODE, OTHER_NODE, PLUGIN_URL, THIRD_NODE, finding, forkCommit, git, holdRecords, patchIdOf, pinTree } from "../support.ts";
 import type { Bench, Change, Entry, Site } from "../support.ts";
 
 export const OTHER_NAMESPACE = "cairnfield-team-b";
@@ -120,6 +120,7 @@ export function serveView(on: Bench, component: string, listed: readonly Listed[
   on.index.views.set(component, {
     version: SCHEMA_VERSION,
     component,
+    gitUrl: PLUGIN_URL,
     state: "ready",
     viewVersion: 1,
     lag: 0,

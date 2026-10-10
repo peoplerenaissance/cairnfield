@@ -1,0 +1,14 @@
+{
+  // The two scripts of the page, as a browser runs them. `npm run build` writes them to
+  // `dist/page/` as JavaScript modules, each `.ts` import turned into the `.js` file
+  // beside it. Nothing is bundled, so a script takes only types from another package.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["es2022", "dom"],
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "outDir": "../../dist/page"
+  },
+  "include": ["poll.ts", "render.ts"]
+}

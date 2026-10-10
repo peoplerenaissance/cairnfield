@@ -1,0 +1,156 @@
+/* The page of one component commit. The colors and the stones are the project's own, as
+   the microsite draws them. The index stands alone, so it holds its own copy of the few
+   it needs, and it loads no font: its policy allows files from its own origin only.
+
+   An outline carries meaning. Solid is confirmed or checked. Dashed is unconfirmed: a
+   finding or a patch with one organization behind it, a record still being checked, a
+   tree hash that is published and not checked. Nothing here is dotted. Every status has
+   a text label, and the color only repeats it. */
+
+:root {
+  --fog: #EDF0EE;
+  --paper: #FAFBF9;
+  --ink: #1E2A2E;
+  --muted: #5B6B70;
+  --line: #C9D1CC;
+  --line-soft: #DDE3DF;
+  --slate: #5E6C76; --slate-ink: #46535C;
+  --sandstone: #C9AE84; --sandstone-ink: #7E5F2A;
+  --ironstone: #A0624A; --ironstone-ink: #84472E;
+  --drift: #34383B; --drift-ink: #34383B;
+  --add: #E4EFD6;
+  --del: #F6DFE3;
+  --note: #FFF6D6;
+  --body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 52px; }
+body { margin: 0; background: var(--fog); color: var(--ink); font: 400 15px/1.45 var(--body); }
+a { color: inherit; text-decoration-color: var(--line); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--ink); }
+:focus-visible { outline: 3px solid var(--slate); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: 0.86em; background: rgba(30, 42, 46, .06); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
+ul { list-style: none; margin: 0; padding: 0; }
+p { margin: 0; }
+
+/* ---------- top bar: what this is, and when the view was read ---------- */
+.bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 20px; padding: 8px clamp(14px, 3vw, 28px); background: var(--paper); border-bottom: 1px solid var(--line); }
+.mark { font: 600 16px/1.2 var(--body); letter-spacing: -0.01em; }
+.mark span { font: 500 12px/1 var(--mono); color: var(--muted); margin-left: 6px; }
+.status { font: 500 12px/1.4 var(--mono); color: var(--muted); }
+.status.stale { color: var(--ink); background: var(--note); border: 1px solid #E8D79A; border-radius: 5px; padding: 3px 8px; }
+
+#view { max-width: 1440px; margin: 0 auto; padding: 14px clamp(14px, 3vw, 28px) 48px; }
+.notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; background: var(--note); border: 1px solid #E8D79A; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 13.5px; }
+noscript .notice { margin: 14px clamp(14px, 3vw, 28px); }
+
+/* ---------- the component, and its counts ---------- */
+.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: end; padding: 4px 2px 14px; }
+.label { font: 600 11.5px/1 var(--mono); color: var(--muted); margin-bottom: 6px; }
+h1 { font: 600 clamp(17px, 2.1vw, 23px)/1.25 var(--body); letter-spacing: -0.01em; margin: 0 0 4px; overflow-wrap: anywhere; }
+.commit { font: 500 12.5px/1.5 var(--mono); color: var(--muted); }
+.counts { display: flex; gap: 22px; margin: 0; }
+.counts div { display: flex; flex-direction: column-reverse; text-align: right; }
+.counts dd { margin: 0; font: 400 30px/1.05 var(--body); }
+.counts dt { font-size: 12px; color: var(--muted); }
+
+/* ---------- sections: claims and findings on one side, patches and recipes on the other ---------- */
+.work { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+section { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 14px; margin-bottom: 12px; }
+h2 { display: inline-block; font: 600 11.5px/1 var(--mono); letter-spacing: 0.02em; color: var(--muted); margin: 0 10px 12px 0; }
+h2 + .count { font: 600 11.5px/1 var(--mono); }
+h3 { font: 600 13px/1.2 var(--body); margin: 12px 0 2px; }
+h2 + h3, h2 + .count + h3 { margin-top: 0; }
+h3 code { font-weight: 500; background: var(--fog); padding: 3px 6px; }
+.empty { color: var(--muted); font-size: 14px; }
+.note { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+#state h2 { display: block; font: 600 18px/1.3 var(--body); letter-spacing: 0; color: var(--ink); margin: 0 0 8px; }
+#state .commit { margin-top: -2px; }
+
+/* ---------- organizations: each node has a tone, and always its address ---------- */
+.org { font: 600 12px/1.4 var(--mono); color: var(--ci, var(--ink)); overflow-wrap: anywhere; }
+.org::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); margin-right: 5px; }
+.by { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.tone-0 { --c: var(--slate); --ci: var(--slate-ink); }
+.tone-1 { --c: var(--sandstone); --ci: var(--sandstone-ink); }
+.tone-2 { --c: var(--ironstone); --ci: var(--ironstone-ink); }
+.tone-3 { --c: var(--drift); --ci: var(--drift-ink); }
+
+/* One stone for each organization behind a finding */
+.cairn { display: inline-flex; flex-direction: column-reverse; align-items: center; justify-self: center; }
+.stone { display: block; width: 28px; height: 12px; margin-top: -3px; background: var(--c, var(--muted)); border-radius: 58% 42% 52% 48% / 62% 56% 44% 38%; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .17), inset 0 2px 1px rgba(255, 255, 255, .2); }
+.stone:nth-child(2) { width: 23px; rotate: -4deg; border-radius: 46% 54% 44% 56% / 55% 62% 38% 45%; }
+.stone:nth-child(3) { width: 19px; rotate: 5deg; }
+.stone:nth-child(n + 4) { width: 15px; rotate: -6deg; }
+
+/* ---------- status labels ---------- */
+.tag { display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: 0.02em; padding: 5px 7px; border-radius: 5px; border: 1px solid var(--line); background: #fff; white-space: nowrap; }
+.tag.ok { background: #EAF1DC; border-color: #C9D8AD; color: #2E4716; }
+.tag.un { background: transparent; border-style: dashed; border-color: #9AA6A3; color: var(--muted); }
+.tag.rej { background: var(--del); border-color: #E4B7C2; }
+.tag.live { border-color: var(--ink); }
+.kind { font-size: 13px; }
+
+/* ---------- live claims, and records that are being checked or were rejected ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.claim { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; border: 1px solid var(--line); border-radius: 14px; padding: 5px 7px 5px 11px; background: #fff; font-size: 13px; }
+.intent { color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 7px 0; border-top: 1px solid var(--line-soft); }
+.row:first-child { border-top: 0; padding-top: 0; }
+.row:last-child { padding-bottom: 0; }
+.row .tag { margin-left: auto; }
+
+/* ---------- findings ---------- */
+.finding { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.findings > .finding:first-child { border-top: 0; }
+.findings > .finding:last-child { padding-bottom: 0; }
+.what strong { font-weight: 600; font-size: 14.5px; margin-right: 8px; }
+.where li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font: 400 12.5px/1.6 var(--mono); color: var(--muted); border-radius: 4px; }
+.where li:target, .patch:target { background: var(--note); }
+.ref { color: var(--muted); }
+.disputes { grid-column: 2 / -1; }
+.dispute { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 13px; border-left: 3px solid var(--ironstone); padding: 2px 0 2px 10px; margin-top: 2px; }
+
+/* ---------- patches: a group for each run of lines, a column for each patch ---------- */
+.group { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; background: #fff; overflow: hidden; }
+.group:last-child { margin-bottom: 0; }
+.group-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 7px 10px; background: var(--fog); border-bottom: 1px solid var(--line-soft); font: 500 12.5px/1.3 var(--mono); }
+.group-head .paths { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.group-head code { background: none; padding: 0; }
+.group-head .count { color: var(--muted); }
+.cols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.patch { padding: 10px; border-left: 1px solid var(--line-soft); min-width: 0; }
+.patch:first-child { border-left: 0; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 7px 0; }
+.patch .paths { display: flex; flex-wrap: wrap; gap: 2px 8px; font: 400 12.5px/1.6 var(--mono); }
+.changes li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font: 400 12.5px/1.6 var(--mono); }
+.removed, .added { padding: 0 5px; border-radius: 3px; }
+.removed { background: var(--del); }
+.added { background: var(--add); }
+.rechecks { margin-top: 6px; }
+.recheck { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 13px; }
+.foot { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+
+/* ---------- recipes ---------- */
+.recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
+.recipe { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; min-width: 0; }
+.used { font-size: 12.5px; color: var(--muted); }
+.used b { font: 400 22px/1.1 var(--body); color: var(--ink); }
+.tree { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font: 500 12px/1.5 var(--mono); margin: 6px 0; }
+.taken { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; font: 400 12.5px/1.6 var(--mono); color: var(--muted); }
+
+/* ---------- narrow screens: one column, and the patches of a group stacked ---------- */
+@media (max-width: 1099px) {
+  .work { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+@media (max-width: 719px) {
+  .head { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .counts div { text-align: left; }
+  .cols { grid-auto-flow: row; }
+  .patch { border-left: 0; border-top: 1px solid var(--line-soft); }
+  .patch:first-child { border-top: 0; }
+  .finding { grid-template-columns: 34px minmax(0, 1fr); }
+  .finding > .tag { grid-column: 2; justify-self: start; }
+}

@@ -523,6 +523,12 @@
                       "type": "string",
                       "pattern": "^[0-9a-f]{40}$"
                     },
+                    "gitUrl": {
+                      "type": "string",
+                      "format": "uri",
+                      "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                      "maxLength": 2048
+                    },
                     "state": {
                       "enum": [
                         "importing",
@@ -1276,6 +1282,7 @@
                   "required": [
                     "version",
                     "component",
+                    "gitUrl",
                     "state",
                     "viewVersion",
                     "lag",

@@ -1,7 +1,7 @@
 // The view of one component commit (R10, R13), built when it is read: findings in match
 // groups with their confirmations, patches side by side with theirs, claims with their
-// state, recipes, pending and rejected work, the component's import state and each
-// node's last processed commit.
+// state, recipes, pending and rejected work, the component's Git URL and import state
+// and each node's last processed commit.
 //
 // Nothing here is declared by an author. Groups and counts come from the protocol's own
 // rules over the valid records, and a patch's ID, kind, size and changed lines from the
@@ -136,7 +136,7 @@ export async function viewOf(env: Env, component: string, teams: readonly string
   const only = teams === undefined ? null : JSON.stringify(teams);
   // One batch, so the component, the nodes, the records and what was computed for the patch records are read as they stood together.
   const [found, registered, stored, computed, passed] = (await db.batch([
-    db.prepare("SELECT state, view_version FROM components WHERE component = ?").bind(component),
+    db.prepare("SELECT url, state, view_version FROM components WHERE component = ?").bind(component),
     db.prepare("SELECT url, processed, noticed_at, absorbed_at FROM nodes ORDER BY url"),
     db
       .prepare(
@@ -149,7 +149,7 @@ export async function viewOf(env: Env, component: string, teams: readonly string
       .bind(component, only),
     // Counted over every node, listed or not.
     db.prepare("SELECT COUNT(*) AS claims FROM records WHERE component = ?1 AND type = 'claim' AND state = 'valid' AND received_at <= ?2").bind(component, lastToPass),
-  ])) as [D1Result<Pick<Component, "state" | "view_version">>, D1Result<NodeRow>, D1Result<Row>, D1Result<ComputedPatch>, D1Result<{ claims: number }>];
+  ])) as [D1Result<Pick<Component, "url" | "state" | "view_version">>, D1Result<NodeRow>, D1Result<Row>, D1Result<ComputedPatch>, D1Result<{ claims: number }>];
   const [held] = found.results;
   if (!held) return undefined;
   const listed = teams === undefined ? undefined : new Set(teams);
@@ -224,6 +224,7 @@ export async function viewOf(env: Env, component: string, teams: readonly string
   return {
     version: SCHEMA_VERSION,
     component,
+    gitUrl: held.url,
     state: held.state,
     viewVersion: held.view_version + timedOut,
     lag: waiting.length === 0 ? 0 : Math.max(0, now - Math.min(...waiting)),

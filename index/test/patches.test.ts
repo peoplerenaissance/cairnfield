@@ -10,12 +10,11 @@ import { describe, expect, it } from "vitest";
 import { PATCH_TRIES, PATCH_WAIT_SECONDS } from "../src/patches.ts";
 import { PASS_RECORDS } from "../src/records.ts";
 import { syncNode } from "../src/sync.ts";
-import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, demoPlugin, edited, finding, fixture, fixturesUnder, freshIndexForEachTest, patchRecord, publishPatch, synced } from "./bench.ts";
 import type { Bench } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
 import type { Files } from "./fake-artifacts.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
-import type { Change } from "./fake-node.ts";
 
 freshIndexForEachTest();
 
@@ -23,49 +22,14 @@ const SKILL_TEXT = FILES[SKILL] as string;
 const README = "README.md";
 const README_TEXT = FILES[README] as string;
 
-/** A text with some of its lines replaced. A line given as nothing is taken out. Lines count from 1. */
-function edited(text: string, replaced: { readonly [line: number]: string | undefined }): string {
-  const lines = text.split("\n").slice(0, -1);
-  return lines.flatMap((line, at) => (Object.hasOwn(replaced, at + 1) ? (replaced[at + 1] ?? []) : line)).map((line) => `${line}\n`).join("");
-}
-
 /** The skill file without the hidden instruction on its line 3. */
 const SKILL_FIXED = edited(SKILL_TEXT, { 3: undefined });
-
-/** A patch record, as a person writes one by hand. */
-function patchRecord(component: string, commit: string, findings: readonly (string | undefined)[]): { [field: string]: unknown } {
-  return { version: "1", type: "patch", component, commit, findings: [...findings].sort(), model: "none" };
-}
 
 const patchPath = (component: string, id: string | undefined): string => `records/${component}/patch/${id}.json`;
 
 /** The ID of the patch that replaces one content of a plain file with another. */
 async function idOf(before: string, after: string, mode = "100644"): Promise<string> {
   return patchIdOf([{ oldBlob: await blobHash(before), oldMode: mode, newBlob: await blobHash(after), newMode: mode }]);
-}
-
-interface Published {
-  readonly finding: string | undefined;
-  readonly patch: string | undefined;
-  readonly commit: string;
-}
-
-/**
- * Has a node publish a finding, push a patch commit to its fork and publish the patch
- * record for it. `cites` holds the fields of the finding that differ from the hidden
- * instruction on line 3 of the skill file.
- */
-async function publishPatch(
-  node: FakeNode,
-  component: string,
-  cites: { readonly [field: string]: unknown },
-  changes: readonly Change[],
-  made: { readonly parent?: string } = {},
-): Promise<Published> {
-  const [cited] = await node.publish(finding(component, cites));
-  const commit = await node.patchCommit(component, changes, made);
-  const [patch] = await node.publish(patchRecord(component, commit, [cited]));
-  return { finding: cited, patch, commit };
 }
 
 /** A finding on one line of the readme. */
@@ -970,35 +934,22 @@ describe("patches in the view (R16, R24)", () => {
 });
 
 describe("the demo's hand-made patch from the second team's node (KTD26)", () => {
-  /** A file of `fixtures/`, as the Vitest config read it. */
-  function fixture(path: string): string {
-    const text = env.FIXTURES[path];
-    if (text === undefined) throw new Error(`the fixtures hold no ${path}`);
-    return text;
-  }
-
   it("is listed as rejected work with reason patch-out-of-scope, and its finding as a valid finding", async () => {
     const made = JSON.parse(fixture("out-of-scope/COMMIT.json")) as { readonly component: string; readonly commit: string };
     const on = bench();
     const node = new FakeNode(NODE_B);
     nodesBehindFetch(node);
-    // The demo plugin's first commit, under its own hash. Its two scripts may be run.
-    const first = "demo-plugin/first/";
-    const plugin: { [path: string]: Files[string] } = {};
-    for (const path of Object.keys(env.FIXTURES).filter((held) => held.startsWith(first))) {
-      const name = path.slice(first.length);
-      plugin[name] = name.startsWith("scripts/") ? { content: fixture(path), mode: "100755" } : fixture(path);
-    }
-    const component = await on.component(plugin, made.component);
+    // The demo plugin's first commit, under its own hash.
+    const component = await on.component(demoPlugin(), made.component);
     expect(component).toBe(made.component);
     await on.registerNode(NODE_B);
 
     // The node is honest about the commit: it serves the one file the commit changes, as the fixture holds it.
     const changed = "out-of-scope/files/";
-    const changes = Object.keys(env.FIXTURES).filter((held) => held.startsWith(changed)).map((path) => ({ path: path.slice(changed.length), content: fixture(path) }));
+    const changes = fixturesUnder(changed).map((path) => ({ path: path.slice(changed.length), content: fixture(path) }));
     await node.patchCommit(component, changes, { commit: made.commit });
     // The two record files go out as they are written, as `publish` pushes an outbox.
-    const records = Object.keys(env.FIXTURES).filter((held) => held.startsWith("out-of-scope/records/") && held.endsWith(".json")).sort();
+    const records = fixturesUnder("out-of-scope/records/").filter((held) => held.endsWith(".json"));
     for (const path of records) await node.push(path.slice("out-of-scope/".length), fixture(path));
     await synced(on, NODE_B);
 

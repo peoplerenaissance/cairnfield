@@ -13,6 +13,17 @@ const MINUTE = 60_000;
 
 freshIndexForEachTest();
 
+describe("the component in the view (KTD12, KTD14)", () => {
+  it("names the Git URL the component was registered with, however the view is narrowed", async () => {
+    const on = bench();
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+
+    expect((await on.view(component)).gitUrl).toBe(UPSTREAM);
+    expect((await on.view(component, [NODE_A])).gitUrl).toBe(UPSTREAM);
+  });
+});
+
 describe("findings in the view (R10)", () => {
   it("shows two matching findings from two nodes as one match group confirmed by two organizations", async () => {
     const on = bench();

@@ -281,12 +281,14 @@ const VIEW_PATCH = shape({
 
 /**
  * The view of one component commit: everything the page shows except component text (R13).
- * `lag` is the index lag in milliseconds (Appendix H). `organizations` counts registered
- * nodes (KTD8). Rejected work is four values only (KTD31).
+ * `gitUrl` is the Git URL the component was registered with (KTD12). `lag` is the index
+ * lag in milliseconds (Appendix H). `organizations` counts registered nodes (KTD8).
+ * Rejected work is four values only (KTD31).
  */
 export const VIEW = shape({
   version: version(),
   component: gitHash(),
+  gitUrl: url(),
   state: oneOf(COMPONENT_STATES),
   viewVersion: count(),
   lag: count(),
