@@ -163,9 +163,13 @@ export function linesAreInScope(changes: readonly PlacedChange[], cited: readonl
     return change.hunks.every((hunk, at) => {
       const end = hunk.oldStart + hunk.removed - 1;
       const room = change.room[at] ?? 0;
-      // The hunk must sit far enough up to end by the range's end, and no further up
-      // than the range's start or its own room.
-      return ranges.some((range) => Math.max(0, end - range.end) <= Math.min(room, hunk.oldStart - range.start));
+      return ranges.some((range) => {
+        // How far up the hunk must sit to end by the range's end, and how far up it can
+        // sit without passing the range's start or its own room.
+        const least = Math.max(0, end - range.end);
+        const most = Math.min(room, hunk.oldStart - range.start);
+        return least <= most;
+      });
     });
   });
 }
@@ -275,16 +279,20 @@ function addsNoLine(before: Uint8Array, after: Uint8Array): boolean {
  * diff reports a run at its last place, so none can sit further down.
  */
 function roomAbove(before: Uint8Array, after: Uint8Array, hunks: readonly Hunk[]): number[] {
-  const old = splitLines(before);
-  const now = splitLines(after);
+  // Each side is split when the first hunk needs it. The old content can be a large file.
+  let old: Uint8Array[] | undefined;
+  let now: Uint8Array[] | undefined;
   // The first old line under the hunk above.
   let floor = 1;
   return hunks.map((hunk) => {
     const unchanged = hunk.oldStart - floor;
     floor = hunk.oldStart + hunk.removed;
-    if (hunk.removed > 0 && hunk.added > 0) return 0;
-    const [lines, first, count] = hunk.added === 0 ? [old, hunk.oldStart, hunk.removed] : [now, hunk.newStart, hunk.added];
-    const line = (number: number): Uint8Array => lines[number - 1] ?? NO_CONTENT;
+    if (unchanged <= 0 || (hunk.removed > 0 && hunk.added > 0)) return 0;
+    const removes = hunk.added === 0;
+    const lines = removes ? (old ??= splitLines(before)) : (now ??= splitLines(after));
+    const first = removes ? hunk.oldStart : hunk.newStart;
+    const count = removes ? hunk.removed : hunk.added;
+    const line = (n: number): Uint8Array => lines[n - 1] ?? NO_CONTENT;
     let room = 0;
     while (room < unchanged && sameBytes(line(first - 1 - room), line(first + count - 1 - room))) room += 1;
     return room;
