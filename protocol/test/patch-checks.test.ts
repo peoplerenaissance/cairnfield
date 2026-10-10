@@ -107,6 +107,58 @@ describe("scope (R11)", () => {
     expect(reasonOf(await check(BASE, withSkill(further), [[skill, 3, 3]]))).toBe("patch-out-of-scope");
   });
 
+  // Where lines repeat, a run of removed or added lines gives the same new content at more
+  // than one place, and the diff reports the last of them (KTD37).
+  const rules = "rules.txt";
+  const withRules = (rows: readonly string[]): Tree => ({ ...BASE, [rules]: rows.map((row) => `${row}\n`).join("") });
+  const scoped = (before: readonly string[], after: readonly string[], start: number, end: number): Promise<PatchVerdict> =>
+    check(withRules(before), withRules(after), [[rules, start, end]]);
+
+  it("passes when the patch removes one of two equal lines and a finding cites either", async () => {
+    const before = ["allow a", "deny all", "deny all", "allow b"];
+    const after = ["allow a", "deny all", "allow b"];
+    const first = await scoped(before, after, 2, 2);
+    // The changed lines stay as the diff reports them.
+    expect(first).toMatchObject({ ok: true, changes: [{ hunks: [{ oldStart: 3, removed: 1, newStart: 3, added: 0 }] }] });
+    expect(reasonOf(await scoped(before, after, 3, 3))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, 1, 1))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, after, 4, 4))).toBe("patch-out-of-scope");
+  });
+
+  it("passes when the patch changes the first of two equal lines and a finding cites that line", async () => {
+    const before = ["deny all", "deny all", "allow b"];
+    const after = ["deny some", "deny all", "allow b"];
+    expect(reasonOf(await scoped(before, after, 1, 1))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, 2, 2))).toBe("patch-out-of-scope");
+  });
+
+  it("passes when the patch removes one copy of a repeated block and the findings cite a copy", async () => {
+    const before = ["open", "close", "open", "close", "end"];
+    const after = ["open", "close", "end"];
+    expect(reasonOf(await scoped(before, after, 1, 2))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, 2, 3))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, 3, 4))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, 1, 1))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, after, 4, 5))).toBe("patch-out-of-scope");
+  });
+
+  it("reads lines added beside equal lines as added at any place that gives the same content", async () => {
+    const before = ["first", "allow a", "deny all", "deny all", "allow b"];
+    const after = ["first", "allow a", "deny all", "deny all", "deny all", "allow b"];
+    expect(reasonOf(await scoped(before, after, 2, 2))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, 5, 5))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, 1, 1))).toBe("patch-out-of-scope");
+  });
+
+  it("does not move a run of removed lines past another change", async () => {
+    // The patch adds a line after line 2 and removes one of the equal lines after it.
+    const before = ["allow a", "deny all", "deny all", "deny all", "allow b"];
+    const after = ["allow a", "deny all", "allow some", "deny all", "allow b"];
+    expect(reasonOf(await scoped(before, after, 3, 3))).toBe("ok");
+    // Removing line 2 with that line added after it would give another content.
+    expect(reasonOf(await scoped(before, after, 2, 2))).toBe("patch-out-of-scope");
+  });
+
   it("counts two findings on adjoining lines as one cited range", async () => {
     const both = "# Summarize\nSummarize it.\nKeep it short.\n";
     expect(reasonOf(await check(BASE, withSkill(both), [[skill, 2, 2]]))).toBe("patch-out-of-scope");

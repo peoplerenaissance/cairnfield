@@ -4,7 +4,9 @@
 // It is the greedy shortest-edit search of Myers. The count of removed and added lines
 // is the smallest possible, so it does not depend on this implementation. Where two
 // smallest diffs exist, such as which of two equal neighbours was removed, the choice
-// made here is fixed, and every caller uses this function.
+// made here is fixed, and every caller uses this function. A run of lines that is only
+// removed, or only added, is reported at the last place that gives the new content. The
+// line scope check relies on that (KTD37).
 
 import { splitLines } from "./lines.ts";
 

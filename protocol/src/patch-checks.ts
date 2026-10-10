@@ -59,6 +59,14 @@ export interface ContentChange {
   readonly hunks: readonly Hunk[];
 }
 
+/**
+ * A content change as the line scope check reads it. `room` has one entry per hunk: how
+ * many lines up the hunk can sit and give the same new content.
+ */
+export interface PlacedChange extends ContentChange {
+  readonly room: readonly number[];
+}
+
 export interface PatchFacts {
   readonly patchId: string;
   /** In sorted order. */
@@ -142,17 +150,23 @@ function mergedRanges(cited: readonly CitedRange[], blob: string): { start: numb
 }
 
 /**
- * Scope by line (R11): a patch changes only the lines its findings cite. Every removed
- * line is a cited line. Lines added with nothing removed go in front of a cited line or
- * straight after the last one. A patch that only changes a mode changes no line, and a
- * patch that deletes a file removes every line of it.
+ * Scope by line (R11, KTD37): a patch changes only the lines its findings cite. Every
+ * removed line is a cited line. Lines added with nothing removed go in front of a cited
+ * line or straight after the last one. Where lines repeat, a run of removed or added
+ * lines gives the same new content at more than one place, and it is in scope when one
+ * of those places is. A patch that only changes a mode changes no line, and a patch that
+ * deletes a file removes every line of it.
  */
-export function linesAreInScope(changes: readonly ContentChange[], cited: readonly CitedRange[]): boolean {
+export function linesAreInScope(changes: readonly PlacedChange[], cited: readonly CitedRange[]): boolean {
   return changes.every((change) => {
     const ranges = mergedRanges(cited, change.blob);
-    return change.hunks.every((hunk) =>
-      ranges.some((range) => range.start <= hunk.oldStart && hunk.oldStart + hunk.removed - 1 <= range.end),
-    );
+    return change.hunks.every((hunk, at) => {
+      const end = hunk.oldStart + hunk.removed - 1;
+      const room = change.room[at] ?? 0;
+      // The hunk must sit far enough up to end by the range's end, and no further up
+      // than the range's start or its own room.
+      return ranges.some((range) => Math.max(0, end - range.end) <= Math.min(room, hunk.oldStart - range.start));
+    });
   });
 }
 
@@ -254,6 +268,30 @@ function addsNoLine(before: Uint8Array, after: Uint8Array): boolean {
 }
 
 /**
+ * How many lines up each hunk can sit and give the same new content (KTD37). A run of
+ * removed lines can sit one line up when the line above it equals its last line, and a
+ * run of added lines likewise in the new content. A run moves over unchanged lines only,
+ * so it stops at the hunk above. A hunk that removes and adds lines has one place. The
+ * diff reports a run at its last place, so none can sit further down.
+ */
+function roomAbove(before: Uint8Array, after: Uint8Array, hunks: readonly Hunk[]): number[] {
+  const old = splitLines(before);
+  const now = splitLines(after);
+  // The first old line under the hunk above.
+  let floor = 1;
+  return hunks.map((hunk) => {
+    const unchanged = hunk.oldStart - floor;
+    floor = hunk.oldStart + hunk.removed;
+    if (hunk.removed > 0 && hunk.added > 0) return 0;
+    const [lines, first, count] = hunk.added === 0 ? [old, hunk.oldStart, hunk.removed] : [now, hunk.newStart, hunk.added];
+    const line = (number: number): Uint8Array => lines[number - 1] ?? NO_CONTENT;
+    let room = 0;
+    while (room < unchanged && sameBytes(line(first - 1 - room), line(first + count - 1 - room))) room += 1;
+    return room;
+  });
+}
+
+/**
  * Size, kind and changed lines. Size is lines removed plus lines added, summed over the
  * replaced contents. The bytes of the added lines have a limit of their own, so one long
  * line cannot carry what sixty lines may not. A content counts once, however many copies
@@ -265,12 +303,12 @@ export async function measurePatch(
   patched: FileSet,
   replacements: readonly Replacement[],
 ): Promise<
-  | { readonly ok: true; readonly kind: PatchKind; readonly size: number; readonly changes: readonly ContentChange[] }
+  | { readonly ok: true; readonly kind: PatchKind; readonly size: number; readonly changes: readonly PlacedChange[] }
   | { readonly ok: false; readonly reason: RejectionReason }
 > {
-  const changes: ContentChange[] = [];
+  const changes: PlacedChange[] = [];
   // Copies with two modes give two replacements and one content change.
-  const measured = new Map<string, readonly Hunk[]>();
+  const measured = new Map<string, Omit<PlacedChange, "blob">>();
   let size = 0;
   let addedBytes = 0;
   let addsLine = false;
@@ -279,13 +317,13 @@ export async function measurePatch(
     const deleted = replacement.newMode === DELETED_MODE;
     if (!deleted && replacement.newMode !== replacement.oldMode) modeChanged = true;
     if (replacement.newBlob === replacement.oldBlob) {
-      changes.push({ blob: replacement.oldBlob, hunks: [] });
+      changes.push({ blob: replacement.oldBlob, hunks: [], room: [] });
       continue;
     }
     const content = `${replacement.oldBlob} ${replacement.newBlob}`;
     const known = measured.get(content);
     if (known !== undefined) {
-      changes.push({ blob: replacement.oldBlob, hunks: known });
+      changes.push({ blob: replacement.oldBlob, ...known });
       continue;
     }
     const before = await verified(base, replacement.oldBlob);
@@ -307,8 +345,9 @@ export async function measurePatch(
     }
     if (addedBytes > MAX_PATCH_ADDED_BYTES) return refuse("patch-too-large");
     if (diff.added > 0 && !addsNoLine(before, after)) addsLine = true;
-    measured.set(content, diff.hunks);
-    changes.push({ blob: replacement.oldBlob, hunks: diff.hunks });
+    const placed = { hunks: diff.hunks, room: roomAbove(before, after, diff.hunks) };
+    measured.set(content, placed);
+    changes.push({ blob: replacement.oldBlob, ...placed });
   }
   const kind: PatchKind = !addsLine && !modeChanged ? "removes-only" : "adds-or-changes";
   return { ok: true, kind, size, changes };
@@ -341,7 +380,8 @@ export async function checkPatch(input: {
     replacements,
     kind: measured.kind,
     size: measured.size,
-    changes: measured.changes,
+    // The facts hold the changed lines as the diff reports them.
+    changes: measured.changes.map(({ blob, hunks }) => ({ blob, hunks })),
     paths: changes.map((change) => change.path),
   };
 }
