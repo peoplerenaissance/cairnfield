@@ -1,9 +1,10 @@
 // What assembly checks before a candidate goes into the copy (R25, KTD23).
 //
-// Nothing is taken on trust, from the index or from a node. The commit is fetched from
-// the fork of the team that published the record, and its parent, scope, completeness,
-// size, kind and patch ID are worked out again from what arrived, against the team's own
-// checkout. The same holds for a patch of the team's own.
+// Nothing is taken on trust, from the index or from a node. The patch record is read
+// from the repo of the team that published it, so an index cannot name a commit the
+// team never announced. The commit is fetched from that team's fork, and its parent,
+// scope, completeness, size, kind and patch ID are worked out again from what arrived,
+// against the team's own checkout. The same holds for a patch of the team's own.
 //
 // Every value from another node is hostile until it is checked (KTD33). A remote must
 // have the Artifacts form before Git sees it. A fetch from another team's fork asks for
@@ -11,7 +12,6 @@
 // fork does wrong refuses the candidate, and the command goes on without it.
 
 import {
-  DELETED_BLOB,
   DELETED_MODE,
   MAX_BLOB_BYTES,
   MAX_FETCH_BYTES,
@@ -29,11 +29,11 @@ import {
   replacementsOf,
   validateAgainstFiles,
 } from "@cairnfield/protocol";
-import type { CitedFiles, FileEntry, Finding, NodeListing, PatchFacts } from "@cairnfield/protocol";
+import type { CitedFiles, FileEntry, Finding, NodeListing, Patch, PatchFacts } from "@cairnfield/protocol";
 import { decoded } from "../checkout.ts";
 import type { Listing } from "../checkout.ts";
-import { blobSizes, diffTrees, fetchCommit, parentsOf, readBlobs } from "../git.ts";
-import type { Access, Scratch, TransferBound } from "../git.ts";
+import { blobSizes, changedEntry, diffTrees, fetchCommit, parentsOf, readBlobs } from "../git.ts";
+import type { Scratch, TransferBound } from "../git.ts";
 import type { Io } from "../io.ts";
 import { EXIT, Stop, stop } from "../outcome.ts";
 import { forkAccess, nodeListing, readRecord } from "../services.ts";
@@ -58,10 +58,8 @@ export interface Assembly {
   readonly files: (paths: readonly string[]) => Promise<CitedFiles>;
   /** The nodes whose records count for the team: its own, and those its lens names at level 2. */
   readonly counted: readonly string[];
-  /** The listing of each node's team repo, asked for once. Nothing for a node that gave none. */
-  readonly listings: Map<string, Promise<NodeListing | undefined>>;
-  /** The read token of each node's fork of the component, asked for once. */
-  readonly forks: Map<string, Promise<Answer<Access>>>;
+  /** What each node answered when asked for the listing of its team repo. A node is asked once in a run. */
+  readonly listings: Map<string, Promise<Answer<NodeListing>>>;
 }
 
 /** A candidate that passed every check, with what the copy is built from. */
@@ -90,18 +88,27 @@ async function attempt<T>(step: () => Promise<T>): Promise<{ readonly ok: true; 
   }
 }
 
-/** Asks a node for something once in a run, however many candidates it holds. */
-function once<T>(asked: Map<string, Promise<T>>, node: string, ask: () => Promise<T>): Promise<T> {
-  const answer = asked.get(node) ?? ask();
-  asked.set(node, answer);
+function listingOf(run: Assembly, node: string): Promise<Answer<NodeListing>> {
+  const answer = run.listings.get(node) ?? nodeListing(run.io, node);
+  run.listings.set(node, answer);
   return answer;
 }
 
-function listingOf(run: Assembly, node: string): Promise<NodeListing | undefined> {
-  return once(run.listings, node, async () => {
-    const answer = await nodeListing(run.io, node);
-    return answer.ok ? answer.body : undefined;
-  });
+/**
+ * Reads the patch record a candidate names from the repo of the team that published it.
+ * The index only said that the record is there. What the record says, its commit and its
+ * findings, is the team's own word, and is taken from the team's own node. Returns the
+ * code of why there is no such record, when there is none.
+ */
+async function patchRecordOf(run: Assembly, candidate: Candidate): Promise<Patch | string> {
+  const held = await listingOf(run, candidate.node);
+  if (!held.ok) return `node-${held.error}`;
+  const path = recordPath({ component: run.listing.component, type: "patch" }, candidate.record);
+  if (!held.body.records.some((record) => record.path === path)) return "unresolved-reference";
+  const file = await readRecord(run.io, candidate.node, held.body.head, path);
+  if (!file) return "unresolved-reference";
+  if (!file.ok) return file.reason;
+  return file.record.type === "patch" ? file.record : "unresolved-reference";
 }
 
 /**
@@ -110,16 +117,16 @@ function listingOf(run: Assembly, node: string): Promise<NodeListing | undefined
  * file at a finding's path is that finding, whichever node serves it. Returns nothing
  * when one of them is in no such repo.
  */
-async function findingsOf(run: Assembly, candidate: Candidate): Promise<Finding[] | undefined> {
-  const nodes = [candidate.node, ...run.counted.filter((node) => node !== candidate.node)];
+async function findingsOf(run: Assembly, author: string, ids: readonly string[]): Promise<Finding[] | undefined> {
+  const nodes = [author, ...run.counted.filter((node) => node !== author)];
   const findings: Finding[] = [];
-  for (const id of candidate.findings) {
+  for (const id of ids) {
     const path = recordPath({ component: run.listing.component, type: "finding" }, id);
     let found: Finding | undefined;
     for (const node of nodes) {
       const held = await listingOf(run, node);
-      if (!held?.records.some((record) => record.path === path)) continue;
-      const file = await readRecord(run.io, node, held.head, path);
+      if (!held.ok || !held.body.records.some((record) => record.path === path)) continue;
+      const file = await readRecord(run.io, node, held.body.head, path);
       if (file?.ok && file.record.type === "finding") {
         found = file.record;
         break;
@@ -131,14 +138,19 @@ async function findingsOf(run: Assembly, candidate: Candidate): Promise<Finding[
   return findings;
 }
 
-/** Fetches a candidate's commit and checks it as a patch on the pinned commit. */
+/** Reads a candidate's record, fetches the commit it names and checks it as a patch on the pinned commit. */
 export async function verify(run: Assembly, candidate: Candidate): Promise<Verdict> {
   const refuse = (reason: string): Verdict => ({ ok: false, reason });
   const { io, scratch, listing } = run;
   const component = listing.component;
 
+  const announced = await attempt(() => patchRecordOf(run, candidate));
+  if (!announced.ok) return refuse(announced.reason);
+  if (typeof announced.value === "string") return refuse(announced.value);
+  const { commit, findings } = announced.value;
+
   // The lines the patch may change are the lines its findings cite in the team's own checkout.
-  const named = await attempt(() => findingsOf(run, candidate));
+  const named = await attempt(() => findingsOf(run, candidate.node, findings));
   if (!named.ok) return refuse(named.reason);
   if (!named.value) return refuse("unresolved-reference");
   for (const finding of named.value) {
@@ -147,14 +159,14 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   }
   const cited = citedRanges(named.value, listing.files);
 
-  const access = await once(run.forks, candidate.node, () => forkAccess(io, candidate.node, component));
+  const access = await forkAccess(io, candidate.node, component);
   if (!access.ok) return refuse(`node-${access.error}`);
   const fetched = await attempt(async () => {
     // The team's own fork is its own. Another team's is held to a size and a deadline.
-    await fetchCommit(scratch, access.body, candidate.commit, candidate.node === run.node ? undefined : FORK_FETCH);
-    const parents = await parentsOf(scratch, candidate.commit);
+    await fetchCommit(scratch, access.body, commit, candidate.node === run.node ? undefined : FORK_FETCH);
+    const parents = await parentsOf(scratch, commit);
     if (parents.length !== 1 || parents[0] !== component) return undefined;
-    return diffTrees(scratch, component, candidate.commit, { bytes: MAX_CHANGES_BYTES, error: "patch-too-large" });
+    return diffTrees(scratch, component, commit, { bytes: MAX_CHANGES_BYTES, error: "patch-too-large" });
   });
   if (!fetched.ok) return refuse(fetched.reason);
   if (!fetched.value) return refuse("wrong-parent");
@@ -168,7 +180,7 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
     // a link, a submodule entry, a path the checkout refuses. No finding can cite one.
     const file = held.get(path);
     if (change.old && (file?.mode !== change.old.mode || file.blob !== change.old.hash)) return refuse("patch-out-of-scope");
-    changes.push({ path, mode: change.new?.mode ?? DELETED_MODE, blob: change.new?.hash ?? DELETED_BLOB });
+    changes.push(changedEntry(change, path));
   }
 
   // The checks that read no content run first, in the order the protocol runs them, so
@@ -208,5 +220,5 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   const { ok, ...facts } = checked;
   // The index may be wrong about a patch, or lie about it. Its patch ID only says which one it meant.
   if (candidate.expected !== undefined && candidate.expected !== facts.patchId) return refuse("patch-id-mismatch");
-  return { ok, node: candidate.node, commit: candidate.commit, facts, before, after: after.value };
+  return { ok, node: candidate.node, commit, facts, before, after: after.value };
 }

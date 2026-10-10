@@ -74,11 +74,15 @@ export interface Made {
 }
 
 export interface Wanted {
-  /** The lines of `config/rules.txt` that the patch's findings cite, one finding for each range. */
+  /** The lines that the patch's findings cite, one finding for each range. */
   readonly cites: readonly (readonly [start: number, end: number])[];
+  /** The file those lines are in, when it is not `config/rules.txt`. */
+  readonly path?: string;
   readonly changes: readonly Change[];
   /** The commit the patch commit sits on, when it is not the component. */
   readonly parent?: string;
+  /** The team whose repo holds the findings, when it is not the team that wrote the patch. */
+  readonly findingsAt?: Site;
 }
 
 /**
@@ -86,8 +90,8 @@ export interface Wanted {
  * to its team repo, and the patch commit to its fork.
  */
 export async function patchBy(on: Bench, at: Site, node: string, component: string, wanted: Wanted): Promise<Made> {
-  const findings = wanted.cites.map(([start, end]) => finding(component, { location: { path: "config/rules.txt", start, end } }));
-  const cited = await holdRecords(at, findings);
+  const findings = wanted.cites.map(([start, end]) => finding(component, { location: { path: wanted.path ?? "config/rules.txt", start, end } }));
+  const cited = await holdRecords(wanted.findingsAt ?? at, findings);
   const commit = forkCommit(at, on.repo(`copy-${component}`), component, wanted.changes, wanted.parent);
   const record = { version: SCHEMA_VERSION, type: "patch", component, commit, findings: [...cited].sort(), model: "none" };
   const [id = ""] = await holdRecords(at, [record]);
@@ -102,11 +106,16 @@ export const otherTeam = (on: Bench): Site => on.another(OTHER_NODE, OTHER_NAMES
 /** The node of a third team, which no lens here names. */
 export const thirdTeam = (on: Bench): Site => on.another(THIRD_NODE, THIRD_NAMESPACE);
 
-/**
- * The view an index serves for a component: each patch as one entry, with the patch ID
- * the index gives it. An honest index gives the ID the commit amounts to.
- */
-export function serveView(on: Bench, component: string, listed: readonly (Made & { readonly says?: string })[]): void {
+/** A patch as an index lists it. An honest index gives the patch ID the commit amounts to, and the record as its node holds it. */
+export interface Listed extends Made {
+  /** The patch ID the index gives in place of the true one. */
+  readonly says?: string;
+  /** What the index shows as the record, in place of what the node holds under that ID. */
+  readonly shows?: object;
+}
+
+/** The view an index serves for a component: each patch as one entry. */
+export function serveView(on: Bench, component: string, listed: readonly Listed[]): void {
   const nodes = [...new Set([NODE, ...listed.map(({ node }) => node)])];
   on.index.views.set(component, {
     version: SCHEMA_VERSION,
@@ -127,7 +136,9 @@ export function serveView(on: Bench, component: string, listed: readonly (Made &
           size: 2,
           changes: [],
           paths: ["config/rules.txt", "docs/rules.txt"],
-          records: [{ node: made.node, repo: "team", commit: component, path: recordPath(made.record as AnyRecord, made.id), id: made.id, record: made.record }],
+          records: [
+            { node: made.node, repo: "team", commit: component, path: recordPath(made.record as AnyRecord, made.id), id: made.id, record: made.shows ?? made.record },
+          ],
           rechecks: [],
           nodes: [made.node],
           confirmed: false,

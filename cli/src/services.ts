@@ -148,7 +148,7 @@ export function nodeListing(io: Io, node: string): Promise<Answer<NodeListing>> 
  * node validates nothing (KTD7), so the caller checks the bytes. Returns nothing for a
  * file the node does not serve, or one too large to be a record.
  */
-export async function readRecordFile(io: Io, node: string, commit: string, path: string): Promise<Uint8Array | undefined> {
+async function readRecordFile(io: Io, node: string, commit: string, path: string): Promise<Uint8Array | undefined> {
   const query = new URLSearchParams({ commit, path });
   let response: Response;
   try {

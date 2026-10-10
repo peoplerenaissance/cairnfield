@@ -11,11 +11,10 @@
 // publishes recipes has the command push the copy to the team's fork and publish a
 // recipe record. A team that does not publish recipes publishes nothing about its copy.
 
-import { DELETED_BLOB, DELETED_MODE, MAX_RECIPE_PATCHES, SCHEMA_VERSION, recordPath } from "@cairnfield/protocol";
-import type { Recipe } from "@cairnfield/protocol";
+import { MAX_RECIPE_PATCHES, SCHEMA_VERSION, recordPath } from "@cairnfield/protocol";
+import type { FileEntry, Recipe } from "@cairnfield/protocol";
 import { compose, renderDiff } from "../assemble/build.ts";
 import { namedTeams, select } from "../assemble/select.ts";
-import type { Refusal } from "../assemble/select.ts";
 import { verify } from "../assemble/verify.ts";
 import type { Assembly, Verified } from "../assemble/verify.ts";
 import { citedFileReader, decoded, readListing } from "../checkout.ts";
@@ -23,7 +22,7 @@ import { shownPath } from "../config.ts";
 import type { Home } from "../config.ts";
 import { copyDir, dropCopy, saveCopy } from "../copy.ts";
 import type { Copy } from "../copy.ts";
-import { commitChanges, diffTrees, fetchCommit, treeOf, withScratch } from "../git.ts";
+import { changedEntry, commitChanges, diffTrees, fetchCommit, treeOf, withScratch } from "../git.ts";
 import type { Scratch } from "../git.ts";
 import type { Io } from "../io.ts";
 import { loadLens } from "../lens.ts";
@@ -38,6 +37,13 @@ const MESSAGE = "Cairnfield copy";
 const PINNED_REF = "refs/cairnfield/pinned";
 /** The list of paths the copy changes is read up to this size. The command built the copy, so the list is its own. */
 const MAX_BUILT_CHANGES_BYTES = 64 * 1024 * 1024;
+
+/** A candidate that did not get into the copy, with the code of why. */
+interface Refusal {
+  readonly node: string;
+  readonly record: string;
+  readonly reason: string;
+}
 
 /** The branch of a fork that holds the team's copy of a component. */
 export const copyRef = (component: string): string => `refs/heads/copy/${component}`;
@@ -70,12 +76,11 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
   // A team that has published no record yet has no team repo, and so no patch of its own.
   const held = level === 0 ? undefined : await nodeListing(io, node);
   if (held && !held.ok && !(held.error === "refused" && held.reason === "not-found")) return nodeFailed(held);
-  const records = held?.ok ? held.body : undefined;
-  const { candidates, refused: unread } = await select(io, home, lens, component, records);
-  const refused: Refusal[] = [...unread];
+  const candidates = await select(io, home, lens, component, held?.ok ? held.body : undefined);
+  const refused: Refusal[] = [];
   const skipped: Outcome["output"][] = [];
   const none = (): Outcome => done({ component, level, patches: [], refused, skipped });
-  if (candidates.length === 0) return none();
+  if (!held || candidates.length === 0) return none();
 
   // The pinned commit comes from the team's own copy of the component, which needs the node's key.
   const key = adminKey(io);
@@ -90,8 +95,7 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
       scratch,
       files: citedFileReader(home, listing),
       counted: [node, ...namedTeams(lens, node)],
-      listings: new Map([[node, Promise.resolve(records)]]),
-      forks: new Map(),
+      listings: new Map([[node, Promise.resolve(held)]]),
     };
 
     // Two teams may have written the same patch. One of them is enough, and the team's own comes first.
@@ -123,10 +127,9 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
     // The diff is of the commit that was built: Git is asked which paths it changes, and
     // they must be the changes that were composed.
     const built = await diffTrees(scratch, component, commit, { bytes: MAX_BUILT_CHANGES_BYTES, error: "git-output-too-large" });
-    const entry = (path: string, mode: string, blob: string): string => `${mode} ${blob} ${path}`;
-    const inCommit = built.map((change) => entry(decoded(change.path) ?? "", change.new?.mode ?? DELETED_MODE, change.new?.hash ?? DELETED_BLOB));
-    const intended = composed.changes.map(({ path, mode, blob }) => entry(path, mode, blob));
-    if (inCommit.sort().join("\n") !== intended.sort().join("\n")) return stop(EXIT.failed, "assembly-failed");
+    const entries = (changes: readonly FileEntry[]): string => changes.map(({ path, mode, blob }) => `${mode} ${blob} ${path}`).sort().join("\n");
+    const inCommit = built.map((change) => changedEntry(change, decoded(change.path) ?? ""));
+    if (entries(inCommit) !== entries(composed.changes)) return stop(EXIT.failed, "assembly-failed");
     const content = new Map<string, Uint8Array>(composed.blobs);
     for (const { before } of selected) for (const [blob, bytes] of before) content.set(blob, bytes);
     io.warn(renderDiff(listing.files, composed.changes, (blob) => content.get(blob)));

@@ -590,7 +590,8 @@ export function forkCommit(at: Site, from: string, component: string, changes: r
   git(fork, ["read-tree", component]);
   for (const change of changes) {
     if (change.content === undefined && change.mode === undefined) {
-      git(fork, ["update-index", "--force-remove", change.path]);
+      // A line with mode 0 takes the path out of the index. A repo with no work tree takes no other form.
+      git(fork, ["update-index", "--index-info"], `0 ${"0".repeat(40)}\t${change.path}\n`);
       continue;
     }
     // `<mode> blob <hash>`, a tab, the path. Nothing for a path the component does not hold.

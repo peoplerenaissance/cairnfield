@@ -31,6 +31,17 @@ describe("a Git call", () => {
   });
 });
 
+describe("a Git call that is ended through its signal", () => {
+  it("comes back as a run that failed, and never as an error", async () => {
+    const ending = new AbortController();
+    ending.abort();
+
+    const run = await runGit(["--version"], { env, maxOutput: 1024, signal: ending.signal });
+
+    expect(run.code).not.toBe(0);
+  });
+});
+
 describe("the listing of a commit's tree", () => {
   it("ends the command with the caller's code when it is larger than the caller allows", async () => {
     const listed = await outcomeOf(() =>

@@ -62,7 +62,7 @@ A third idea needs no build step.
 | `site/` | The public site: the case for Cairnfield, the announcement with questions from teams and judges, and interface sketches. A Cloudflare Worker serving static files. |
 | `AGENTS.md` | Instructions and rules for coding agents working in this repo. |
 
-The rest of the product code arrives unit by unit from the plan, in `index/`, `cli/` and `sim/`. `cli/` holds the first six commands, and the other two hold placeholders. The protocol, the threat model and the platform notes will be in `reference/`.
+The rest of the product code arrives unit by unit from the plan, in `index/`, `cli/` and `sim/`. `cli/` holds the first seven commands, and the other two hold placeholders. The protocol, the threat model and the platform notes will be in `reference/`.
 
 ## Running the command
 

@@ -2,7 +2,7 @@
 // applied as line edits against the old content, so the copy does not depend on the
 // order of the patches, and the operator is shown every line the copy changes.
 
-import { cpSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCHEMA_VERSION, TEAM_BRANCH, recordId } from "@cairnfield/protocol";
@@ -10,7 +10,7 @@ import { EXIT } from "../../src/outcome.ts";
 import { run } from "../../src/run.ts";
 import { FIXTURES, INDEX, NODE, OTHER_NODE, bench, commitEntries, git, pinned, published, saveOutbox } from "../support.ts";
 import type { Bench, Entry } from "../support.ts";
-import { COPIES, NARROWED, RULES, TREE, bothRules, copied, otherTeam, ownPatch, patchBy, pinnedWith, printed, refsOf, rules, serveView, text } from "./team.ts";
+import { COPIES, NARROWED, RULES, TREE, bothRules, copied, otherTeam, ownPatch, patchBy, pinnedWith, printed, refsOf, rules, serveView, text, useLens } from "./team.ts";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -83,6 +83,79 @@ describe("the copy assemble builds", () => {
     expect(outcome.output).toMatchObject({ error: "patches-conflict", patches: [one.patchId, two.patchId].sort() });
   });
 
+  it("is refused when one patch adds lines in the middle of the lines another replaces, and holds both when it adds after them", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 });
+    const replaces = await ownPatch(on, component, { cites: [[3, 4]], changes: bothRules(rules({ 3: "allow fetch notes.fellbeck.example", 4: "allow run sync --once" })) });
+    const after = await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: ["allow read env HOME", RULES[4] ?? ""] })) });
+
+    const composed = await on.run("assemble", component);
+
+    expect(composed.code).toBe(EXIT.ok);
+    expect(copied(on, component, "config/rules.txt")).toBe(
+      rules({ 3: "allow fetch notes.fellbeck.example", 4: "allow run sync --once", 5: ["allow read env HOME", RULES[4] ?? ""] }),
+    );
+
+    const inside = await ownPatch(on, component, { cites: [[4, 4]], changes: bothRules(rules({ 4: ["allow run check", RULES[3] ?? ""] })) });
+    const refused = await on.run("assemble", component);
+
+    expect(after.patchId).not.toBe(inside.patchId);
+    expect(refused).toMatchObject({ code: EXIT.invalid, output: { error: "patches-conflict", patches: [replaces.patchId, inside.patchId].sort() } });
+  });
+
+  it("drops every path of a content that a patch deletes, and refuses another patch on that content", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 });
+    const deletes = await ownPatch(on, component, { cites: [[1, 5]], changes: [{ path: "config/rules.txt" }, { path: "docs/rules.txt" }] });
+    on.warnings.length = 0;
+
+    const outcome = await on.run("assemble", component);
+
+    const gone = (path: string): string[] => [`--- a/${path}`, "+++ /dev/null", "@@ -1,5 +1,0 @@", ...RULES.map((line) => `-${line}`)];
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(outcome.output["patches"]).toEqual([{ patchId: deletes.patchId, node: NODE, commit: deletes.commit, kind: "removes-only", size: 5 }]);
+    expect(outcome.output["tree"]).toBe(treeOf(TREE.filter((entry) => !entry.path.endsWith("rules.txt"))));
+    expect(existsSync(join(on.home, COPIES, component, "config/rules.txt"))).toBe(false);
+    expect(printed(on)).toBe(text([...gone("config/rules.txt"), ...gone("docs/rules.txt")]));
+
+    const edits = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+    expect(await on.run("assemble", component)).toMatchObject({
+      code: EXIT.invalid,
+      output: { error: "patches-conflict", patches: [deletes.patchId, edits.patchId].sort() },
+    });
+  });
+
+  it("holds a patch that only changes a file's mode beside one that changes lines", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 });
+    const mode = await ownPatch(on, component, { path: "run.sh", cites: [[2, 2]], changes: [{ path: "run.sh", mode: "100644" }] });
+    await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
+    on.warnings.length = 0;
+
+    const outcome = await on.run("assemble", component);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(outcome.output["patches"]).toContainEqual({ patchId: mode.patchId, node: NODE, commit: mode.commit, kind: "adds-or-changes", size: 0 });
+    expect(outcome.output["paths"]).toEqual(["config/rules.txt", "docs/rules.txt", "run.sh"]);
+    expect(statSync(join(on.home, COPIES, component, "run.sh")).mode & 0o111).toBe(0);
+    expect(printed(on)).toContain(text(["--- a/run.sh", "+++ b/run.sh", "old mode 100755", "new mode 100644"]));
+  });
+
+  it("is refused when one patch ends a file with no line feed and another adds lines after its end", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 }, [...TREE, { path: "steps.txt", content: "one\ntwo\n" }]);
+    const ends = await ownPatch(on, component, { path: "steps.txt", cites: [[2, 2]], changes: [{ path: "steps.txt", content: "one\nTWO" }] });
+    on.warnings.length = 0;
+
+    const alone = await on.run("assemble", component);
+
+    expect(alone.code).toBe(EXIT.ok);
+    expect(copied(on, component, "steps.txt")).toBe("one\nTWO");
+    expect(printed(on)).toBe(text(["--- a/steps.txt", "+++ b/steps.txt", "@@ -2,1 +2,1 @@", "-two", "+TWO", "\\ No newline at end of file"]));
+
+    const adds = await ownPatch(on, component, { path: "steps.txt", cites: [[2, 2]], changes: [{ path: "steps.txt", content: "one\ntwo\nthree\n" }] });
+    expect(await on.run("assemble", component)).toMatchObject({
+      code: EXIT.invalid,
+      output: { error: "patches-conflict", patches: [ends.patchId, adds.patchId].sort() },
+    });
+  });
+
   it("has one tree hash for two teams with the same patches, whichever team wrote which (AE6)", async () => {
     const component = await pinnedWith(on, { patchLevel: 2, teams: [OTHER_NODE] });
     const other = otherTeam(on);
@@ -114,6 +187,21 @@ describe("the copy assemble builds", () => {
     expect(again.output["tree"]).toBe(first.output["tree"]);
     expect(again.output["commit"]).toBe(first.output["commit"]);
     expect(first.output["tree"]).toBe(treeOf(withRules(rules({ 3: "allow fetch notes.fellbeck.example", 4: undefined }))));
+  });
+
+  it("is written down beside its folder, and is taken away when a later run builds none", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 });
+    const own = await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
+
+    const built = await on.run("assemble", component);
+
+    const note = join(on.home, COPIES, `${component}.json`);
+    expect(JSON.parse(readFileSync(note, "utf8"))).toEqual({ component, patches: [own.patchId], tree: built.output["tree"], commit: built.output["commit"] });
+
+    useLens(on, { patchLevel: 0 });
+    expect(await on.run("assemble", component)).toMatchObject({ code: EXIT.ok, output: { patches: [] } });
+    expect(existsSync(note)).toBe(false);
+    expect(existsSync(join(on.home, COPIES, component))).toBe(false);
   });
 
   it("is built again as the same commit", async () => {
@@ -161,6 +249,33 @@ describe("the diff assemble prints", () => {
     expect(copied(on, component, "config/rules.txt")).toBe(rules({ 3: hostile }));
     expect(printed(on)).toContain("+allow fetch \\x1b[2J\\u{202e}elpmaxe.kcebllef\\u{202c}\\\\n\n");
     // Nothing the terminal would act on is printed: only tabs, line feeds and what can be seen.
+    expect(printed(on)).toMatch(/^[\t\n\x20-\x7e]*$/);
+  });
+
+  it("shows what a reader would not see, or could not tell from a plain space or a line break", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 });
+    // A filler that is drawn as nothing, a mark that joins nothing, a selector, two spaces that are not the plain one,
+    // a carriage return, and two characters that break a line.
+    const unseen = "allow\u3164fetch\u034f \ufe0f*\u00a0\u3000\r\u0085\u2028\tend";
+    await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(rules({ 3: unseen })) });
+    on.warnings.length = 0;
+
+    await on.run("assemble", component);
+
+    expect(printed(on)).toContain("+allow\\u{3164}fetch\\u{34f} \\u{fe0f}*\\xa0\\u{3000}\\x0d\\x85\\u{2028}\tend\n");
+    expect(printed(on)).toMatch(/^[\t\n\x20-\x7e]*$/);
+  });
+
+  it("shows a line that is no UTF-8 byte by byte", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 });
+    const line = Buffer.concat([Buffer.from("allow fetch "), Buffer.from([0xff, 0x1b, 0x5b, 0x32, 0x4a, 0x7f, 0x5c, 0x09]), Buffer.from("end\n")]);
+    const content = Buffer.concat([Buffer.from(text(RULES.slice(0, 2))), line, Buffer.from(text(RULES.slice(3)))]);
+    await ownPatch(on, component, { cites: [[3, 3]], changes: [{ path: "config/rules.txt", content }, { path: "docs/rules.txt", content }] });
+    on.warnings.length = 0;
+
+    await on.run("assemble", component);
+
+    expect(printed(on)).toContain("+allow fetch \\xff\\x1b[2J\\x7f\\\\\tend\n");
     expect(printed(on)).toMatch(/^[\t\n\x20-\x7e]*$/);
   });
 });

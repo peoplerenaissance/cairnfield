@@ -7,7 +7,7 @@
 // line of one content, or add lines at the same place, do not compose, and the selection
 // is refused. The result goes to every path that holds the old content.
 
-import { DELETED_BLOB, DELETED_MODE, MAX_PATCH_LINES, MAX_RECIPE_PATCHES, diffLines, gitBlobHash, splitLines } from "@cairnfield/protocol";
+import { DELETED_BLOB, DELETED_MODE, MAX_PATCH_LINES, MAX_RECIPE_PATCHES, compare, diffLines, gitBlobHash, splitLines } from "@cairnfield/protocol";
 import type { FileEntry, FileListing, Hunk } from "@cairnfield/protocol";
 import { EXIT, stop } from "../outcome.ts";
 import type { Verified } from "./verify.ts";
@@ -38,8 +38,6 @@ export interface Composed {
 export type Composition = ({ readonly ok: true } & Composed) | { readonly ok: false; readonly conflict: readonly [string, string] };
 
 const LINE_FEED = 10;
-
-const inOrder = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
  * Whether two hunks of two patches on one old content cannot both be applied: they
@@ -93,10 +91,11 @@ export async function compose(files: FileListing, patches: readonly Verified[]):
   const touching = new Map<string, Set<string>>();
   const editing = new Map<string, Edited>();
   const deleting = new Map<string, string>();
-  // By old content and mode: the mode a patch gives it.
-  const modes = new Map<string, { readonly patch: string; readonly mode: string }>();
+  // By old content and mode: the mode a patch gives it. A regular file has two modes, so
+  // two patches that change the mode of one content give it the same one.
+  const modes = new Map<string, string>();
 
-  for (const { facts, before, after } of [...patches].sort((a, b) => inOrder(a.facts.patchId, b.facts.patchId))) {
+  for (const { facts, before, after } of [...patches].sort((a, b) => compare(a.facts.patchId, b.facts.patchId))) {
     const patch = facts.patchId;
     for (const [at, replacement] of facts.replacements.entries()) {
       const { oldBlob, oldMode, newBlob, newMode } = replacement;
@@ -106,12 +105,7 @@ export async function compose(files: FileListing, patches: readonly Verified[]):
         deleting.set(oldBlob, patch);
         continue;
       }
-      if (newMode !== oldMode) {
-        const key = `${oldBlob} ${oldMode}`;
-        const given = modes.get(key);
-        if (given && given.mode !== newMode) return conflict(given.patch, patch);
-        modes.set(key, { patch, mode: newMode });
-      }
+      if (newMode !== oldMode) modes.set(`${oldBlob} ${oldMode}`, newMode);
       if (newBlob === oldBlob) continue;
       const old = before.get(oldBlob);
       const content = after.get(newBlob);
@@ -153,17 +147,20 @@ export async function compose(files: FileListing, patches: readonly Verified[]):
       changes.push({ path, mode: DELETED_MODE, blob: DELETED_BLOB });
       continue;
     }
-    const now = { path, mode: modes.get(`${blob} ${mode}`)?.mode ?? mode, blob: newBlobOf.get(blob) ?? blob };
+    const now = { path, mode: modes.get(`${blob} ${mode}`) ?? mode, blob: newBlobOf.get(blob) ?? blob };
     if (now.mode !== mode || now.blob !== blob) changes.push(now);
   }
-  return { ok: true, changes: changes.sort((a, b) => inOrder(a.path, b.path)), blobs };
+  return { ok: true, changes: changes.sort((a, b) => compare(a.path, b.path)), blobs };
 }
 
 const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-// A backslash, so that an escape cannot be mistaken for text. Every control character
-// but the tab. Every format character, such as a direction override or a zero-width
-// mark, and the two characters that break a line without being a line feed.
-const UNSEEN = /[\\\p{Cf}\p{Zl}\p{Zp}]|[^\P{Cc}\t]/gu;
+// What is printed as an escape. A backslash, so that an escape cannot be mistaken for
+// text. Every control character but the tab. Every character a reader does not see or
+// cannot tell from another: a format character such as a direction override or a
+// zero-width mark, any other character that is drawn as nothing, a blank that fills a
+// cell, a space that is not the plain one, the two characters that break a line without
+// being a line feed, and a character with no meaning of its own or none yet.
+const UNSEEN = /[\\\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}\u2800]|[^\P{Cc}\t]|[^\P{Zs} ]/gu;
 
 const hex = (code: number): string => code.toString(16).padStart(2, "0");
 

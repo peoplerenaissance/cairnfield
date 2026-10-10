@@ -6,6 +6,7 @@ export * from "./enums.ts";
 export * from "./limits.ts";
 export * from "./hash.ts";
 export * from "./canonical.ts";
+export * from "./compare.ts";
 export * from "./schemas.ts";
 export * from "./files.ts";
 export * from "./lines.ts";

@@ -438,6 +438,11 @@ export async function diffTrees(scratch: Scratch, from: string, to: string, limi
   return changes;
 }
 
+/** A changed path as an entry of the newer commit's listing. A path the newer commit does not hold carries the deletion marker. */
+export function changedEntry(change: TreeChange, path: string): FileEntry {
+  return { path, mode: change.new?.mode ?? DELETED_MODE, blob: change.new?.hash ?? DELETED_BLOB };
+}
+
 /** The size of each object that is a blob. A hash the repo lacks, or one that names no blob, gets none. */
 export async function blobSizes(scratch: Scratch, hashes: readonly string[]): Promise<Map<string, number>> {
   const sizes = new Map<string, number>();
