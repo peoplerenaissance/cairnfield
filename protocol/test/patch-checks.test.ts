@@ -159,6 +159,34 @@ describe("scope (R11)", () => {
     expect(reasonOf(await scoped(before, after, 2, 2))).toBe("patch-out-of-scope");
   });
 
+  it("never passes a patch that moves or changes a line outside the cited lines", async () => {
+    // A fixed sequence, so the run is the same every time.
+    let state = 20261009;
+    const random = (below: number): number => {
+      state = (state + 0x6d2b79f5) | 0;
+      let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+      mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+      return ((mixed ^ (mixed >>> 14)) >>> 0) % below;
+    };
+    const words = ["allow", "deny", "log"];
+    const rows = (count: number): string[] => Array.from({ length: count }, () => words[random(words.length)] ?? "allow");
+    let passed = 0;
+    for (let round = 0; round < 1500; round++) {
+      const before = rows(1 + random(7));
+      const after = rows(1 + random(8));
+      const start = 1 + random(before.length);
+      const end = start + random(before.length - start + 1);
+      if (!(await scoped(before, after, start, end)).ok) continue;
+      passed += 1;
+      // The lines above the cited lines and the lines below them are all still there.
+      const below = before.length - end;
+      expect(after.length).toBeGreaterThanOrEqual(start - 1 + below);
+      expect(after.slice(0, start - 1)).toEqual(before.slice(0, start - 1));
+      expect(after.slice(after.length - below)).toEqual(before.slice(end));
+    }
+    expect(passed).toBeGreaterThan(100);
+  });
+
   it("counts two findings on adjoining lines as one cited range", async () => {
     const both = "# Summarize\nSummarize it.\nKeep it short.\n";
     expect(reasonOf(await check(BASE, withSkill(both), [[skill, 2, 2]]))).toBe("patch-out-of-scope");
