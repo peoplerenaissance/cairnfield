@@ -20,7 +20,7 @@ import type { Assembly, Verified } from "../assemble/verify.ts";
 import { citedFileReader, decoded, readListing } from "../checkout.ts";
 import { shownPath } from "../config.ts";
 import type { Home } from "../config.ts";
-import { copyDir, dropCopy, saveCopy } from "../copy.ts";
+import { copyDir, dropCopy, keepCopy, stageCopy } from "../copy.ts";
 import type { Copy } from "../copy.ts";
 import { changedEntry, commitChanges, diffTrees, fetchCommit, treeOf, withScratch } from "../git.ts";
 import type { Scratch } from "../git.ts";
@@ -134,12 +134,21 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
     for (const { before } of selected) for (const [blob, bytes] of before) content.set(blob, bytes);
     io.warn(renderDiff(listing.files, composed.changes, (blob) => content.get(blob)));
 
-    const published = lens.publishRecipes ? await publishCopy(io, home, scratch, key, copy) : done({});
-    // The copy counts as built only when what the lens asked for was done, so a run that
-    // could not publish leaves none behind. A notice the index did not take is no failure
-    // of the copy: its recipe is published all the same.
+    // The copy is exported before anything is published, so a copy that cannot be exported
+    // publishes nothing. It counts as built only when what the lens asked for was done, so
+    // a run that could not publish leaves none behind. A notice the index did not take is
+    // no failure of the copy: its recipe is published all the same.
+    await stageCopy(home, scratch, copy);
+    let published: Outcome;
+    try {
+      published = lens.publishRecipes ? await publishCopy(io, home, scratch, key, copy) : done({});
+    } catch (error) {
+      await dropCopy(home, component);
+      throw error;
+    }
     const kept = published.code === EXIT.ok || published.output["notice"] === "failed";
-    if (kept) await saveCopy(home, scratch, copy);
+    if (kept) await keepCopy(home, copy);
+    else await dropCopy(home, component);
     return done(
       {
         component,

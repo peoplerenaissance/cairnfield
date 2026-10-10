@@ -2,7 +2,7 @@
 // applied as line edits against the old content, so the copy does not depend on the
 // order of the patches, and the operator is shown every line the copy changes.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCHEMA_VERSION, TEAM_BRANCH, recordId } from "@cairnfield/protocol";
@@ -335,6 +335,26 @@ describe("a lens that publishes recipes", () => {
     expect(existsSync(join(on.home, COPIES, component))).toBe(false);
     expect(existsSync(join(on.home, COPIES, `${component}.json`))).toBe(false);
     expect(published(on)).toEqual(records);
+  });
+
+  it("publishes nothing when the copy cannot be exported to this machine", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1, publishRecipes: true });
+    await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
+    const records = published(on);
+    const refs = refsOf(on.repo(`fork-${component}`));
+    // The export lists the copy's tree first. Here that listing fails, as it would on a disk that is full.
+    on.beforeGit = (args) => {
+      if (args[0] === "ls-tree") throw new Error("the export failed");
+    };
+
+    const outcome = await on.run("assemble", component);
+
+    expect(outcome.code).toBe(EXIT.failed);
+    expect(on.gitCalls.some((args) => args[0] === "push")).toBe(false);
+    expect(published(on)).toEqual(records);
+    expect(refsOf(on.repo(`fork-${component}`))).toEqual(refs);
+    const copies = join(on.home, COPIES);
+    expect(existsSync(copies) ? readdirSync(copies) : []).toEqual([]);
   });
 
   it("keeps the copy when only the notice to the index fails, because the recipe is published all the same", async () => {
