@@ -107,59 +107,84 @@ describe("scope (R11)", () => {
     expect(reasonOf(await check(BASE, withSkill(further), [[skill, 3, 3]]))).toBe("patch-out-of-scope");
   });
 
-  // Where lines repeat, a run of removed or added lines gives the same new content at more
-  // than one place, and the diff reports the last of them (KTD37).
+  // Scope is decided from the two contents, so it does not matter which of two equal
+  // lines the diff reports as the changed one (KTD37).
   const rules = "rules.txt";
   const withRules = (rows: readonly string[]): Tree => ({ ...BASE, [rules]: rows.map((row) => `${row}\n`).join("") });
-  const scoped = (before: readonly string[], after: readonly string[], start: number, end: number): Promise<PatchVerdict> =>
-    check(withRules(before), withRules(after), [[rules, start, end]]);
+  type Range = readonly [start: number, end: number];
+  const scoped = (before: readonly string[], after: readonly string[], ...cited: readonly Range[]): Promise<PatchVerdict> =>
+    check(withRules(before), withRules(after), cited.map(([start, end]) => [rules, start, end] as const));
 
   it("passes when the patch removes one of two equal lines and a finding cites either", async () => {
     const before = ["allow a", "deny all", "deny all", "allow b"];
     const after = ["allow a", "deny all", "allow b"];
-    const first = await scoped(before, after, 2, 2);
+    const first = await scoped(before, after, [2, 2]);
     // The changed lines stay as the diff reports them.
     expect(first).toMatchObject({ ok: true, changes: [{ hunks: [{ oldStart: 3, removed: 1, newStart: 3, added: 0 }] }] });
-    expect(reasonOf(await scoped(before, after, 3, 3))).toBe("ok");
-    expect(reasonOf(await scoped(before, after, 1, 1))).toBe("patch-out-of-scope");
-    expect(reasonOf(await scoped(before, after, 4, 4))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, after, [3, 3]))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, [1, 1]))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, after, [4, 4]))).toBe("patch-out-of-scope");
   });
 
   it("passes when the patch changes the first of two equal lines and a finding cites that line", async () => {
     const before = ["deny all", "deny all", "allow b"];
     const after = ["deny some", "deny all", "allow b"];
-    expect(reasonOf(await scoped(before, after, 1, 1))).toBe("ok");
-    expect(reasonOf(await scoped(before, after, 2, 2))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, after, [1, 1]))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, [2, 2]))).toBe("patch-out-of-scope");
   });
 
   it("passes when the patch removes one copy of a repeated block and the findings cite a copy", async () => {
     const before = ["open", "close", "open", "close", "end"];
     const after = ["open", "close", "end"];
-    expect(reasonOf(await scoped(before, after, 1, 2))).toBe("ok");
-    expect(reasonOf(await scoped(before, after, 2, 3))).toBe("ok");
-    expect(reasonOf(await scoped(before, after, 3, 4))).toBe("ok");
-    expect(reasonOf(await scoped(before, after, 1, 1))).toBe("patch-out-of-scope");
-    expect(reasonOf(await scoped(before, after, 4, 5))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, after, [1, 2]))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, [2, 3]))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, [3, 4]))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, [1, 1]))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, after, [4, 5]))).toBe("patch-out-of-scope");
+  });
+
+  it("passes when the patch removes exactly the cited lines, wherever the diff reports the removal", async () => {
+    // The diff reports lines 3 and 5 as removed. Lines 2 and 3 give the same content.
+    expect(reasonOf(await scoped(["first", "open", "close", "open", "open"], ["first", "open", "open"], [2, 3]))).toBe("ok");
+    // The diff reports lines 3 and 4 as one run. Lines 2 and 4 give the same content.
+    const before = ["first", "deny all", "deny all", "log all", "last"];
+    expect(reasonOf(await scoped(before, ["first", "deny all", "last"], [2, 2], [4, 4]))).toBe("ok");
+    expect(reasonOf(await scoped(before, ["first", "deny all", "last"], [2, 2]))).toBe("patch-out-of-scope");
   });
 
   it("reads lines added beside equal lines as added at any place that gives the same content", async () => {
     const before = ["first", "allow a", "deny all", "deny all", "allow b"];
     const after = ["first", "allow a", "deny all", "deny all", "deny all", "allow b"];
-    expect(reasonOf(await scoped(before, after, 2, 2))).toBe("ok");
-    expect(reasonOf(await scoped(before, after, 5, 5))).toBe("ok");
-    expect(reasonOf(await scoped(before, after, 1, 1))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, after, [2, 2]))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, [5, 5]))).toBe("ok");
+    expect(reasonOf(await scoped(before, after, [1, 1]))).toBe("patch-out-of-scope");
+    // Two lines added straight after the cited line, the second equal to the lines that follow.
+    expect(reasonOf(await scoped(["first", "open", "open"], ["first", "open", "close", "open", "open"], [1, 1]))).toBe("ok");
   });
 
-  it("does not move a run of removed lines past another change", async () => {
+  it("fails when a line that only looks like a kept one stands in its place", async () => {
     // The patch adds a line after line 2 and removes one of the equal lines after it.
     const before = ["allow a", "deny all", "deny all", "deny all", "allow b"];
     const after = ["allow a", "deny all", "allow some", "deny all", "allow b"];
-    expect(reasonOf(await scoped(before, after, 3, 3))).toBe("ok");
-    // Removing line 2 with that line added after it would give another content.
-    expect(reasonOf(await scoped(before, after, 2, 2))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, after, [3, 3]))).toBe("ok");
+    // With line 2 alone cited, lines 3 to 5 must still end the file, and they do not.
+    expect(reasonOf(await scoped(before, after, [2, 2]))).toBe("patch-out-of-scope");
   });
 
-  it("never passes a patch that moves or changes a line outside the cited lines", async () => {
+  it("keeps the lines between two cited ranges whole and in order", async () => {
+    const before = ["first", "old one", "keep a", "keep b", "old two", "last"];
+    const cited: readonly Range[] = [
+      [2, 2],
+      [5, 5],
+    ];
+    expect(reasonOf(await scoped(before, ["first", "keep a", "keep b", "last"], ...cited))).toBe("ok");
+    expect(reasonOf(await scoped(before, ["first", "new", "keep a", "keep b", "new", "new", "last"], ...cited))).toBe("ok");
+    expect(reasonOf(await scoped(before, ["first", "keep b", "keep a", "last"], ...cited))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, ["first", "keep a", "new", "keep b", "last"], ...cited))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, ["first", "old one", "keep a", "old two", "last"], ...cited))).toBe("patch-out-of-scope");
+  });
+
+  it("passes exactly the patches that keep every uncited line in place, for random contents", async () => {
     // A fixed sequence, so the run is the same every time.
     let state = 20261009;
     const random = (below: number): number => {
@@ -170,21 +195,50 @@ describe("scope (R11)", () => {
     };
     const words = ["allow", "deny", "log"];
     const rows = (count: number): string[] => Array.from({ length: count }, () => words[random(words.length)] ?? "allow");
+    const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((row, at) => row === b[at]);
+    // The rule by the plainest search: each uncited stretch is looked for at every place in turn.
+    const keeps = (before: readonly string[], after: readonly string[], cited: readonly Range[]): boolean => {
+      const stretches: string[][] = [];
+      let next = 0;
+      for (const [start, end] of cited) {
+        stretches.push(before.slice(next, start - 1));
+        next = end;
+      }
+      const last = before.slice(next);
+      const [first = [], ...between] = stretches;
+      const under = after.length - last.length;
+      if (under < first.length || !same(after.slice(0, first.length), first) || !same(after.slice(under), last)) return false;
+      let from = first.length;
+      for (const stretch of between) {
+        let found = -1;
+        for (let at = from; found < 0 && at + stretch.length <= under; at++) {
+          if (same(after.slice(at, at + stretch.length), stretch)) found = at;
+        }
+        if (found < 0) return false;
+        from = found + stretch.length;
+      }
+      return true;
+    };
     let passed = 0;
-    for (let round = 0; round < 1500; round++) {
-      const before = rows(1 + random(7));
-      const after = rows(1 + random(8));
-      const start = 1 + random(before.length);
-      const end = start + random(before.length - start + 1);
-      if (!(await scoped(before, after, start, end)).ok) continue;
-      passed += 1;
-      // The lines above the cited lines and the lines below them are all still there.
-      const below = before.length - end;
-      expect(after.length).toBeGreaterThanOrEqual(start - 1 + below);
-      expect(after.slice(0, start - 1)).toEqual(before.slice(0, start - 1));
-      expect(after.slice(after.length - below)).toEqual(before.slice(end));
+    for (let round = 0; round < 2500; round++) {
+      const before = rows(1 + random(9));
+      const after = rows(1 + random(10));
+      if (same(before, after)) continue;
+      // One to three ranges, with at least one uncited line between each two.
+      const cited: Range[] = [];
+      for (let start = 1 + random(3); start <= before.length && cited.length < 3; ) {
+        const end = Math.min(before.length, start + random(2));
+        cited.push([start, end]);
+        start = end + 2 + random(3);
+      }
+      if (cited.length === 0) continue;
+      const verdict = await scoped(before, after, ...cited);
+      expect(reasonOf(verdict), `${before.join()} to ${after.join()} citing ${JSON.stringify(cited)}`).toBe(
+        keeps(before, after, cited) ? "ok" : "patch-out-of-scope",
+      );
+      if (verdict.ok) passed += 1;
     }
-    expect(passed).toBeGreaterThan(100);
+    expect(passed).toBeGreaterThan(200);
   });
 
   it("counts two findings on adjoining lines as one cited range", async () => {

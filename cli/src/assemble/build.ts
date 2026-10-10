@@ -7,8 +7,8 @@
 // line of one content, or add lines at the same place, do not compose, and the selection
 // is refused. The result goes to every path that holds the old content.
 
-import { DELETED_BLOB, DELETED_MODE, MAX_PATCH_LINES, MAX_RECIPE_PATCHES, compare, diffLines, gitBlobHash, splitLines } from "@cairnfield/protocol";
-import type { FileEntry, FileListing, Hunk } from "@cairnfield/protocol";
+import { DELETED_BLOB, DELETED_MODE, MAX_PATCH_LINES, MAX_RECIPE_PATCHES, compare, diffLines, gitBlobHash, linesAreInScope, splitLines } from "@cairnfield/protocol";
+import type { CitedRange, FileEntry, FileListing, Hunk } from "@cairnfield/protocol";
 import { EXIT, stop } from "../outcome.ts";
 import type { Verified } from "./verify.ts";
 
@@ -23,6 +23,8 @@ interface Edit {
 interface Edited {
   readonly before: Uint8Array;
   readonly edits: Edit[];
+  /** The lines of the content that the patches editing it cite. */
+  readonly cited: CitedRange[];
   /** The new content each patch gave, by patch. */
   readonly wrote: Map<string, string>;
 }
@@ -95,7 +97,7 @@ export async function compose(files: FileListing, patches: readonly Verified[]):
   // two patches that change the mode of one content give it the same one.
   const modes = new Map<string, string>();
 
-  for (const { facts, before, after } of [...patches].sort((a, b) => compare(a.facts.patchId, b.facts.patchId))) {
+  for (const { facts, cited, before, after } of [...patches].sort((a, b) => compare(a.facts.patchId, b.facts.patchId))) {
     const patch = facts.patchId;
     for (const [at, replacement] of facts.replacements.entries()) {
       const { oldBlob, oldMode, newBlob, newMode } = replacement;
@@ -110,11 +112,12 @@ export async function compose(files: FileListing, patches: readonly Verified[]):
       const old = before.get(oldBlob);
       const content = after.get(newBlob);
       if (!old || !content) return stop(EXIT.failed, "assembly-failed");
-      const edited: Edited = editing.get(oldBlob) ?? { before: old, edits: [], wrote: new Map() };
+      const edited: Edited = editing.get(oldBlob) ?? { before: old, edits: [], cited: [], wrote: new Map() };
       editing.set(oldBlob, edited);
       // Copies of one content with two modes are two replacements and one change of lines.
       if (edited.wrote.has(patch)) continue;
       edited.wrote.set(patch, newBlob);
+      edited.cited.push(...cited.filter((range) => range.blob === oldBlob));
       const lines = splitLines(content);
       for (const hunk of facts.changes[at]?.hunks ?? []) {
         edited.edits.push({ patch, hunk, lines: lines.slice(hunk.newStart - 1, hunk.newStart - 1 + hunk.added) });
@@ -130,9 +133,17 @@ export async function compose(files: FileListing, patches: readonly Verified[]):
 
   const blobs = new Map<string, Uint8Array>();
   const newBlobOf = new Map<string, string>();
-  for (const [blob, { before, edits, wrote }] of editing) {
+  for (const [blob, { before, edits, cited, wrote }] of editing) {
     const applied = applyEdits(before, edits);
     if ("conflict" in applied) return conflict(...applied.conflict);
+    // The copy keeps to the lines its patches cite, as each patch does (KTD37). A patch is
+    // in scope when some reading of it is, and its edits go where the diff reports them,
+    // so two patches on a run of equal lines can each pass and still move an uncited line
+    // together. The patches named are the first two that edit the content.
+    if (!linesAreInScope(before, applied.content, cited)) {
+      const [one = "", two = one] = [...wrote.keys()].sort();
+      return conflict(one, two);
+    }
     const newBlob = await gitBlobHash(applied.content);
     // The hunks of one patch alone must give back the content that was checked.
     const [alone] = wrote.size === 1 ? wrote.values() : [];

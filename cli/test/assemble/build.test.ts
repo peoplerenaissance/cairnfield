@@ -102,6 +102,38 @@ describe("the copy assemble builds", () => {
     expect(refused).toMatchObject({ code: EXIT.invalid, output: { error: "patches-conflict", patches: [replaces.patchId, inside.patchId].sort() } });
   });
 
+  // Rules with two equal lines, the same with one of them gone, and with a line added between them.
+  const TWICE_DENIED = ["allow read notes", "deny all", "deny all", "allow run sync"];
+  const ONCE_DENIED = ["allow read notes", "deny all", "allow run sync"];
+  const WITH_A_FETCH = ["allow read notes", "deny all", "allow fetch notes.fellbeck.example", "deny all", "allow run sync"];
+
+  it("is refused when two patches that each keep to the line they cite leave it together", async () => {
+    // Lines 2 and 3 are equal, and each patch cites line 2. One removes one of the two
+    // lines, which the diff reports as line 3. The other adds a line after line 2. Applied
+    // together they put the new line where line 3 stood, and no finding cites line 3.
+    const component = await pinnedWith(on, { patchLevel: 1 }, [{ path: "config/rules.txt", content: text(TWICE_DENIED) }]);
+    const removes = await ownPatch(on, component, { cites: [[2, 2]], changes: [{ path: "config/rules.txt", content: text(ONCE_DENIED) }] });
+    const adds = await ownPatch(on, component, { cites: [[2, 2]], changes: [{ path: "config/rules.txt", content: text(WITH_A_FETCH) }] });
+
+    const outcome = await on.run("assemble", component);
+
+    expect(outcome).toEqual({
+      code: EXIT.invalid,
+      output: { error: "patches-conflict", patches: [removes.patchId, adds.patchId].sort(), refused: [], skipped: [] },
+    });
+  });
+
+  it("holds two such patches when their findings cite both of the equal lines", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 }, [{ path: "config/rules.txt", content: text(TWICE_DENIED) }]);
+    await ownPatch(on, component, { cites: [[3, 3]], changes: [{ path: "config/rules.txt", content: text(ONCE_DENIED) }] });
+    await ownPatch(on, component, { cites: [[2, 2]], changes: [{ path: "config/rules.txt", content: text(WITH_A_FETCH) }] });
+
+    const outcome = await on.run("assemble", component);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(copied(on, component, "config/rules.txt")).toBe(text(["allow read notes", "deny all", "allow fetch notes.fellbeck.example", "allow run sync"]));
+  });
+
   it("drops every path of a content that a patch deletes, and refuses another patch on that content", async () => {
     const component = await pinnedWith(on, { patchLevel: 1 });
     const deletes = await ownPatch(on, component, { cites: [[1, 5]], changes: [{ path: "config/rules.txt" }, { path: "docs/rules.txt" }] });

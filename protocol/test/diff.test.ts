@@ -142,12 +142,6 @@ describe("line diff", () => {
       expect(result.hunks.reduce((sum, hunk) => sum + hunk.added, 0)).toBe(result.added);
       expect(apply(before, after, result.hunks)).toEqual(after);
       expect(diff(before.join(""), after.join(""))).toEqual(result);
-      // A run that only removes or only adds sits at the last place that gives this content:
-      // one line down, its first line would have to equal the line after it.
-      for (const hunk of result.hunks) {
-        if (hunk.added === 0) expect(before[hunk.oldStart - 1 + hunk.removed]).not.toBe(before[hunk.oldStart - 1]);
-        if (hunk.removed === 0) expect(after[hunk.newStart - 1 + hunk.added]).not.toBe(after[hunk.newStart - 1]);
-      }
     }
   });
 });
