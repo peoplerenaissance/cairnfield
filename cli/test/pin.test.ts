@@ -1,7 +1,7 @@
 // `pin`: the node imports the component, and the command makes the local checkout that
 // agents and validation read (KTD16, KTD36, KTD40).
 
-import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ADMIN_KEY_HEADER, REGISTRATION_KEY_HEADER } from "@cairnfield/protocol";
@@ -222,6 +222,24 @@ describe("pin", () => {
     expect(on.index.components).toEqual([{ url: plugin.url, branch: plugin.branch, commit: plugin.first }]);
     expect(on.gitCalls).toHaveLength(gitCalls);
     expect(statSync(join(checkout(plugin.first), "README.md")).mtimeMs).toBe(made);
+  });
+
+  it("makes a checkout again when its listing cannot be read as one, where every other command stops", async () => {
+    const tree = [{ path: "README.md", content: "# A plugin\n" }];
+    const { commit } = await pinTree(tree);
+    const file = `${checkout(commit)}.json`;
+    const { url, ...written } = JSON.parse(readFileSync(file, "utf8")) as { url: string; component: string };
+    // A listing as an earlier version wrote it, with no URL, and a file someone changed since.
+    writeFileSync(file, JSON.stringify(written));
+    writeFileSync(join(checkout(commit), "README.md"), "# Changed\n");
+
+    expect(await on.run("decide", commit, "--verdict", "approved")).toEqual({ code: EXIT.failed, output: { error: "bad-checkout", component: commit } });
+
+    const again = await pinTree(tree);
+
+    expect(again.outcome).toMatchObject({ code: EXIT.ok, output: { component: commit, files: 1 } });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ component: commit, url });
+    expect(readFileSync(join(checkout(commit), "README.md"), "utf8")).toBe("# A plugin\n");
   });
 
   it("refuses a remote that is not HTTPS, or not on an Artifacts host, before Git runs", async () => {

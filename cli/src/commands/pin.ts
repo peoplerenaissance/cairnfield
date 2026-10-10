@@ -4,7 +4,8 @@
 // commit, and the copy is ready when the node says it holds that commit (KTD36). With an
 // index in the config, the command registers its node and the commit there (KTD12,
 // KTD40). A commit that is already pinned keeps its checkout, so a team that adds an
-// index later runs `pin` again and nothing else changes.
+// index later runs `pin` again and nothing else changes. A checkout whose listing cannot
+// be read is the one exception: `pin` makes it again.
 
 import { relative } from "node:path";
 import { INDEX_ROUTES, NODE_ROUTES } from "@cairnfield/protocol";
@@ -13,7 +14,7 @@ import { REGISTRATION_KEY, keyFrom } from "../config.ts";
 import type { Home } from "../config.ts";
 import { fetchCommit, withScratch } from "../git.ts";
 import type { Io } from "../io.ts";
-import { EXIT, done, stop } from "../outcome.ts";
+import { EXIT, Stop, done, stop } from "../outcome.ts";
 import type { Outcome } from "../outcome.ts";
 import { adminKey, callIndex, callNode, indexFailed, nodeFailed, repoAccess, untilReady } from "../services.ts";
 
@@ -54,7 +55,9 @@ export async function pin(io: Io, home: Home, component: Component): Promise<Out
   if (registration) await register(io, home, registration.index, registration.key, component);
 
   const { commit } = component;
-  let listing = await readListing(home, commit);
+  // A listing that cannot be read as one is made again with its checkout: one that was
+  // damaged, or one written before a listing named its URL. Every other command stops at it.
+  let listing = await readListing(home, commit).catch((error: unknown) => (error instanceof Stop ? undefined : Promise.reject(error)));
   if (!listing) {
     const access = await repoAccess(io, home, { repo: "copy", component: commit, scope: "read" });
     listing = await withScratch(io, async (scratch) => {
