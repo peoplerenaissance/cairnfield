@@ -1,0 +1,32 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  // The index (R9 to R13): it reads registered nodes over HTTP and builds one validated
+  // view per component commit. It serves data and never instructions (R35).
+  "name": "cairnfield-index",
+  "main": "src/index.ts",
+  // The newest date that both runtimes in this package know: the one Wrangler deploys
+  // against and the older one the test pool runs.
+  "compatibility_date": "2026-08-15",
+  // A call to a node in the same account goes to its public URL (KTD28).
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  // The index's own component copies. Records are checked against these, never against
+  // a node's copy (R9, KTD12).
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-index" }],
+  // Nodes, components, each copy's file listing and the records (KTD11). No database ID
+  // is written here: Wrangler finds the database by its name.
+  "d1_databases": [{ "binding": "DB", "database_name": "cairnfield-index", "migrations_dir": "migrations" }],
+  // Push notices and the checks on a copy that is still importing go through one queue
+  // (KTD11). A batch holds one message, so one node's failure never sends another node's
+  // message back. A failed sync is tried again five times, each a while after the last.
+  "queues": {
+    "producers": [{ "binding": "SYNC", "queue": "cairnfield-index-sync" }],
+    "consumers": [{ "queue": "cairnfield-index-sync", "max_batch_size": 1, "max_retries": 5 }]
+  },
+  // GIT_URLS is the allow-list (KTD30): the Git URLs this index may import, with a space
+  // between two. An index with none imports nothing. It is set at deploy time.
+  // CLAIM_TTL_SECONDS is how long a claim stays live after the index receives it (KTD15).
+  // MAX_NODES and MAX_COMPONENTS cap what can be registered (KTD30). First values.
+  // The registration key and the reset key are secrets, never variables: see
+  // `.dev.vars.example`.
+  "vars": { "GIT_URLS": "", "CLAIM_TTL_SECONDS": "900", "MAX_NODES": "64", "MAX_COMPONENTS": "16" }
+}

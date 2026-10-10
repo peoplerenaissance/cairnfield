@@ -1,0 +1,159 @@
+// The view of one component commit (R10, R13), built when it is read: findings in match
+// groups with their confirmations, claims with their state, recipes, pending and rejected
+// work, the component's import state and each node's last processed commit.
+//
+// Nothing here is declared by an author. Groups and counts come from the protocol's own
+// match rule over the valid records (KTD5). A reference is resolved here and not when a
+// record is stored, because a record can cite one on a node the index reads later
+// (Appendix H). The view holds data and no prose, and rejected work is four values (KTD31).
+
+import { SCHEMA_VERSION, compare, matchGroups } from "@cairnfield/protocol";
+import type { AnyRecord, Claim, FileEntry, Recipe, Sourced, View } from "@cairnfield/protocol";
+import { componentOf } from "./components.ts";
+import { claimTtlMs } from "./env.ts";
+import type { Env } from "./env.ts";
+import type { StoredRecord } from "./records.ts";
+
+/** The repo of a node that holds its records. */
+const TEAM_REPO = "team";
+
+/** A valid record with its node, repo, commit and path. */
+interface Published<R extends AnyRecord = AnyRecord> extends Sourced<R> {
+  readonly repo: string;
+  readonly commit: string;
+  readonly path: string;
+}
+
+type Row = Pick<StoredRecord, "node" | "path" | "type" | "state" | "reason" | "hash" | "head" | "body" | "cited" | "received_at" | "rebuilt">;
+
+interface NodeRow {
+  readonly url: string;
+  readonly processed: string | null;
+  readonly noticed_at: number | null;
+  readonly absorbed_at: number | null;
+}
+
+function bySource(a: { readonly node: string; readonly id: string }, b: { readonly node: string; readonly id: string }): number {
+  return compare(a.id, b.id) || compare(a.node, b.node);
+}
+
+function byHash(a: { readonly node: string; readonly hash: string }, b: { readonly node: string; readonly hash: string }): number {
+  return compare(a.hash, b.hash) || compare(a.node, b.node);
+}
+
+const nodesOf = (sourced: readonly { readonly node: string }[]): string[] => [...new Set(sourced.map(({ node }) => node))].sort();
+
+function isOfType<T extends AnyRecord["type"]>(entry: Published, type: T): entry is Published<Extract<AnyRecord, { type: T }>> {
+  return entry.record.type === type;
+}
+
+/** `matchGroups` gives back the records it was given. This finds each one's entry again. */
+function entriesOf(all: readonly Published[]): <R extends AnyRecord>(matched: readonly Sourced<R>[]) => Published<R>[] {
+  const known = new Map<Sourced, Published>(all.map((entry) => [entry, entry]));
+  return <R extends AnyRecord>(matched: readonly Sourced<R>[]) => matched.flatMap((sourced) => (known.get(sourced) as Published<R> | undefined) ?? []);
+}
+
+/**
+ * The view of a registered component, or nothing for a commit that is not registered.
+ * With `teams`, every record of a node that is not listed is dropped first, and what is
+ * left is grouped and counted (KTD38).
+ */
+export async function viewOf(env: Env, component: string, teams: readonly string[] | undefined, now: number): Promise<View | undefined> {
+  const held = await componentOf(env, component);
+  if (!held) return undefined;
+  const db = env.DB;
+  const [registered, stored] = await Promise.all([
+    db.prepare("SELECT url, processed, noticed_at, absorbed_at FROM nodes ORDER BY url").all<NodeRow>(),
+    db
+      .prepare("SELECT node, path, type, state, reason, hash, head, body, cited, received_at, rebuilt FROM records WHERE component = ?")
+      .bind(component)
+      .all<Row>(),
+  ]);
+  const listed = teams === undefined ? undefined : new Set(teams);
+  const counted = (node: string): boolean => listed === undefined || listed.has(node);
+  const rows = stored.results.filter(({ node }) => counted(node));
+
+  const ttl = claimTtlMs(env);
+  const pastItsTime = (row: Row): boolean => now - row.received_at >= ttl;
+
+  const valid: Published[] = [];
+  const rowOf = new Map<Published, Row>();
+  // The claims that a record of the same node cites. A record that still waits for its
+  // copy or its commit cites its claim too: the work the claim announced is published.
+  const closed = new Set<string>();
+  // Each cited path with its content, as it was worked out against the copy when the finding was checked (KTD5).
+  const citedContent = new Map<string, FileEntry>();
+  for (const row of rows) {
+    if (row.state === "rejected" || row.body === null) continue;
+    // The body is the index's own writing of a record that passed the structure check.
+    const record = JSON.parse(row.body) as AnyRecord;
+    if ((record.type === "finding" || record.type === "patch") && record.claim !== undefined) closed.add(`${row.node} ${record.claim}`);
+    if (row.state !== "valid") continue;
+    const entry: Published = { node: row.node, repo: TEAM_REPO, commit: row.head, path: row.path, id: row.hash, record };
+    valid.push(entry);
+    rowOf.set(entry, row);
+    if (record.type === "finding" && row.cited !== null) {
+      const { path } = record.location;
+      citedContent.set(path, { path, mode: "100644", blob: row.cited });
+    }
+  }
+  valid.sort(bySource);
+
+  const entries = entriesOf(valid);
+  const findings = matchGroups(valid, [...citedContent.values()]).map((group) => ({
+    blob: group.blob,
+    observation: group.observation,
+    ...(group.host === undefined ? {} : { host: group.host }),
+    paths: [...group.paths],
+    findings: entries(group.findings),
+    rechecks: entries(group.rechecks),
+    counterFindings: entries(group.counterFindings),
+    nodes: [...group.nodes],
+    confirmed: group.confirmed,
+    criteria: group.criteria.map((count) => ({ ...count, nodes: [...count.nodes] })),
+  }));
+
+  const hosts = new Map<string, number>();
+  for (const group of findings) {
+    if (group.host !== undefined) hosts.set(group.host, (hosts.get(group.host) ?? 0) + group.findings.length);
+  }
+
+  const claims = valid.flatMap((entry) => {
+    const row = rowOf.get(entry);
+    if (!row || !isOfType(entry, "claim")) return [];
+    // A claim first seen in a rebuild counts as expired, whatever cites it (KTD13).
+    const state = row.rebuilt ? "expired" : closed.has(`${entry.node} ${entry.id}`) ? "closed" : pastItsTime(row) ? "expired" : "live";
+    return [{ ...(entry satisfies Published<Claim>), state } as const];
+  });
+
+  const byTree = new Map<string, Published<Recipe>[]>();
+  for (const entry of valid) {
+    if (isOfType(entry, "recipe")) byTree.set(entry.record.tree, [...(byTree.get(entry.record.tree) ?? []), entry]);
+  }
+  const recipes = [...byTree].sort(([a], [b]) => compare(a, b)).map(([tree, records]) => ({ tree, records, nodes: nodesOf(records) }));
+
+  const nodes = registered.results.filter(({ url }) => counted(url));
+  // The index lag: the time since the oldest notice that is not yet processed arrived (Appendix H).
+  const waiting = registered.results.flatMap(({ noticed_at, absorbed_at }) => [noticed_at, absorbed_at]).filter((at) => at !== null);
+  // A claim that passes its time changes the view with no write, so the version counts
+  // those claims on top of the stored number. Both only go up.
+  const timedOut = stored.results.filter((row) => row.type === "claim" && row.state === "valid" && pastItsTime(row)).length;
+
+  return {
+    version: SCHEMA_VERSION,
+    component,
+    state: held.state,
+    viewVersion: held.view_version + timedOut,
+    lag: waiting.length === 0 ? 0 : Math.max(0, now - Math.min(...waiting)),
+    organizations: nodes.length,
+    nodes: nodes.map(({ url, processed }) => ({ node: url, ...(processed === null ? {} : { processed }), simulated: false, historyRewritten: false })),
+    claims,
+    findings,
+    hosts: [...hosts].map(([host, count]) => ({ host, count })).sort((a, b) => compare(a.host, b.host)),
+    // Patch intake is not built yet: a patch record waits as pending until its commit is checked.
+    patches: [],
+    recipes,
+    pending: rows.filter(({ state }) => state === "pending").map(({ node, hash, type }) => ({ node, hash, type })).sort(byHash),
+    rejected: rows.flatMap(({ node, hash, type, state, reason }) => (state === "rejected" && reason !== null ? [{ node, hash, type, reason }] : [])).sort(byHash),
+  };
+}

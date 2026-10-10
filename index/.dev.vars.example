@@ -1,0 +1,11 @@
+# The secrets of an index, for `wrangler dev`. Copy this file to `.dev.vars`, which Git
+# ignores, and put values of your own in it. Never commit a real key.
+#
+# On a deployed index the developer sets each key by hand:
+#   npx wrangler secret put REGISTRATION_KEY
+#   npx wrangler secret put RESET_KEY
+#
+# An index with no registration key refuses every registration, and one with no reset
+# key refuses every reset (KTD30). Give the two keys different values.
+REGISTRATION_KEY=not-a-real-key-replace-me
+RESET_KEY=not-a-real-key-replace-me-either
