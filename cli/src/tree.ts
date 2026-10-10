@@ -8,6 +8,7 @@
 import { lstat, readFile, readdir, readlink } from "node:fs/promises";
 import { FILE_MODES, LINK_MODE, TREE_MODE, gitBlobHash, gitTreeHash } from "@cairnfield/protocol";
 import type { FolderEntry } from "@cairnfield/protocol";
+import { MAX_FILE_BYTES } from "./checkout.ts";
 
 const SEPARATOR = Buffer.from("/");
 /** Where a clone keeps Git's own files. They are not part of the tree. */
@@ -19,7 +20,9 @@ const [PLAIN, RUNNABLE] = FILE_MODES;
 /**
  * The entries of the tree Git would write for a folder. Paths are bytes, because a tree
  * may hold any name. Returns nothing for a folder that holds what no tree can: a socket,
- * a device, a pipe.
+ * a device, a pipe. It also returns nothing for a file larger than a checkout may hold.
+ * A file is hashed whole in memory, and no copy the command built holds one that large,
+ * so it is not read.
  */
 async function entriesOf(dir: Buffer, top: boolean): Promise<FolderEntry[] | undefined> {
   const entries: FolderEntry[] = [];
@@ -35,8 +38,9 @@ async function entriesOf(dir: Buffer, top: boolean): Promise<FolderEntry[] | und
     } else if (entry.isSymbolicLink()) {
       entries.push({ name, mode: LINK_MODE, hash: await gitBlobHash(await readlink(path, { encoding: "buffer" })) });
     } else if (entry.isFile()) {
-      const mode = ((await lstat(path)).mode & OWNER_MAY_RUN) === 0 ? PLAIN : RUNNABLE;
-      entries.push({ name, mode, hash: await gitBlobHash(await readFile(path)) });
+      const { mode, size } = await lstat(path);
+      if (size > MAX_FILE_BYTES) return undefined;
+      entries.push({ name, mode: (mode & OWNER_MAY_RUN) === 0 ? PLAIN : RUNNABLE, hash: await gitBlobHash(await readFile(path)) });
     } else {
       return undefined;
     }

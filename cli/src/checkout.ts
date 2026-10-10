@@ -28,7 +28,7 @@ const MAX_SHOWN_PATH = 1024;
 const WRITES_AT_ONCE = 32;
 // First values for the size of a checkout: the largest file and the largest repo that
 // Artifacts says it holds. A component past either is not pinned.
-const MAX_FILE_BYTES = 32 * 1024 * 1024;
+export const MAX_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_CHECKOUT_BYTES = 1024 * 1024 * 1024;
 /** Files are read from Git up to this many bytes at a time, so a large component is never held in memory whole. */
 const READ_AT_ONCE_BYTES = 64 * 1024 * 1024;

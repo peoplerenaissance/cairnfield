@@ -2,7 +2,7 @@
 // (R36). It reads the approvals file it is given and the folder, and nothing else.
 
 import { execFileSync } from "node:child_process";
-import { appendFileSync, chmodSync, cpSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, cpSync, mkdirSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEAM_BRANCH } from "@cairnfield/protocol";
@@ -117,6 +117,18 @@ describe("verify", () => {
   it("fails on a copy that holds what no tree can, with no hash to show for it", async () => {
     const { component, tree, copy } = await approvedCopy();
     execFileSync("mkfifo", [join(copy, "config/pipe")]);
+
+    expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toEqual({
+      code: EXIT.differs,
+      output: { error: "copy-differs", url: PLUGIN_URL, commit: component, approved: tree },
+    });
+  });
+
+  it("fails on a copy that holds a file larger than any checkout may, and does not read it", async () => {
+    const { component, tree, copy } = await approvedCopy();
+    // 33 MB with no content on disk: the file is as long as that, and nothing is written.
+    writeFileSync(join(copy, "assets.bin"), "");
+    truncateSync(join(copy, "assets.bin"), 33 * 1024 * 1024);
 
     expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toEqual({
       code: EXIT.differs,
