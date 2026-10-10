@@ -128,8 +128,8 @@ describe("carry, for a finding", () => {
 
     expect(outcome.code).toBe(EXIT.ok);
     expect(findingsSaid(outcome)).toEqual([{ finding: id, carried: false, reason: "refused", check: "unresolved-reference" }]);
-    // The patch is read as assembly reads one, and the node serves that read no finding either.
-    expect(patchesSaid(outcome)).toMatchObject([{ patch: made.id, carried: false }]);
+    // The patch is read as assembly reads one. The node serves that read no finding either, so the patch is refused as citing a record that is not there, with no patch ID.
+    expect(patchesSaid(outcome)).toEqual([{ patch: made.id, carried: false, reason: "refused", check: "unresolved-reference" }]);
     expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
     expect(recordsAt(on, newer)).toEqual([]);
   });

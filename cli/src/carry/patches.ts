@@ -14,6 +14,13 @@
 // A patch is read as assembly reads one (see `assemble/verify.ts`): its record from the
 // team's own repo and its commit from the team's own fork, checked again as a patch on
 // the older commit. So what is carried is what the commit does, not what a record says.
+//
+// Every patch here is the team's own, so a read of the team's node that fails is no
+// refusal. It ends the command with the failure's own outcome, and is never an entry. A
+// patch is `refused` for what a check found in it, or for what the node answered: a
+// record it lists and does not serve, or a fork it does not have. A fetch of its commit
+// from the fork that fails is `refused` too, with `git-failed`. That is how a fetch
+// failure is reported today.
 
 import { applyChanges, checkPatch, citedRanges, compare } from "@cairnfield/protocol";
 import type { FileEntry, Patch } from "@cairnfield/protocol";
@@ -28,7 +35,7 @@ import type { Carried } from "./findings.ts";
 type NotCarried =
   /** The newer commit lacks a content the patch replaces, or a finding the patch cites did not carry. */
   | { readonly patchId: string; readonly carried: false; readonly reason: "content-changed" | "finding-not-carried" }
-  /** A check refused the patch, at the older commit or on the newer one. `check` is that check's code. A patch refused at the older commit has no patch ID. */
+  /** A check refused the patch, at the older commit or on the newer one. `check` is that check's code. A patch refused at the older commit has no patch ID. A read of the node that failed is never this: it ends the command. */
   | { readonly patchId?: string; readonly carried: false; readonly reason: "refused"; readonly check: string };
 
 /** Why a patch carried: it still changes every path it changed at the older commit, or it no longer changes one of them. */
@@ -60,7 +67,8 @@ export type Decided = ({ readonly carried: true } & Carrying) | NotCarried;
 /**
  * Decides one patch record of the team's own. `run` is the older commit as assembly
  * works with one, and `findings` holds what each finding that carried became, by the ID
- * it had at the older commit. Nothing is written here: the caller builds the commit.
+ * it had at the older commit. Nothing is written here: the caller builds the commit. The
+ * caller sets `failedReadEnds` on `run`, so a read of the node that fails ends the command here.
  */
 export async function carryPatch(run: Assembly, newer: Listing, findings: ReadonlyMap<string, Carried>, candidate: Candidate): Promise<Decided> {
   const verdict = await verify(run, candidate);

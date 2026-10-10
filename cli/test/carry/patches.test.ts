@@ -6,10 +6,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { recordId } from "@cairnfield/protocol";
+import { SCHEMA_VERSION, recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
 import { NARROWED, RULES, bothRules, copied, ownPatch, pinnedWith, rules, text } from "../assemble/team.ts";
-import { NODE, OUTBOX, bench, finding, git, patchIdOf } from "../support.ts";
+import { NODE, OUTBOX, bench, finding, git, holdRecords, patchIdOf } from "../support.ts";
 import type { Bench } from "../support.ts";
 import { carry, findingsSaid, patchCiting, patchRefs, patchesSaid, recordOf, recordsAt, release, tree } from "./release.ts";
 
@@ -197,6 +197,34 @@ describe("carry, for a patch", () => {
     expect(outcome.code).toBe(EXIT.ok);
     expect(patchesSaid(outcome)).toEqual([{ patch: made.id, patchId: made.patchId, carried: false, reason: "refused", check: "patch-incomplete" }]);
     expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
+    expect(recordsAt(on, newer)).toEqual([`records/${newer}/finding/${await recordId(ruleFinding(newer, 3))}.json`]);
+  });
+
+  // A refusal is what the node answered or what the commit holds. No read failed, so the run goes on.
+  it("reports a patch whose fork the node does not have as refused, with the node's answer as the check's code", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    // The record names a commit, and the team has no fork of the older commit to hold one.
+    const [cited = ""] = await holdRecords(on, [ruleFinding(older, 3)]);
+    const [id = ""] = await holdRecords(on, [{ version: SCHEMA_VERSION, type: "patch", component: older, commit: "2e".repeat(20), findings: [cited], model: "none" }]);
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(patchesSaid(outcome)).toEqual([{ patch: id, carried: false, reason: "refused", check: "node-refused" }]);
+    expect(recordsAt(on, newer)).toEqual([`records/${newer}/finding/${await recordId(ruleFinding(newer, 3))}.json`]);
+  });
+
+  it("reports a patch whose commit puts a file in place that is larger than a node may serve as refused, with the limit's code", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    const made = await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(rules({ 3: `allow fetch ${"notes.".repeat(50_000)}fellbeck.example` })) });
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    // A file's size is read before its content, so the patch is refused before its patch ID is known.
+    expect(patchesSaid(outcome)).toEqual([{ patch: made.id, carried: false, reason: "refused", check: "too-large" }]);
     expect(recordsAt(on, newer)).toEqual([`records/${newer}/finding/${await recordId(ruleFinding(newer, 3))}.json`]);
   });
 

@@ -23,6 +23,19 @@
 //   finding-not-carried      not carried: a patch that cites a finding that did not carry
 //   refused                  not carried: a check refused it, and `check` holds that check's code
 //
+// `refused` says something of the record or its commit: what a check found there, or what
+// the node answered when asked for it, as for a record it lists and does not serve, or a
+// fork it does not have. A read of the team's own node that fails says nothing of either.
+// It ends the command with the failure's own outcome and exit code, and is never an
+// entry, so a caller that reads only the exit code does not go on to build a copy without
+// the patch. What carried before it waits in the outbox, and a run whose reads succeed
+// finishes.
+//
+// A fetch of a patch commit from the team's own fork that fails is still an entry,
+// `refused` with `git-failed`, and the run goes on. That is how a fetch failure is
+// reported today: Git gives one failure for a fetch that failed and for a commit the fork
+// does not hold.
+//
 // A carried finding's entry holds the path it cites now. A carried patch's entry holds
 // `paths`: every path its commit changes at the newer commit, sorted. A patch goes to
 // every path that holds a content it replaces, so a newer commit with one more copy
@@ -33,7 +46,7 @@
 // is the team's own when an entry of this run names it, or when the team's fork of the
 // older commit holds its ref, `patch/<older-commit>/<patch-id>` (KTD4). A patch that was
 // refused before its patch ID was known has no ID in its entry, so the fork tells it from
-// another team's, and whose a patch is does not depend on whether this run could read it.
+// another team's, and whose a patch is does not depend on what this run's checks made of it.
 // The fork is asked for its refs only when the copy holds a patch that no entry names. A
 // fork that cannot be asked ends the command, and no patch is then named as left behind.
 //
@@ -112,7 +125,8 @@ export async function carry(io: Io, home: Home, request: CarryRequest): Promise<
     await withScratch(io, async (scratch) => {
       await fetchCommit(scratch, copy, older.component);
       await scratch.git("update-ref", ["update-ref", OLDER_REF, older.component]);
-      const run: Assembly = { io, node, listing: older, scratch, files, counted: [node], listings: new Map([[node, Promise.resolve(held)]]) };
+      // Every candidate is the team's own, so a read of the node that fails ends the command: it says nothing of the patch.
+      const run: Assembly = { io, node, listing: older, scratch, files, counted: [node], listings: new Map([[node, Promise.resolve(held)]]), failedReadEnds: true };
       // The fork of the newer commit is made when the first patch carries, and the newer commit is fetched from it.
       let fork: Access | undefined;
       for (const candidate of candidates) {
@@ -137,8 +151,8 @@ export async function carry(io: Io, home: Home, request: CarryRequest): Promise<
   }
 
   // A patch in the older copy that is none of the team's own came from a team its lens names.
-  // An entry names its patch only when this run could read it, so a patch that no entry
-  // names is the team's own when the team's fork of the older commit holds its ref (KTD4).
+  // An entry names its patch only when no check refused it before its patch ID was known, so a patch
+  // that no entry names is the team's own when the team's fork of the older commit holds its ref (KTD4).
   const named = new Set(patches.flatMap(({ patchId }) => patchId ?? []));
   const unnamed = (built?.patches ?? []).filter((patchId) => !named.has(patchId));
   // The fork is asked only when there is a patch to tell apart, so a run whose entries name every patch of the copy makes no call for it.

@@ -5,7 +5,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TEAM_BRANCH, recordId } from "@cairnfield/protocol";
+import { SCHEMA_VERSION, TEAM_BRANCH, recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
 import { NARROWED, bothRules, otherTeam, ownPatch, patchBy, pinnedWith, refsOf, rules, serveView } from "../assemble/team.ts";
 import type { Lens, Made } from "../assemble/team.ts";
@@ -16,6 +16,7 @@ import {
   OTHER_PLUGIN_URL,
   OUTBOX,
   PLUGIN_URL,
+  TOKEN,
   bench,
   commitEntries,
   finding,
@@ -86,7 +87,7 @@ describe("carry", () => {
     expect(existsSync(other.repo(`fork-${newer}`))).toBe(false);
   });
 
-  it("counts a patch of its own that it could not read as its own, and names only another team's patch as left behind", async () => {
+  it("counts a patch of its own that was refused before its patch ID was known as its own, and names only another team's patch as left behind", async () => {
     const older = await pinnedWith(on, { patchLevel: 2, teams: [OTHER_NODE] });
     const other = otherTeam(on);
     // The team's patch cites a finding that only the other team's repo holds. Assembly counts
@@ -301,6 +302,110 @@ describe("carry", () => {
     expect(published(on)).toEqual(before);
     expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
     expect(existsSync(join(on.home, OUTBOX, "records", newer))).toBe(false);
+  });
+
+  // A read of the team's own node that fails says nothing of the patch. It ends the command
+  // with the failure's own outcome, and is never an entry: a caller that reads only the
+  // exit code must not go on to build a copy without the patch. A fetch from the team's own
+  // fork that fails is still an entry today, `refused` with `git-failed`: Git gives one
+  // failure for a fetch that failed and for a commit the fork does not hold.
+  describe("when a read fails as a patch of the team's own is checked", () => {
+    let older: string;
+    let newer: string;
+    let mine: Made;
+    /** The record the patch's finding becomes at the newer commit, by its path. It carries before any patch is read. */
+    let cited: string;
+    beforeEach(async () => {
+      older = await pinnedWith(on, { patchLevel: 1 });
+      mine = await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+      newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+      cited = `records/${newer}/finding/${await recordId(finding(newer, { location: { path: "config/rules.txt", start: 3, end: 3 } }))}.json`;
+    });
+
+    /** The run stopped before it built a patch: the carried finding waits in the outbox, and nothing is published or pushed. */
+    function stoppedBeforeThePatch(): void {
+      expect(recordsAt(on, newer)).toEqual([]);
+      expect(waiting()).toEqual([cited]);
+      expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
+    }
+
+    it("stops with the node's failure when the node cannot be reached for a patch record, gives no entry for the patch, and carries it on the next run", async () => {
+      const record = `records/${older}/patch/${mine.id}.json`;
+      on.respond = (seen) => {
+        const { origin, pathname, searchParams } = new URL(seen.url);
+        if (origin === NODE && pathname === "/file" && searchParams.get("path") === record) throw new TypeError("fetch failed");
+        return undefined;
+      };
+
+      // The output is the failure alone. It lists no finding and no patch.
+      expect(await carry(on, older, newer)).toEqual({ code: EXIT.node, output: { error: "node-unreachable" } });
+      stoppedBeforeThePatch();
+
+      on.respond = undefined;
+      const again = await carry(on, older, newer);
+
+      expect(again.code).toBe(EXIT.ok);
+      expect(patchesSaid(again)).toMatchObject([{ patch: mine.id, patchId: mine.patchId, carried: true, reason: "content-unchanged" }]);
+      expect(again.output["published"]).toEqual([cited, `records/${newer}/patch/${patchesSaid(again)[0]?.as}.json`]);
+    });
+
+    it("reports the patch as refused with Git's code when the fetch of its commit from the team's fork fails, and publishes what carried", async () => {
+      // The node names a fork that Git cannot read.
+      on.node.remote = (repo) => remoteOf(repo === `fork-${older}` ? "gone" : repo);
+
+      const outcome = await carry(on, older, newer);
+
+      expect(outcome).toMatchObject({ code: EXIT.ok, output: { published: [cited] } });
+      // The fetch failed before the commit was read, so the entry holds no patch ID.
+      expect(patchesSaid(outcome)).toEqual([{ patch: mine.id, carried: false, reason: "refused", check: "git-failed" }]);
+    });
+
+    it("reports a patch record that names a commit the fork does not hold as refused with Git's code on every run, and carries and publishes the team's other patch", async () => {
+      // A record a person wrote by hand. The fork of the older commit is there, and holds no such commit.
+      const [onLastRule = ""] = await holdRecords(on, [finding(older, { location: { path: "config/rules.txt", start: 5, end: 5 } })]);
+      const [unheld = ""] = await holdRecords(on, [{ version: SCHEMA_VERSION, type: "patch", component: older, commit: "2e".repeat(20), findings: [onLastRule], model: "none" }]);
+
+      const first = await carry(on, older, newer);
+
+      expect(first.code).toBe(EXIT.ok);
+      const said = new Map(patchesSaid(first).map((entry) => [entry.patch, entry]));
+      expect([...said.keys()].sort()).toEqual([mine.id, unheld].sort());
+      expect(said.get(unheld)).toEqual({ patch: unheld, carried: false, reason: "refused", check: "git-failed" });
+      const carried = said.get(mine.id);
+      expect(carried).toMatchObject({ patchId: mine.patchId, carried: true, reason: "content-unchanged" });
+      const record = `records/${newer}/patch/${carried?.as}.json`;
+      expect(first.output["published"]).toContain(record);
+      expect(recordsAt(on, newer)).toContain(record);
+      expect(patchRefs(on, newer)).toEqual([`refs/heads/patch/${newer}/${mine.patchId} ${carried?.commit}`]);
+
+      const second = await carry(on, older, newer);
+
+      expect(second.code).toBe(EXIT.ok);
+      expect(patchesSaid(second)).toEqual(patchesSaid(first));
+      expect(second.output["published"]).toEqual([]);
+    });
+
+    it.each([
+      // A fork the node does not have is the one answer that refuses the patch. See the patch tests.
+      ["refuses access to it for another reason than that it has none", () => Response.json({ error: "not-ready" }, { status: 409 }), { error: "node-refused", reason: "not-ready" }],
+      [
+        "cannot be reached for it",
+        () => {
+          throw new TypeError("fetch failed");
+        },
+        { error: "node-unreachable" },
+      ],
+      [
+        "names a remote for it that is no Artifacts remote",
+        () => Response.json({ remote: "https://git.elsewhere.example/git/cairnfield-team-a/fork.git", token: TOKEN, expires: 1_900_000_000 }),
+        { error: "node-bad-answer" },
+      ],
+    ])("stops with the node's failure when the node is asked for the fork of the older commit and %s", async (_why, answer, output) => {
+      on.respond = (seen) => (seen.url === `${NODE}/read-token?component=${older}` ? answer() : undefined);
+
+      expect(await carry(on, older, newer)).toEqual({ code: EXIT.node, output });
+      stoppedBeforeThePatch();
+    });
   });
 
   // `pin` ends the command when it fails, so `carry` ends there with the outcome of `pin`.

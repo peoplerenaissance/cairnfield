@@ -10,6 +10,13 @@
 // have the Artifacts form before Git sees it. A fetch from another team's fork asks for
 // one commit by its hash, and is stopped at a size and at a deadline. What a node or its
 // fork does wrong refuses the candidate, and the command goes on without it.
+//
+// A caller whose candidates are all the team's own may ask for more (`failedReadEnds`). A
+// read of the team's own node that fails says nothing of the patch, so it then ends the
+// command with its own outcome, and the next run reads again. A fetch from the fork that
+// fails still refuses the candidate, with `git-failed`. That is how a fetch failure is
+// reported today: Git gives one failure for a fetch that failed and for a commit the fork
+// does not hold.
 
 import {
   DELETED_MODE,
@@ -32,7 +39,7 @@ import { blobSizes, changedEntry, diffTrees, fetchCommit, parentsOf, readBlobs }
 import type { Scratch, TransferBound } from "../git.ts";
 import type { Io } from "../io.ts";
 import { EXIT, Stop, stop } from "../outcome.ts";
-import { forkAccess, nodeListing, readRecord } from "../services.ts";
+import { forkAccess, nodeFailed, nodeListing, readRecord } from "../services.ts";
 import type { Answer } from "../services.ts";
 import type { Candidate } from "./select.ts";
 
@@ -56,6 +63,8 @@ export interface Assembly {
   readonly counted: readonly string[];
   /** What each node answered when asked for the listing of its team repo. A node is asked once in a run. */
   readonly listings: Map<string, Promise<Answer<NodeListing>>>;
+  /** Has a read of a node that fails end the command, in place of refusing the candidate. For a run whose candidates are all the team's own. A Git step that fails refuses the candidate either way. */
+  readonly failedReadEnds?: boolean;
 }
 
 /** A candidate that passed every check, with what the copy is built from. */
@@ -76,14 +85,17 @@ export type Verdict = ({ readonly ok: true } & Verified) | { readonly ok: false;
 
 /**
  * Runs a step that reads from a node, from its fork or from what the fork sent. When the
- * step ends the command, the candidate is refused with the step's code in its place.
+ * step ends the command, the candidate is refused with the step's code in its place. In a
+ * run where a failed read ends the command, a call to the node that failed still ends it.
+ * A Git step that failed, a content limit or a mismatch refuses the candidate in every run.
  */
-async function attempt<T>(step: () => Promise<T>): Promise<{ readonly ok: true; readonly value: T } | { readonly ok: false; readonly reason: string }> {
+async function attempt<T>(run: Assembly, step: () => Promise<T>): Promise<{ readonly ok: true; readonly value: T } | { readonly ok: false; readonly reason: string }> {
   try {
     return { ok: true, value: await step() };
   } catch (error) {
-    if (error instanceof Stop) return { ok: false, reason: String(error.outcome.output["error"]) };
-    throw error;
+    if (!(error instanceof Stop)) throw error;
+    if (run.failedReadEnds && error.outcome.code === EXIT.node) throw error;
+    return { ok: false, reason: String(error.outcome.output["error"]) };
   }
 }
 
@@ -143,13 +155,13 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   const { io, scratch, listing } = run;
   const component = listing.component;
 
-  const announced = await attempt(() => patchRecordOf(run, candidate));
+  const announced = await attempt(run, () => patchRecordOf(run, candidate));
   if (!announced.ok) return refuse(announced.reason);
   if (typeof announced.value === "string") return refuse(announced.value);
   const { commit, findings } = announced.value;
 
   // The lines the patch may change are the lines its findings cite in the team's own checkout.
-  const named = await attempt(() => findingsOf(run, candidate.node, findings));
+  const named = await attempt(run, () => findingsOf(run, candidate.node, findings));
   if (!named.ok) return refuse(named.reason);
   if (!named.value) return refuse("unresolved-reference");
   for (const finding of named.value) {
@@ -159,8 +171,12 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   const cited = citedRanges(named.value, listing.files);
 
   const access = await forkAccess(io, candidate.node, component);
-  if (!access.ok) return refuse(`node-${access.error}`);
-  const fetched = await attempt(async () => {
+  if (!access.ok) {
+    // A node that says it has no such fork has answered: the record names a commit that no fork holds. Any other answer is a read that failed.
+    const noFork = access.error === "refused" && access.reason === "not-found";
+    return run.failedReadEnds && !noFork ? nodeFailed(access) : refuse(`node-${access.error}`);
+  }
+  const fetched = await attempt(run, async () => {
     // The team's own fork is its own. Another team's is held to a size and a deadline.
     await fetchCommit(scratch, access.body, commit, candidate.node === run.node ? undefined : FORK_FETCH);
     const parents = await parentsOf(scratch, commit);
@@ -200,7 +216,7 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
     before.set(oldBlob, content);
   }
   const added = [...new Set(rewritten.filter(({ newMode }) => newMode !== DELETED_MODE).map(({ newBlob }) => newBlob))];
-  const after = await attempt(async () => {
+  const after = await attempt(run, async () => {
     const sizes = await blobSizes(scratch, added);
     if (added.some((blob) => !sizes.has(blob))) return stop(EXIT.invalid, "blob-mismatch");
     if (added.some((blob) => (sizes.get(blob) ?? 0) > MAX_BLOB_BYTES)) return stop(EXIT.invalid, "too-large");
