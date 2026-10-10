@@ -161,7 +161,11 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
           .prepare(
             // Whether the node is being rebuilt is read as the record is stored. A reset
             // may have come since this sync started, and its records count as rebuilt then.
-            "INSERT INTO records (node, path, component, type, state, reason, hash, head, body, cited, received_at, rebuilt) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, (SELECT rebuilding FROM nodes WHERE url = ?1)) ON CONFLICT (node, path) DO NOTHING",
+            // Whether a failed component is still failed is read then too. A registration
+            // may have started it over since this sync read its state. A record that was
+            // rejected for the failed component is then not stored, so the node's next sync
+            // reads it again, like the records the registration dropped.
+            "INSERT INTO records (node, path, component, type, state, reason, hash, head, body, cited, received_at, rebuilt) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, (SELECT rebuilding FROM nodes WHERE url = ?1) WHERE ?6 IS NOT 'unknown-component' OR EXISTS (SELECT 1 FROM components WHERE component = ?3 AND state = 'failed') ON CONFLICT (node, path) DO NOTHING",
           )
           .bind(node, path, component, type, state, reason, hash, head, body, cited, receivedAt),
       );

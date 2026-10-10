@@ -51,7 +51,8 @@ function statusOf({ component, state, import_error: importError }: Component): R
 /**
  * Starts a failed component over, under the Git URL and branch it is stored with. Its
  * import and the time it has count from now. The records that were rejected because the
- * component had failed are dropped, so each node's next sync reads them again.
+ * component had failed are dropped, so each node's next sync reads them again. A sync
+ * that read the component as failed before this stores no such record after it.
  */
 async function startOver(env: Env, { component, url, branch }: Component, now: number): Promise<void> {
   const db = env.DB;

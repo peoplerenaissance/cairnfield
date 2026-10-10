@@ -708,6 +708,63 @@ describe("a record and the state of its component's copy (KTD12, KTD36)", () => 
     expect(view.rejected).toEqual([{ node: NODE_A, hash: id, type: "finding", reason: "unknown-component" }]);
   });
 
+  it("stores no record as rejected for a failed component that was registered again just as the record was read, and reads it at the node's next sync", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    const component = { url: UPSTREAM, branch: BRANCH, commit };
+    on.artifacts.importFailure = "REMOTE_AUTH_REQUIRED";
+    await on.registerComponent(component);
+    await on.registerNode(NODE_A);
+    await on.drain();
+    expect((await on.view(commit)).state).toBe("failed");
+    const [id] = await node.publish(finding(commit));
+    // The component is registered again while the sync fetches the record, after it read the component as failed.
+    on.artifacts.importFailure = undefined;
+    node.onFile = async () => {
+      node.onFile = undefined;
+      await on.registerComponent(component);
+    };
+    expect(await syncNode(on.env, NODE_A)).toMatchObject({ ok: true });
+    const restarted = await on.view(commit);
+    expect(restarted.state).toBe("importing");
+    expect(restarted.rejected).toEqual([]);
+    expect(await stored()).toBe(0);
+
+    await on.deliver();
+    on.artifacts.finish();
+    await on.drain();
+    await synced(on, NODE_A);
+    const view = await on.view(commit);
+    expect(view.state).toBe("ready");
+    expect(view.rejected).toEqual([]);
+    expect(view.findings[0]?.findings.map((entry) => entry.id)).toEqual([id]);
+  });
+
+  it("rejects a record for a component that was registered again and failed again before the record was stored", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    const component = { url: UPSTREAM, branch: BRANCH, commit };
+    on.artifacts.importFailure = "REMOTE_AUTH_REQUIRED";
+    await on.registerComponent(component);
+    await on.registerNode(NODE_A);
+    await on.drain();
+    const [id] = await node.publish(finding(commit));
+    // The remote still refuses the import, so the look that the registration queues fails the component again.
+    node.onFile = async () => {
+      node.onFile = undefined;
+      await on.registerComponent(component);
+      await on.deliver();
+    };
+    expect(await syncNode(on.env, NODE_A)).toMatchObject({ ok: true, stored: 1 });
+    const view = await on.view(commit);
+    expect(view.state).toBe("failed");
+    expect(view.rejected).toEqual([{ node: NODE_A, hash: id, type: "finding", reason: "unknown-component" }]);
+  });
+
   it("checks a record that waits for a ready copy at the node's next sync, when the look that was to check it could not be queued", async () => {
     const on = bench();
     const node = new FakeNode(NODE_A);
