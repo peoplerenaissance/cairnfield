@@ -12,6 +12,7 @@ import type { FileEntry, FileListing } from "./files.ts";
 import { gitBlobHash, sha256Hex } from "./hash.ts";
 import { MAX_BLOB_BYTES, MAX_PATCH_ADDED_BYTES, MAX_PATCH_LINES, MAX_PATCH_REPLACEMENTS } from "./limits.ts";
 import { linesOf, splitLines } from "./lines.ts";
+import type { LineRange } from "./lines.ts";
 
 /** The files of one commit, with the content of the blobs a check must read, by blob hash. */
 export interface FileSet {
@@ -129,11 +130,10 @@ export function isInScope(changes: readonly PathChange[], cited: readonly CitedR
   return changes.every((change) => change.old !== undefined && allowed.has(change.old.blob));
 }
 
-// The cited ranges of one content, in order. Ranges that overlap or adjoin count as one.
-function mergedRanges(cited: readonly CitedRange[], blob: string): { start: number; end: number }[] {
+// The ranges in order. Ranges that overlap or adjoin count as one.
+function mergedRanges(cited: readonly LineRange[]): { start: number; end: number }[] {
   const ranges: { start: number; end: number }[] = [];
-  const ordered = cited.filter((range) => range.blob === blob).sort((a, b) => a.start - b.start || a.end - b.end);
-  for (const { start, end } of ordered) {
+  for (const { start, end } of [...cited].sort((a, b) => a.start - b.start || a.end - b.end)) {
     const last = ranges[ranges.length - 1];
     if (last !== undefined && start <= last.end + 1) last.end = Math.max(last.end, end);
     else ranges.push({ start, end });
@@ -141,19 +141,74 @@ function mergedRanges(cited: readonly CitedRange[], blob: string): { start: numb
   return ranges;
 }
 
+const NO_CONTENT: Uint8Array = new Uint8Array(0);
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((byte, i) => byte === b[i]);
+}
+
 /**
- * Scope by line (R11): a patch changes only the lines its findings cite. Every removed
- * line is a cited line. Lines added with nothing removed go in front of a cited line or
- * straight after the last one. A patch that only changes a mode changes no line, and a
- * patch that deletes a file removes every line of it.
+ * Where `stretch` first lies whole in `lines`, from index `from` and before index `to`,
+ * or nothing. This is the search of Knuth, Morris and Pratt, so its time grows with the
+ * lines it reads and not with their product, whatever a hostile content repeats.
  */
-export function linesAreInScope(changes: readonly ContentChange[], cited: readonly CitedRange[]): boolean {
-  return changes.every((change) => {
-    const ranges = mergedRanges(cited, change.blob);
-    return change.hunks.every((hunk) =>
-      ranges.some((range) => range.start <= hunk.oldStart && hunk.oldStart + hunk.removed - 1 <= range.end),
-    );
-  });
+function findStretch(lines: readonly Uint8Array[], stretch: readonly Uint8Array[], from: number, to: number): number | undefined {
+  // A stretch with no line lies anywhere.
+  if (stretch.length === 0) return from;
+  const same = (line: Uint8Array | undefined, at: number): boolean => sameBytes(line ?? NO_CONTENT, stretch[at] ?? NO_CONTENT);
+  // For the stretch up to each line: the longest start of it, short of the whole, that is also its end.
+  const fallback = new Int32Array(stretch.length);
+  for (let at = 1, held = 0; at < stretch.length; at++) {
+    while (held > 0 && !same(stretch[at], held)) held = fallback[held - 1] ?? 0;
+    if (same(stretch[at], held)) held += 1;
+    fallback[at] = held;
+  }
+  for (let at = from, held = 0; at < to; at++) {
+    while (held > 0 && !same(lines[at], held)) held = fallback[held - 1] ?? 0;
+    if (same(lines[at], held)) held += 1;
+    if (held === stretch.length) return at + 1 - held;
+  }
+  return undefined;
+}
+
+/**
+ * Scope by line (R11, KTD37) for one content: a patch changes only the lines its findings
+ * cite. `cited` holds the ranges cited on the old content. They divide it into stretches
+ * of lines that no finding cites, and the new content must hold every stretch whole and
+ * in order, the first at its start and the last at its end. What stands where a cited
+ * range stood may be anything, or nothing. So every removed line is a cited line, and
+ * added lines go in front of a cited line or straight after the last one. A deleted file
+ * has an empty new content, so every line of it must be cited. The check reads the two
+ * contents and no diff, so it does not depend on which of two smallest diffs is reported.
+ */
+export function linesAreInScope(before: Uint8Array, after: Uint8Array, cited: readonly LineRange[]): boolean {
+  const old = splitLines(before);
+  const now = splitLines(after);
+  // A range that holds no line of the old content cites nothing, and gives a patch no room.
+  const ranges = mergedRanges(cited.filter(({ start, end }) => start >= 1 && start <= end && start <= old.length));
+  // The stretches of uncited lines: above the first range, between each two, and under the last.
+  const stretches: Uint8Array[][] = [];
+  let next = 0;
+  for (const { start, end } of ranges) {
+    stretches.push(old.slice(next, start - 1));
+    next = end;
+  }
+  const last = old.slice(next);
+  const holdsAt = (stretch: readonly Uint8Array[], at: number): boolean =>
+    stretch.every((line, i) => sameBytes(line, now[at + i] ?? NO_CONTENT));
+  const [first, ...between] = stretches;
+  // With no cited range the whole content is one stretch, and nothing may change.
+  if (first === undefined) return now.length === last.length && holdsAt(last, 0);
+  const under = now.length - last.length;
+  if (under < first.length || !holdsAt(first, 0) || !holdsAt(last, under)) return false;
+  // Each stretch between two ranges is looked for after the one before it.
+  let from = first.length;
+  for (const stretch of between) {
+    const found = findStretch(now, stretch, from, under);
+    if (found === undefined) return false;
+    from = found + stretch.length;
+  }
+  return true;
 }
 
 function serialize(replacement: Replacement): string {
@@ -217,8 +272,6 @@ export async function patchId(replacements: readonly Replacement[]): Promise<str
   return sha256Hex(new TextEncoder().encode(text));
 }
 
-const NO_CONTENT: Uint8Array = new Uint8Array(0);
-
 // Content counts only when it hashes to the blob it is listed under (KTD7).
 async function verified(set: FileSet, blob: string): Promise<Uint8Array | undefined> {
   const content = set.content.get(blob);
@@ -231,10 +284,6 @@ const LINE_FEED = 10;
 // A line without the line feed that ends it.
 function body(line: Uint8Array): Uint8Array {
   return line[line.length - 1] === LINE_FEED ? line.subarray(0, -1) : line;
-}
-
-function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
-  return a.length === b.length && a.every((byte, i) => byte === b[i]);
 }
 
 /**
@@ -334,7 +383,14 @@ export async function checkPatch(input: {
   if (replacements.length > MAX_PATCH_REPLACEMENTS) return refuse("patch-too-large");
   const measured = await measurePatch(base, patched, replacements);
   if (!measured.ok) return measured;
-  if (!linesAreInScope(measured.changes, cited)) return refuse("patch-out-of-scope");
+  // The contents were read and checked against their hashes when the patch was measured.
+  const outOfScope = replacements.some(({ oldBlob, newBlob, newMode }) => {
+    if (newBlob === oldBlob) return false;
+    const before = base.content.get(oldBlob) ?? NO_CONTENT;
+    const after = newMode === DELETED_MODE ? NO_CONTENT : (patched.content.get(newBlob) ?? NO_CONTENT);
+    return !linesAreInScope(before, after, cited.filter((range) => range.blob === oldBlob));
+  });
+  if (outOfScope) return refuse("patch-out-of-scope");
   return {
     ok: true,
     patchId: await patchId(replacements),
