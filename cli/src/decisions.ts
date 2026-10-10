@@ -43,6 +43,14 @@ export type Decision = Infer<typeof DECISION>;
 const TABLE = field.shape({ version: field.version(), decisions: field.listOf(DECISION, MAX_DECISIONS) });
 
 /**
+ * The table as its file holds it. `decide` writes this value and `approvals` prints it,
+ * so what `approvals` prints is a file `verify` reads.
+ */
+export function tableOf(decisions: Decision[]): Infer<typeof TABLE> {
+  return { version: SCHEMA_VERSION, decisions };
+}
+
+/**
  * Reads a decisions file: the team's own, or a copy of another machine's. Returns nothing
  * when there is no file. A file in any other form ends the command, because a table that
  * cannot be read says nothing about what may be installed.
@@ -65,5 +73,5 @@ export async function recordDecision(home: Home, decision: Decision): Promise<vo
   // Refused before the file is replaced: a table past its limit could not be read back.
   if (others.length >= MAX_DECISIONS) return stop(EXIT.invalid, "too-many-decisions");
   const decisions = [...others, decision].sort((a, b) => compare(a.url, b.url));
-  await writeWhole(home.decisions, { version: SCHEMA_VERSION, decisions });
+  await writeWhole(home.decisions, tableOf(decisions));
 }

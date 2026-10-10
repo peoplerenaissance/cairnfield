@@ -2,9 +2,10 @@
 //
 // It works out the file-tree hash of a folder and compares it with the entry for the
 // component in the approvals file it is given. It passes only when the two are equal.
-// The approvals file is a copy of a team's decisions file, which the team shares by its
-// own means. Nothing else is read: no config file, no node, no index and no published
-// recipe, so this runs on any machine that holds the folder and the file.
+// The approvals file is a copy of a team's decisions file, or the output of `approvals`
+// saved to a file, which holds the same value. The team shares it by its own means.
+// Nothing else is read: no config file, no node, no index and no published recipe, so
+// this runs on any machine that holds the folder and the file.
 
 import { realpath, stat } from "node:fs/promises";
 import { resolve, sep } from "node:path";
