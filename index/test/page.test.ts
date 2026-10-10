@@ -390,19 +390,84 @@ describe("findings (R14)", () => {
 });
 
 describe("patches (R16)", () => {
-  it("covers AE3: lists both organizations on a patch that two teams wrote identically, as one entry", async () => {
+  /** The foot of a patch's entry, as a reader reads it: the patch, and what it is for. */
+  const footOf = (entry: Drawing | undefined): string => textOf(theOne(withClass(entry, "foot"), "patch "));
+  /** The places on the page that a patch's entry links to. */
+  const placesFrom = (entry: Drawing | undefined): string[] => linksOf(entry).filter((href) => href.startsWith("#"));
+
+  it("covers AE3: lists both organizations on a patch that two teams wrote identically, as one entry that names the finding of both once", async () => {
     const { on, one, other, component } = await twoNodes();
-    await publishPatch(one, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
-    await publishPatch(other, component, { location: { path: SKILL, start: 2, end: 3 } }, [{ path: SKILL, content: SKILL_FIXED }]);
+    const first = await publishPatch(one, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
+    const second = await publishPatch(other, component, { location: { path: SKILL, start: 2, end: 3 } }, [{ path: SKILL, content: SKILL_FIXED }]);
     await synced(on, NODE_A);
     await synced(on, NODE_B);
 
-    const [entry, ...more] = withClass(byId(await pageOf(on, component), "patches"), "patch");
+    const page = await pageOf(on, component);
+    const [entry, ...more] = withClass(byId(page, "patches"), "patch");
     expect(more).toEqual([]);
     expect(textOf(entry)).toContain(NODE_A);
     expect(textOf(entry)).toContain(NODE_B);
     expect(tagsOf(entry)).toEqual(["removes only", "confirmed by 2"]);
-    expect(entry?.attributes["id"]).toBe(`patch-${await idOf(SKILL_TEXT, SKILL_FIXED)}`);
+    const id = await idOf(SKILL_TEXT, SKILL_FIXED);
+    expect(entry?.attributes["id"]).toBe(`patch-${id}`);
+
+    // Each team's patch record names its own team's finding record. The two records are one finding on the page.
+    expect(first.finding).not.toBe(second.finding);
+    const [seen, ...others] = withClass(byId(page, "findings"), "finding");
+    expect(others).toEqual([]);
+    for (const record of [first.finding, second.finding]) expect(elements(seen)).toContain(byId(page, `finding-${record}`));
+    // So the entry names that finding once, and its one link leads to a record of it that the patch names.
+    expect(footOf(entry)).toBe(`patch ${id.slice(0, 8)}for hidden instruction`);
+    const [target = "", ...targets] = placesFrom(entry);
+    expect(targets).toEqual([]);
+    expect([`#finding-${first.finding}`, `#finding-${second.finding}`]).toContain(target);
+  });
+
+  it("links a patch once to each finding its records name, when they name two, and in one order on every read", async () => {
+    const { on, one, other, component } = await twoNodes();
+    // Line 3 of the skill file hides an instruction, and the instruction names a host. Each team saw both and took the line out.
+    const sends = { observation: "sends-data-to-host", host: HOST };
+    for (const [node, where] of [[one, {}], [other, { location: { path: SKILL, start: 2, end: 3 } }]] as const) {
+      const cited = await node.publish(finding(component, where), finding(component, { ...sends, ...where }));
+      await node.publish(patchRecord(component, await node.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }]), cited));
+    }
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+
+    const page = await pageOf(on, component);
+    const [entry, ...more] = withClass(byId(page, "patches"), "patch");
+    expect(more).toEqual([]);
+    expect(tagsOf(entry)).toEqual(["removes only", "confirmed by 2"]);
+    // The two records of the patch name four finding records, two of each finding on the page.
+    const rows = withClass(byId(page, "findings"), "finding");
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(withTag(theOne(withClass(row, "where"), ""), "li")).toHaveLength(2);
+
+    const links = withTag(entry, "a").filter((link) => (link.attributes["href"] ?? "").startsWith("#"));
+    expect(links.map(textOf).sort()).toEqual(["hidden instruction", "sends data to host"]);
+    // Each link leads into the entry of the finding it is read as.
+    for (const link of links) expect(elements(theOne(rows, textOf(link)))).toContain(byId(page, (link.attributes["href"] ?? "").slice(1)));
+
+    const again = byId(await pageOf(on, component), entry?.attributes["id"] ?? "");
+    expect(placesFrom(again)).toEqual(placesFrom(entry));
+    expect(footOf(again)).toBe(footOf(entry));
+  });
+
+  it("names a finding that the view does not hold by its ID, each one once and with no link", async () => {
+    const { on, one, other, component } = await twoNodes();
+    const first = await publishPatch(one, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
+    const second = await publishPatch(other, component, { location: { path: SKILL, start: 2, end: 3 } }, [{ path: SKILL, content: SKILL_FIXED }]);
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+
+    // The index shows no patch whose finding it does not hold. The page is handed such a view as an index that did would serve it.
+    const view = await on.view(component);
+    const { body } = draw(placeAt(`/components/${component}`), NOTHING_READ, readOf({ ...view, findings: [] }), START);
+    const [entry, ...more] = withClass(byId(body, "patches"), "patch");
+    expect(more).toEqual([]);
+    expect(placesFrom(entry)).toEqual([]);
+    const named = withClass(theOne(withClass(entry, "foot"), "patch "), "ref").map(textOf);
+    expect(named.sort()).toEqual([`patch ${view.patches[0]?.patches[0]?.patchId.slice(0, 8)}`, ...[first.finding, second.finding].map((record) => `finding ${record?.slice(0, 8)}`)].sort());
   });
 
   it("shows two patches on adjoining lines side by side in one group, and a patch further down in a group of its own", async () => {
