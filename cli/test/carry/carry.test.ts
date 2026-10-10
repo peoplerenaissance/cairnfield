@@ -8,9 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEAM_BRANCH, recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
 import { NARROWED, bothRules, otherTeam, ownPatch, patchBy, pinnedWith, refsOf, rules, serveView } from "../assemble/team.ts";
-import { NODE, OTHER_NODE, OUTBOX, PLUGIN_URL, bench, finding, git, holdRecords, published, putFile, putRecord } from "../support.ts";
+import type { Made } from "../assemble/team.ts";
+import { NODE, OTHER_NODE, OUTBOX, PLUGIN_URL, bench, finding, git, holdRecords, published, putFile, putRecord, remoteOf } from "../support.ts";
 import type { Bench } from "../support.ts";
-import { carry, findingsSaid, patchRefs, patchesSaid, recordsAt, release, tree } from "./release.ts";
+import { carry, findingsSaid, onPatchRef, patchRefs, patchesSaid, recordsAt, release, tree } from "./release.ts";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -67,6 +68,127 @@ describe("carry", () => {
     // Nothing was written to the other team's node.
     expect(git(other.repo("team"), ["ls-tree", "-r", "--name-only", TEAM_BRANCH])).toBe(theirRecords);
     expect(existsSync(other.repo(`fork-${newer}`))).toBe(false);
+  });
+
+  it("counts a patch of its own that it could not read as its own, and names only another team's patch as left behind", async () => {
+    const older = await pinnedWith(on, { patchLevel: 2, teams: [OTHER_NODE] });
+    const other = otherTeam(on);
+    // The team's patch cites a finding that only the other team's repo holds. Assembly counts
+    // that team's records at level 2, and `carry` counts the team's own repo alone.
+    const mine = await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(NARROWED), findingsAt: other });
+    onPatchRef(on, older, mine);
+    const theirs = await patchBy(on, other, OTHER_NODE, older, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
+    serveView(on, older, [theirs]);
+    const built = await on.run("assemble", older);
+    expect((built.output["patches"] as { readonly patchId: string }[]).map(({ patchId }) => patchId)).toEqual([mine.patchId, theirs.patchId].sort());
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    // The patch was refused before its patch ID was known, so its entry holds none.
+    expect(patchesSaid(outcome)).toEqual([{ patch: mine.id, carried: false, reason: "refused", check: "unresolved-reference" }]);
+    expect(outcome.output["leftBehind"]).toEqual([theirs.patchId]);
+  });
+
+  it("asks the fork of the older commit for no ref when it read every patch of the copy as its own", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    const mine = await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+    const built = await on.run("assemble", older);
+    expect((built.output["patches"] as { readonly patchId: string }[]).map(({ patchId }) => patchId)).toEqual([mine.patchId]);
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+    const requests = on.requests.length;
+    const gitCalls = on.gitCalls.length;
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome).toMatchObject({ code: EXIT.ok, output: { leftBehind: [] } });
+    expect(patchesSaid(outcome)).toMatchObject([{ patch: mine.id, patchId: mine.patchId, carried: true }]);
+    // One read token for the fork of the older commit: the one the patch's commit is fetched with.
+    expect(on.requests.slice(requests).filter((seen) => seen.url === `${NODE}/read-token?component=${older}`)).toHaveLength(1);
+    // The one remote whose refs are listed is the team repo, by `publish`.
+    const listed = on.gitCalls.slice(gitCalls).filter(([command]) => command === "ls-remote");
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.filter((args) => !args.includes(remoteOf("team")))).toEqual([]);
+  });
+
+  it("takes a ref of its fork as a patch of its own only when it is the ref of a patch at the older commit", async () => {
+    const older = await pinnedWith(on, { patchLevel: 2, teams: [OTHER_NODE] });
+    const mine = await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+    const other = otherTeam(on);
+    const theirs = await patchBy(on, other, OTHER_NODE, older, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
+    serveView(on, older, [theirs]);
+    expect((await on.run("assemble", older)).code).toBe(EXIT.ok);
+    // Refs of the team's own fork that name the other team's patch ID. None is the ref of a patch at the older commit.
+    for (const ref of [
+      // Where assembly pushes a copy the team publishes.
+      `refs/heads/copy/${older}`,
+      // A patch at another commit.
+      `refs/heads/patch/${"2e".repeat(20)}/${theirs.patchId}`,
+      // A name that only ends as a patch ref does. Git matches a pattern against the end of a name.
+      `refs/heads/kept/refs/heads/patch/${older}/${theirs.patchId}`,
+      // A name that only starts as one.
+      `refs/heads/patch/${older}/${theirs.patchId}/more`,
+    ]) {
+      git(on.repo(`fork-${older}`), ["update-ref", ref, mine.commit]);
+    }
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(patchesSaid(outcome)).toMatchObject([{ patch: mine.id, patchId: mine.patchId, carried: true }]);
+    expect(outcome.output["leftBehind"]).toEqual([theirs.patchId]);
+  });
+
+  describe("with a copy that holds another team's patch and no patch of the team's own", () => {
+    let older: string;
+    let newer: string;
+    let theirs: Made;
+    beforeEach(async () => {
+      older = await pinnedWith(on, { patchLevel: 2, teams: [OTHER_NODE] });
+      theirs = await patchBy(on, otherTeam(on), OTHER_NODE, older, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
+      serveView(on, older, [theirs]);
+      const built = await on.run("assemble", older);
+      expect((built.output["patches"] as { readonly patchId: string }[]).map(({ patchId }) => patchId)).toEqual([theirs.patchId]);
+      newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+    });
+
+    it("names that patch as left behind when the team has no fork of the older commit", async () => {
+      // A team that pushed no patch at the older commit has no fork of it.
+      expect(existsSync(on.repo(`fork-${older}`))).toBe(false);
+
+      const outcome = await carry(on, older, newer);
+
+      expect(outcome).toMatchObject({ code: EXIT.ok, output: { patches: [], leftBehind: [theirs.patchId] } });
+      expect(on.gitCalls.some(([command]) => command === "ls-remote")).toBe(false);
+    });
+
+    it("stops with the node's failure when the node gives no access to the fork of the older commit, names no patch as left behind, and publishes what carried on the next run", async () => {
+      // A finding of the team's own, which carries.
+      await holdRecords(on, [finding(older, { location: { path: "config/rules.txt", start: 3, end: 3 } })]);
+      const record = `records/${newer}/finding/${await recordId(finding(newer, { location: { path: "config/rules.txt", start: 3, end: 3 } }))}.json`;
+      on.respond = (seen) => {
+        if (seen.url === `${NODE}/read-token?component=${older}`) throw new TypeError("fetch failed");
+        return undefined;
+      };
+
+      expect(await carry(on, older, newer)).toEqual({ code: EXIT.node, output: { error: "node-unreachable" } });
+      // The fork is asked before anything is published, so the carried record waits in the outbox.
+      expect(recordsAt(on, newer)).toEqual([]);
+      expect(waiting()).toEqual([record]);
+
+      on.respond = undefined;
+      expect(await carry(on, older, newer)).toMatchObject({ code: EXIT.ok, output: { published: [record], leftBehind: [theirs.patchId] } });
+    });
+
+    it("stops with Git's failure when the fork of the older commit does not list its refs, and names no patch as left behind", async () => {
+      // The node names a fork that Git cannot read.
+      on.createRepo(`fork-${older}`);
+      on.node.remote = (repo) => remoteOf(repo === `fork-${older}` ? "gone" : repo);
+
+      expect(await carry(on, older, newer)).toEqual({ code: EXIT.git, output: { error: "git-failed", step: "ls-remote" } });
+    });
   });
 
   it("writes nothing new when it runs a second time", async () => {

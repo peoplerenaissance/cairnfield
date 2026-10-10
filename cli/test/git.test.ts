@@ -2,9 +2,9 @@
 // repo the command does not trust, so no call keeps more output than it was allowed.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { listTree, runGit, said, withScratch } from "../src/git.ts";
+import { listRefs, listTree, runGit, said, withScratch } from "../src/git.ts";
 import { EXIT, outcomeOf } from "../src/outcome.ts";
-import { bench } from "./support.ts";
+import { TOKEN, bench, commitEntries, git, remoteOf } from "./support.ts";
 import type { Bench } from "./support.ts";
 
 let on: Bench;
@@ -39,6 +39,33 @@ describe("a Git call that is ended through its signal", () => {
     const run = await runGit(["--version"], { env, maxOutput: 1024, signal: ending.signal });
 
     expect(run.code).not.toBe(0);
+  });
+});
+
+describe("the refs of a remote under a prefix", () => {
+  const PREFIX = "refs/heads/patch/";
+  const access = { remote: remoteOf("fork"), token: TOKEN };
+
+  it("names each ref that starts with the prefix, and no ref that only ends as one of them does", async () => {
+    const fork = on.createRepo("fork");
+    const commit = commitEntries(fork, [{ path: "notes.md", content: "# Notes\n" }]);
+    const under = [`${PREFIX}one`, `${PREFIX}two/deeper`];
+    // Git matches a pattern against the end of a ref's name, so it lists the first of these too.
+    for (const ref of [...under, `refs/heads/kept/${PREFIX}three`, "refs/heads/patches", "refs/tags/patch/four"]) git(fork, ["update-ref", ref, commit]);
+
+    const listed = await withScratch(on.io, (scratch) => listRefs(scratch, access, PREFIX));
+
+    expect(listed.sort()).toEqual(under);
+    // The token reaches Git through its environment, for that one remote, and never as an argument.
+    const call = on.gitCalls.findIndex(([command]) => command === "ls-remote");
+    expect(Object.values(on.gitEnvs[call] ?? {})).toEqual(expect.arrayContaining([`http.${access.remote}.extraHeader`, `Authorization: Bearer ${TOKEN}`]));
+    expect(JSON.stringify(on.gitCalls)).not.toContain(TOKEN);
+  });
+
+  it("names none for a remote that holds no ref under the prefix", async () => {
+    on.createRepo("fork");
+
+    expect(await withScratch(on.io, (scratch) => listRefs(scratch, access, PREFIX))).toEqual([]);
   });
 });
 

@@ -29,8 +29,16 @@
 // gives one more path there, and the reason stays `content-unchanged`.
 //
 // It also names, by patch ID, each patch of another team in the copy the team last built
-// at the older commit: the copy of the newer commit will not hold it. It ends with the
-// counts of paths the newer commit added, changed and removed. `carry` reviews none of them.
+// at the older commit: the copy of the newer commit will not hold it. A patch of that copy
+// is the team's own when an entry of this run names it, or when the team's fork of the
+// older commit holds its ref, `patch/<older-commit>/<patch-id>` (KTD4). A patch that was
+// refused before its patch ID was known has no ID in its entry, so the fork tells it from
+// another team's, and whose a patch is does not depend on whether this run could read it.
+// The fork is asked for its refs only when the copy holds a patch that no entry names. A
+// fork that cannot be asked ends the command, and no patch is then named as left behind.
+//
+// It ends with the counts of paths the newer commit added, changed and removed. `carry`
+// reviews none of them.
 
 import { changedPaths, compare, recordPath } from "@cairnfield/protocol";
 import type { Patch } from "@cairnfield/protocol";
@@ -49,8 +57,8 @@ import type { Io } from "../io.ts";
 import { addRecord } from "../outbox.ts";
 import { EXIT, done, outcomeOf, stop } from "../outcome.ts";
 import type { Outcome } from "../outcome.ts";
-import { commitPatch, pushPatch } from "../patch/commit.ts";
-import { adminKey, nodeFailed, nodeListing, repoAccess, writableFork } from "../services.ts";
+import { commitPatch, pushPatch, pushedPatches } from "../patch/commit.ts";
+import { adminKey, forkAccess, nodeFailed, nodeListing, repoAccess, writableFork } from "../services.ts";
 import { pin } from "./pin.ts";
 import { publish } from "./publish.ts";
 
@@ -63,6 +71,17 @@ export interface CarryRequest {
 
 /** A ref of the scratch repo for the older commit. A fetch names what the repo's refs hold, so the fork sends only what a patch adds. */
 const OLDER_REF = "refs/cairnfield/older";
+
+/**
+ * The IDs of the patches the team pushed on a commit: its own fork of the commit holds
+ * one ref for each (KTD4). A team with no fork of the commit pushed none. Any other
+ * answer of the node is the node's failure, and ends the command.
+ */
+async function pushedBy(io: Io, node: string, component: string): Promise<ReadonlySet<string>> {
+  const fork = await forkAccess(io, node, component);
+  if (!fork.ok) return fork.error === "refused" && fork.reason === "not-found" ? new Set() : nodeFailed(fork);
+  return withScratch(io, (scratch) => pushedPatches(scratch, fork.body, component));
+}
 
 export async function carry(io: Io, home: Home, request: CarryRequest): Promise<Outcome> {
   const older = await readListing(home, request.older);
@@ -118,8 +137,13 @@ export async function carry(io: Io, home: Home, request: CarryRequest): Promise<
   }
 
   // A patch in the older copy that is none of the team's own came from a team its lens names.
-  const own = new Set(patches.map(({ patchId }) => patchId));
-  const leftBehind = (built?.patches ?? []).filter((patchId) => !own.has(patchId));
+  // An entry names its patch only when this run could read it, so a patch that no entry
+  // names is the team's own when the team's fork of the older commit holds its ref (KTD4).
+  const named = new Set(patches.flatMap(({ patchId }) => patchId ?? []));
+  const unnamed = (built?.patches ?? []).filter((patchId) => !named.has(patchId));
+  // The fork is asked only when there is a patch to tell apart, so a run whose entries name every patch of the copy makes no call for it.
+  const pushed = unnamed.length > 0 ? await pushedBy(io, node, older.component) : new Set<string>();
+  const leftBehind = unnamed.filter((patchId) => !pushed.has(patchId));
   const changes = changedPaths(older.files, newer.files);
   const paths = {
     added: changes.filter((change) => !change.old).length,

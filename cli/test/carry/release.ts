@@ -76,3 +76,12 @@ export function recordOf(on: Bench, component: string, type: string, id: string)
 
 /** Each patch ref of a fork with the commit it points to. */
 export const patchRefs = (on: Bench, component: string): string[] => refsOf(on.repo(`fork-${component}`)).filter((ref) => ref.startsWith("refs/heads/patch/"));
+
+/**
+ * Puts a patch the team made by hand on the ref of its patch ID in the team's fork, where
+ * `patch` and `carry` leave one (KTD4). The bench's hand-made commit sits on a ref named
+ * by its commit.
+ */
+export function onPatchRef(on: Bench, component: string, made: { readonly patchId: string; readonly commit: string }): void {
+  git(on.repo(`fork-${component}`), ["update-ref", `refs/heads/patch/${component}/${made.patchId}`, made.commit]);
+}
