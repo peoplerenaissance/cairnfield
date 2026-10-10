@@ -22,6 +22,8 @@ export function isVerdict(value: unknown): value is Verdict {
 
 /** A table holds at most this many components. The plan sets no bound, so this is a first value. */
 const MAX_DECISIONS = 10_000;
+/** A table at its limit is smaller than this. `verify` reads a file it was handed, so a longer one is not read. */
+const MAX_TABLE_BYTES = 32 * 1024 * 1024;
 /** A time as `Date.toISOString` writes it. */
 const TIME = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/;
 
@@ -47,7 +49,7 @@ const TABLE = field.shape({ version: field.version(), decisions: field.listOf(DE
  */
 export async function readDecisions(file: string): Promise<Decision[] | undefined> {
   const bad = (): never => stop(EXIT.failed, "bad-decisions");
-  const decisions = (await readWhole(file, TABLE, bad))?.decisions;
+  const decisions = (await readWhole(file, TABLE, bad, MAX_TABLE_BYTES))?.decisions;
   if (!decisions) return undefined;
   // A component has one entry. A table with two for one URL, merged by hand, could hold an approval that was withdrawn.
   const repeats = new Set(decisions.map(({ url }) => url)).size !== decisions.length;

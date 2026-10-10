@@ -188,6 +188,14 @@ describe("verify", () => {
     expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toEqual({ code: EXIT.failed, output: { error: "bad-decisions" } });
   });
 
+  it("stops at an approvals file too long to be a table, and does not read it", async () => {
+    const { copy } = await approvedCopy();
+    // The table itself is good. What follows it is 32 MiB of spaces.
+    appendFileSync(join(elsewhere, "approvals.json"), " ".repeat(32 * 1024 * 1024));
+
+    expect(await verify(PLUGIN_URL, copy, "--approvals", "approvals.json")).toEqual({ code: EXIT.failed, output: { error: "bad-decisions" } });
+  });
+
   it("fails for a folder that is not there, or that is a file", async () => {
     const { copy } = await approvedCopy();
 

@@ -170,6 +170,8 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   });
   if (!fetched.ok) return refuse(fetched.reason);
   if (!fetched.value) return refuse("wrong-parent");
+  // A node lists at most this many changed paths, so the index reads no patch with more.
+  if (fetched.value.length > MAX_LISTING_ENTRIES) return refuse("patch-too-large");
 
   const held = new Map(listing.files.map((file) => [file.path, file]));
   const changes: FileEntry[] = [];

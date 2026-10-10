@@ -6,11 +6,11 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { recordId } from "@cairnfield/protocol";
+import { MAX_LISTING_ENTRIES, recordId } from "@cairnfield/protocol";
 import type { GitRunner } from "../../src/git.ts";
 import { EXIT } from "../../src/outcome.ts";
 import { run } from "../../src/run.ts";
-import { NODE, OTHER_NODE, TOKEN, bench, forkCommit, holdRecords, remoteOf } from "../support.ts";
+import { NODE, OTHER_NODE, TOKEN, bench, forkCommit, git, holdRecords, remoteOf } from "../support.ts";
 import type { Bench, Site } from "../support.ts";
 import { COPIES, NARROWED, OTHER_NAMESPACE, TREE, bothRules, copied, otherTeam, ownPatch, patchBy, pinnedWith, rules, serveView } from "./team.ts";
 import type { Made, Wanted } from "./team.ts";
@@ -112,6 +112,24 @@ describe("a candidate from a named team", () => {
     serveView(on, component, [made]);
 
     expectRefused(await on.run("assemble", component), made, "patch-out-of-scope");
+  });
+
+  it("is refused when its commit changes more paths than a node may list", async () => {
+    const listed = await theirs({ cites: [[3, 3]], changes: bothRules(NARROWED) });
+    // The same patch, and files added beside it until the commit changes one path more than the limit.
+    const fork = other.repo(`fork-${component}`);
+    git(fork, ["read-tree", listed.commit]);
+    const blob = git(fork, ["hash-object", "-w", "--stdin"], "more\n");
+    const added = Array.from({ length: MAX_LISTING_ENTRIES - 1 }, (_, at) => `100644 ${blob}\tmore/${at}.txt\n`);
+    git(fork, ["update-index", "--index-info"], added.join(""));
+    const wider = git(fork, ["commit-tree", git(fork, ["write-tree"]), "-p", component, "-m", "a patch by hand"]);
+    git(fork, ["update-ref", `refs/heads/patch/${component}/${wider}`, wider]);
+    const record = { ...listed.record, commit: wider };
+    const [id = ""] = await holdRecords(other, [record]);
+    const made = { ...listed, commit: wider, record, id };
+    serveView(on, component, [made]);
+
+    expectRefused(await on.run("assemble", component), made, "patch-too-large");
   });
 
   it("is refused when its commit adds files whose paths only read like the cited ones", async () => {
