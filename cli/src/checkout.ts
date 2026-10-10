@@ -98,10 +98,13 @@ function collisions(paths: readonly string[]): ReadonlySet<string> {
   return colliding;
 }
 
-/** A path of a tree as text, or nothing when its bytes are no UTF-8. */
+/**
+ * A path of a tree as text, or nothing when its bytes are no UTF-8. A byte order mark at
+ * its start is kept, so such a path does not read as the path without one.
+ */
 export function decoded(path: Uint8Array): string | undefined {
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(path);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(path);
   } catch {
     return undefined;
   }

@@ -67,6 +67,20 @@ describe("a candidate from a named team", () => {
     expectRefused(await on.run("assemble", component), made, "patch-out-of-scope");
   });
 
+  it("is refused when its commit adds files whose paths only read like the cited ones", async () => {
+    // Each path starts with a byte order mark. The rules themselves are not changed at all.
+    const made = await theirs({
+      cites: [[3, 3]],
+      changes: [
+        { path: "\ufeffconfig/rules.txt", content: NARROWED },
+        { path: "\ufeffdocs/rules.txt", content: NARROWED },
+      ],
+    });
+    serveView(on, component, [made]);
+
+    expectRefused(await on.run("assemble", component), made, "bad-path");
+  });
+
   it("is refused when its commit does not sit on the pinned commit", async () => {
     const first = await theirs({ cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
     const made = await theirs({ cites: [[3, 3]], changes: bothRules(NARROWED), parent: first.commit });

@@ -110,6 +110,18 @@ describe("pin", () => {
     expect(entries(checkout(commit))).toEqual(["README.md"]);
   });
 
+  it("leaves out a path that starts with a byte order mark, and does not write it under the name without one", async () => {
+    // A text decoder drops the mark unless it is told to keep it. The path would then read as `plugin.json`.
+    const { commit, outcome } = await pinTree([
+      { path: "README.md", content: "# A plugin\n" },
+      { path: "\ufeffplugin.json", content: "{}\n" },
+    ]);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(outcome.output).toMatchObject({ files: 1, leftOut: [{ path: "\ufeffplugin.json", reason: "refused-path" }] });
+    expect(entries(checkout(commit))).toEqual(["README.md"]);
+  });
+
   it("leaves out paths that a disk without letter case could not hold apart, and writes none over another", async () => {
     const { commit, outcome } = await pinTree([
       { path: "README.md", content: "# A plugin\n" },
