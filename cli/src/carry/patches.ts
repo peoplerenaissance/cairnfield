@@ -9,7 +9,8 @@
 //
 // A patch is placed by content, so it may change other paths than it did. It moved when
 // it no longer changes a path it changed at the older commit. One more copy to rewrite
-// is one more path, and no move.
+// is one more path, and no move. A patch that would change more paths than a node may
+// list for a patch commit is refused as `patch-too-large`, and nothing is built for it.
 //
 // A patch is read as assembly reads one (see `assemble/verify.ts`): its record from the
 // team's own repo and its commit from the team's own fork, checked again as a patch on
@@ -22,7 +23,7 @@
 // commit from the fork that fails is `refused` too, with `git-failed`. That is how a
 // fetch failure is reported today.
 
-import { applyChanges, checkPatch, citedRanges, compare } from "@cairnfield/protocol";
+import { MAX_LISTING_ENTRIES, applyChanges, checkPatch, citedRanges, compare } from "@cairnfield/protocol";
 import type { FileEntry, Patch } from "@cairnfield/protocol";
 import type { Candidate } from "../assemble/select.ts";
 import { verify } from "../assemble/verify.ts";
@@ -90,6 +91,8 @@ export async function carryPatch(run: Assembly, newer: Listing, findings: Readon
     const replacement = replacing.get(`${blob} ${mode}`);
     return replacement ? [{ path, mode: replacement.newMode, blob: replacement.newBlob }] : [];
   });
+  // A node lists at most this many paths for a patch commit. No index could check a commit that changes more, and assembly refuses one.
+  if (changes.length > MAX_LISTING_ENTRIES) return { patchId, carried: false, reason: "refused", check: "patch-too-large" };
   // The newer commit may hold a copy the older one did not, so the patch is checked again
   // where it lands. A copy with a mode the patch does not replace leaves it incomplete.
   const checked = await checkPatch({

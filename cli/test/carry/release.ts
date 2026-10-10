@@ -28,6 +28,24 @@ export function release(on: Bench, older: string, entries: readonly Entry[]): st
   return newer;
 }
 
+/**
+ * Makes a newer commit that holds the older one's tree and as many more paths as asked
+ * for, each with the content and mode of one file of it, and has the node hold a copy of
+ * it. No blob is new, and the paths go to Git in one call: a call for each, as
+ * `commitEntries` makes, takes minutes for thousands of paths. Returns the commit.
+ */
+export function releaseWithCopies(on: Bench, older: string, of: string, copies: number): string {
+  const source = on.repo("source");
+  git(source, ["read-tree", older]);
+  // `<mode> blob <hash>`, a tab, the path.
+  const [mode = "", , blob = ""] = git(source, ["ls-tree", older, "--", of]).split(/[ \t]/);
+  git(source, ["update-index", "--index-info"], Array.from({ length: copies }, (_, at) => `${mode} ${blob}\tcopies/${at}.txt\n`).join(""));
+  const newer = git(source, ["commit-tree", git(source, ["write-tree"]), "-p", older, "-m", "a test commit"]);
+  git(source, ["update-ref", `refs/heads/${TEAM_BRANCH}`, newer]);
+  git(source, ["push", "--quiet", on.createRepo(`copy-${newer}`), TEAM_BRANCH]);
+  return newer;
+}
+
 export const carry = (on: Bench, older: string, newer: string): Promise<Outcome> => on.run("carry", older, newer, "--branch", TEAM_BRANCH);
 
 /** A patch of the team's own for findings the test wrote: where it is, and the patch ID its commit amounts to. */

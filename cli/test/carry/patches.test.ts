@@ -6,12 +6,12 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SCHEMA_VERSION, recordId } from "@cairnfield/protocol";
+import { MAX_LISTING_ENTRIES, SCHEMA_VERSION, recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
 import { NARROWED, RULES, bothRules, copied, ownPatch, pinnedWith, rules, text } from "../assemble/team.ts";
 import { NODE, OUTBOX, bench, finding, git, holdRecords, patchIdOf } from "../support.ts";
 import type { Bench } from "../support.ts";
-import { carry, findingsSaid, patchCiting, patchRefs, patchesSaid, recordOf, recordsAt, release, tree } from "./release.ts";
+import { carry, findingsSaid, patchCiting, patchRefs, patchesSaid, recordOf, recordsAt, release, releaseWithCopies, tree } from "./release.ts";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -226,6 +226,41 @@ describe("carry, for a patch", () => {
     // A file's size is read before its content, so the patch is refused before its patch ID is known.
     expect(patchesSaid(outcome)).toEqual([{ patch: made.id, carried: false, reason: "refused", check: "too-large" }]);
     expect(recordsAt(on, newer)).toEqual([`records/${newer}/finding/${await recordId(ruleFinding(newer, 3))}.json`]);
+  });
+
+  // A node lists at most this many paths for a patch commit, so a patch that changes more is one no index can check and no assembly takes.
+  it("reports a patch that would change one path more than a node may list as refused, and builds no commit and no record for it", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    const made = await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+    // The rules sit at two paths. With these copies the newer commit holds them at one path more than the limit.
+    const newer = releaseWithCopies(on, older, "config/rules.txt", MAX_LISTING_ENTRIES - 1);
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(patchesSaid(outcome)).toEqual([{ patch: made.id, patchId: made.patchId, carried: false, reason: "refused", check: "patch-too-large" }]);
+    // The fork of the newer commit is made for the first patch that carries, so it holds no ref: there is none.
+    expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
+    // The finding the patch cites still carries, and its record is the one record written.
+    expect(findingsSaid(outcome)).toMatchObject([{ carried: true, reason: "content-unchanged", path: "config/rules.txt" }]);
+    expect(recordsAt(on, newer)).toEqual([`records/${newer}/finding/${await recordId(ruleFinding(newer, 3))}.json`]);
+    expect(existsSync(join(on.home, OUTBOX, "records", newer, "finding"))).toBe(true);
+    expect(existsSync(join(on.home, OUTBOX, "records", newer, "patch"))).toBe(false);
+  });
+
+  it("carries a patch that changes as many paths as a node may list", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    const made = await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+    const newer = releaseWithCopies(on, older, "config/rules.txt", MAX_LISTING_ENTRIES - 2);
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    const [said, ...rest] = patchesSaid(outcome);
+    expect(rest).toEqual([]);
+    expect(said).toMatchObject({ patch: made.id, patchId: made.patchId, carried: true, reason: "content-unchanged" });
+    expect(said?.paths).toHaveLength(MAX_LISTING_ENTRIES);
+    expect(patchRefs(on, newer)).toEqual([`refs/heads/patch/${newer}/${made.patchId} ${said?.commit}`]);
   });
 
   it("carries every patch whose content is unchanged to a commit that adds one file and changes another, and counts one added and one changed path", async () => {
