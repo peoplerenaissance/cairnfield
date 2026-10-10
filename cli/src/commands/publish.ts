@@ -118,7 +118,7 @@ async function push(io: Io, scratch: Scratch, access: Access, records: readonly 
     });
     if (pushed.code === 0) return { head: commit, published: added.map(({ path }) => path) };
     if (!wasRejected(said(pushed)) || attempt === MAX_TRIES) {
-      scratch.report(pushed);
+      await scratch.report(pushed);
       return stop(EXIT.git, "git-failed", { step: "push" });
     }
     await io.sleep(io.random(RETRY_SPREAD_MS) * attempt);

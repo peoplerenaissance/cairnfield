@@ -1,8 +1,10 @@
 // The command as a whole: its config file, its keys, its arguments and what it prints.
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXIT } from "../src/outcome.ts";
@@ -115,6 +117,44 @@ describe("what Git wrote to standard error", () => {
     expect(redact(said, [TOKEN])).toBe(
       "fatal: unable to access 'https://[account].artifacts.cloudflare.net/git/cairnfield-team-a/team.git/': [token] and [token] were refused",
     );
+  });
+});
+
+describe("a write to standard error", () => {
+  it("waits for a pipe that takes no more, so the command never holds all it prints", async () => {
+    const io = new URL("../src/io.ts", import.meta.url).href;
+    // 2 MiB in lines of 1 KiB, which is far more than a pipe holds. The script says when
+    // it starts, and at its end the most that Node held back at any one time.
+    const script = [
+      `const { processIo } = await import(${JSON.stringify(io)});`,
+      "const { warn } = processIo();",
+      'const line = `${"x".repeat(1023)}\\n`;',
+      "let held = 0;",
+      'process.stdout.write("started\\n");',
+      "for (let at = 0; at < 2048; at += 1) {",
+      "  await warn(line);",
+      "  held = Math.max(held, process.stderr.writableLength);",
+      "}",
+      "process.stdout.write(String(held));",
+    ].join("\n");
+    const child = spawn(process.execPath, ["--input-type=module", "--eval", script]);
+    let said = "";
+    child.stdout.setEncoding("utf8").on("data", (text: string) => {
+      said += text;
+    });
+
+    // Nothing reads what the script prints until its pipe has had time to fill.
+    await once(child.stdout, "data");
+    await sleep(250);
+    let printed = "";
+    child.stderr.setEncoding("utf8").on("data", (text: string) => {
+      printed += text;
+    });
+    const [status] = await once(child, "close");
+
+    expect(status).toBe(0);
+    expect(printed.match(/^x{1023}$/gm)).toHaveLength(2048);
+    expect(Number(said.split("\n")[1])).toBeLessThan(256 * 1024);
   });
 });
 

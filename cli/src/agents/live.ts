@@ -113,7 +113,7 @@ export async function runAgent<T>(io: Io, run: AgentRun<T>): Promise<Checked<T>>
 
     // Read before the content, which a refusal leaves empty or cut short.
     if (response.stop_reason === "refusal") {
-      io.warn(`agent-refused ${category(response.stop_details)}\n`);
+      await io.warn(`agent-refused ${category(response.stop_details)}\n`);
       return stop(EXIT.agent, "agent-refused");
     }
     if (response.stop_reason === "max_tokens") return stop(EXIT.agent, "agent-limit", { limit: "max-tokens" });
@@ -146,7 +146,7 @@ export async function runAgent<T>(io: Io, run: AgentRun<T>): Promise<Checked<T>>
     }
     const checked = await run.check(answer);
     if (checked.ok) return checked;
-    io.warn(`answer-refused ${checked.reason}\n`);
+    await io.warn(`answer-refused ${checked.reason}\n`);
     if (retried) return checked;
     retried = true;
     messages.push({ role: "user", content: `refused: ${checked.reason}` });
