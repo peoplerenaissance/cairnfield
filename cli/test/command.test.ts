@@ -29,8 +29,8 @@ describe("the config file", () => {
     expect(await on.run("validate", "--config", "team-b/team-b.json")).toMatchObject({ code: EXIT.ok });
   });
 
-  it("is never read from inside a checkout, where a component could have put one", async () => {
-    const inside = join(on.home, ".cairnfield/checkouts", "1f".repeat(20));
+  it.each(["checkouts", "copies"])("is never read from inside one of the %s, where a component could have put one", async (folder) => {
+    const inside = join(on.home, ".cairnfield", folder, "1f".repeat(20));
     mkdirSync(inside, { recursive: true });
     writeFileSync(join(inside, "cairnfield.json"), JSON.stringify({ node: "https://node.elsewhere.example" }));
 

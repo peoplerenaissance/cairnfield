@@ -98,19 +98,23 @@ function collisions(paths: readonly string[]): ReadonlySet<string> {
   return colliding;
 }
 
-function decoded(path: Uint8Array): string | undefined {
+/**
+ * A path of a tree as text, or nothing when its bytes are no UTF-8. A byte order mark at
+ * its start is kept, so such a path does not read as the path without one.
+ */
+export function decoded(path: Uint8Array): string | undefined {
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(path);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(path);
   } catch {
     return undefined;
   }
 }
 
 /**
- * Exports a commit that the scratch repo holds, and writes its listing. The listing is
- * written last, so a checkout that was cut short is made again.
+ * Exports a commit that the scratch repo holds to a folder, in place of what the folder
+ * held. Returns what the folder holds now, and what of the commit's tree it leaves out.
  */
-export async function exportCheckout(home: Home, scratch: Scratch, commit: string): Promise<Listing> {
+export async function exportTree(scratch: Scratch, commit: string, dir: string): Promise<Listing> {
   const regular: Listing["files"][number][] = [];
   const leftOut: Listing["leftOut"][number][] = [];
   const sizeOf = new Map<string, number>();
@@ -138,7 +142,6 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   const tooLarge = total > MAX_CHECKOUT_BYTES || files.some((file) => bytes(file) > MAX_FILE_BYTES);
   if (tooLarge || files.length > MAX_ENTRIES || leftOut.length > MAX_ENTRIES) stop(EXIT.failed, "component-too-large");
 
-  const dir = checkoutDir(home, commit);
   const partial = `${dir}.partial`;
   await rm(partial, { recursive: true, force: true });
   // Each path passed the path rule: no part is `.`, `..` or `.git`, so it stays in the folder.
@@ -181,12 +184,23 @@ export async function exportCheckout(home: Home, scratch: Scratch, commit: strin
   await write(batch, batched);
   await rm(dir, { recursive: true, force: true });
   await rename(partial, dir);
+  return { component: commit, files, leftOut };
+}
 
-  const listing: Listing = { component: commit, files, leftOut };
-  // Written whole under another name first, so a run that is cut short leaves no listing.
-  const unfinished = `${listingFile(home, commit)}.partial`;
-  await writeFile(unfinished, `${JSON.stringify(listing, null, 2)}\n`);
-  await rename(unfinished, listingFile(home, commit));
+/** Writes a file whole under another name first, so a run that is cut short leaves no file. */
+export async function writeWhole(file: string, value: object): Promise<void> {
+  const unfinished = `${file}.partial`;
+  await writeFile(unfinished, `${JSON.stringify(value, null, 2)}\n`);
+  await rename(unfinished, file);
+}
+
+/**
+ * Exports the checkout of a commit that the scratch repo holds, and writes its listing.
+ * The listing is written last, so a checkout that was cut short is made again.
+ */
+export async function exportCheckout(home: Home, scratch: Scratch, commit: string): Promise<Listing> {
+  const listing = await exportTree(scratch, commit, checkoutDir(home, commit));
+  await writeWhole(listingFile(home, commit), listing);
   return listing;
 }
 

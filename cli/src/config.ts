@@ -5,7 +5,7 @@
 // command keeps its own files in `.cairnfield/` beside the config file.
 
 import { readFile, realpath } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { MODELS, conforms, field, isIndexUrl, isToken } from "@cairnfield/protocol";
 import type { Infer, Model } from "@cairnfield/protocol";
 import type { Io } from "./io.ts";
@@ -19,6 +19,7 @@ export const REGISTRATION_KEY = "CAIRNFIELD_REGISTRATION_KEY";
 
 const STATE_FOLDER = ".cairnfield";
 const CHECKOUTS_FOLDER = "checkouts";
+const COPIES_FOLDER = "copies";
 
 const MAX_FILE_PATH_LENGTH = 4096;
 
@@ -55,23 +56,25 @@ export interface Home {
   readonly outbox: string;
   /** Where the checkout of each pinned commit is kept (KTD16). */
   readonly checkouts: string;
+  /** Where the copy the team built of each pinned commit is kept (KTD22). */
+  readonly copies: string;
   /** Where the patch agent's saved edits are kept (KTD18). */
   readonly recordings: string;
 }
 
 /**
- * Whether a file lies in a checkout, by its real path, so a link into one counts too. A
- * checkout holds a component's own files under their own names, and none of them is the
- * operator's.
+ * Whether a file lies in a checkout or in a built copy, by its real path, so a link into
+ * one counts too. Both hold a component's own files under their own names, and none of
+ * them is the operator's.
  */
-export async function inCheckout(file: string): Promise<boolean> {
+export async function amongComponentFiles(file: string): Promise<boolean> {
   let real = file;
   try {
     real = await realpath(file);
   } catch {
     // A file that is not there has no other path.
   }
-  return real.includes(`${sep}${STATE_FOLDER}${sep}${CHECKOUTS_FOLDER}${sep}`);
+  return [CHECKOUTS_FOLDER, COPIES_FOLDER].some((folder) => real.includes(`${sep}${STATE_FOLDER}${sep}${folder}${sep}`));
 }
 
 /** Reads the config file: the one named on the command line, or `cairnfield.json` in the working folder. */
@@ -79,7 +82,7 @@ export async function loadHome(io: Io, named: string | undefined): Promise<Home>
   const file = resolve(io.cwd, named ?? CONFIG_FILE);
   // A config file found in a checkout is the component's, and it could name a node of its
   // author's choosing.
-  if (await inCheckout(file)) return stop(EXIT.usage, "bad-config");
+  if (await amongComponentFiles(file)) return stop(EXIT.usage, "bad-config");
   let text: string;
   try {
     text = await readFile(file, "utf8");
@@ -103,9 +106,13 @@ export async function loadHome(io: Io, named: string | undefined): Promise<Home>
     root,
     outbox: join(state, "outbox"),
     checkouts: join(state, CHECKOUTS_FOLDER),
+    copies: join(state, COPIES_FOLDER),
     recordings: resolve(root, recordings ?? join(STATE_FOLDER, "recordings")),
   };
 }
+
+/** A path as the command prints it: from the config file's folder, with forward slashes. */
+export const shownPath = (home: Home, file: string): string => relative(home.root, file).split(sep).join("/");
 
 /** Reads a key from the environment. It travels in a header, so it must be able to. */
 export function keyFrom(io: Io, name: string): string {

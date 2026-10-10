@@ -10,34 +10,14 @@
 // content a path holds. This command shows work. Assembly fetches a patch from its node
 // and checks it there (KTD23).
 
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { INDEX_ROUTES, hunksTouch, isConfirmed, matchGroups, patchConfirmations } from "@cairnfield/protocol";
+import { hunksTouch, isConfirmed, matchGroups, patchConfirmations } from "@cairnfield/protocol";
 import type { Sourced, View } from "@cairnfield/protocol";
-import { inCheckout } from "../config.ts";
 import type { Home } from "../config.ts";
 import type { Io } from "../io.ts";
-import { parseLens } from "../lens.ts";
+import { loadLens } from "../lens.ts";
 import { EXIT, done, stop } from "../outcome.ts";
 import type { Outcome } from "../outcome.ts";
-import { callIndex, indexFailed } from "../services.ts";
-
-/** The nodes whose work counts for the team: its own, and those its lens names. */
-async function countedNodes(home: Home): Promise<ReadonlySet<string>> {
-  if (home.config.lens === undefined) return stop(EXIT.usage, "no-lens");
-  const file = resolve(home.root, home.config.lens);
-  // A lens says whose work counts. One read from a checkout would be the component's own say.
-  if (await inCheckout(file)) return stop(EXIT.usage, "bad-lens", { reason: "in-checkout" });
-  let text: string;
-  try {
-    text = await readFile(file, "utf8");
-  } catch {
-    return stop(EXIT.usage, "no-lens");
-  }
-  const read = parseLens(text);
-  if (!read.ok) return stop(EXIT.usage, "bad-lens", { reason: read.error });
-  return new Set([home.config.node, ...read.lens.teams]);
-}
+import { indexView } from "../services.ts";
 
 type FindingGroup = View["findings"][number];
 type Patch = View["patches"][number]["patches"][number];
@@ -144,9 +124,7 @@ export function throughLens(view: View, counted: ReadonlySet<string>): View {
 export async function view(io: Io, home: Home, component: string): Promise<Outcome> {
   const { index } = home.config;
   if (index === undefined) return stop(EXIT.noIndex, "no-index");
-  const counted = await countedNodes(home);
-  const answer = await callIndex(io, index, INDEX_ROUTES.view, { params: { component } });
-  if (!answer.ok) return indexFailed(answer);
-  if (answer.body.component !== component) return stop(EXIT.index, "index-bad-answer");
-  return done(throughLens(answer.body, counted));
+  // The nodes whose work counts for the team: its own, and those its lens names.
+  const counted = new Set([home.config.node, ...(await loadLens(home)).teams]);
+  return done(throughLens(await indexView(io, index, component), counted));
 }

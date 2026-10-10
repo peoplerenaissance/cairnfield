@@ -13,10 +13,13 @@ import {
   REGISTRATION_KEY_HEADER,
   SCHEMA_VERSION,
   TEAM_BRANCH,
+  changedPaths,
   isCommit,
   parseRecordPath,
+  patchId,
   recordId,
   recordPath,
+  replacementsOf,
 } from "@cairnfield/protocol";
 import type { AnyRecord } from "@cairnfield/protocol";
 import { runGit } from "../src/git.ts";
@@ -28,6 +31,7 @@ import { run } from "../src/run.ts";
 export const FIXTURES = fileURLToPath(new URL("../../fixtures/", import.meta.url));
 export const NODE = "https://node.team-a.example";
 export const OTHER_NODE = "https://node.team-b.example";
+export const THIRD_NODE = "https://node.team-c.example";
 export const INDEX = "https://index.cairnfield.example";
 export const ACCOUNT = "0123456789abcdef0123456789abcdef";
 export const NAMESPACE = "cairnfield-team-a";
@@ -39,9 +43,9 @@ export const MODEL_KEY = `model-key-${randomUUID()}`;
 // Built here, so the secret scan does not read the source as holding a token.
 export const TOKEN = `art_v2_${"5e".repeat(20)}?expires=1900000000`;
 
-/** The remote the fake node names for one of its repos, in the Artifacts form. */
-export const remoteOf = (repo: string): string =>
-  `https://${ACCOUNT}.artifacts.cloudflare.net/git/${NAMESPACE}/${repo}.git`;
+/** The remote a fake node names for one of its repos, in the Artifacts form. */
+export const remoteOf = (repo: string, namespace: string = NAMESPACE): string =>
+  `https://${ACCOUNT}.artifacts.cloudflare.net/git/${namespace}/${repo}.git`;
 
 const GIT_ENV = {
   PATH: process.env["PATH"] ?? "",
@@ -98,8 +102,17 @@ export interface FakeNode {
   notReadyFor: number;
   /** A refusal the import route gives in place of a repo. */
   importRefusal: string | undefined;
-  /** The remote the token route names for a repo. */
+  /** The remote the token routes name for a repo. */
   remote: (repo: string) => string;
+}
+
+/** One node of a bench: what it answers, and the local repos that stand in for its Artifacts repos. */
+export interface Site {
+  readonly node: FakeNode;
+  /** The path of one of the node's repos on this disk. */
+  repo(name: string): string;
+  /** Makes one of the node's repos, empty. */
+  createRepo(name: string): string;
 }
 
 /** One answer of the fake model: the content of its message and why it stopped. */
@@ -145,10 +158,11 @@ export interface FakeIndex {
   noticeStatus: number | undefined;
 }
 
-export interface Bench {
+/** A bench is also the site of the team's own node. */
+export interface Bench extends Site {
   /** The folder that holds the config file. */
   readonly home: string;
-  /** The local repos that stand in for the node's Artifacts repos. */
+  /** The local repos that stand in for every node's Artifacts repos. */
   readonly remotes: string;
   readonly io: Io;
   /** The environment the command runs in. A test may take a key out. */
@@ -161,7 +175,6 @@ export interface Bench {
   /** What the command wrote to standard error. */
   readonly warnings: string[];
   readonly sleeps: number[];
-  readonly node: FakeNode;
   readonly index: FakeIndex;
   readonly model: FakeModel;
   /** The whole number the command draws next. */
@@ -173,10 +186,8 @@ export interface Bench {
   /** Writes the config file. */
   configure(config: { readonly [field: string]: unknown }): void;
   run(...argv: string[]): Promise<Outcome>;
-  /** The path of one of the node's repos on this disk. */
-  repo(name: string): string;
-  /** Makes one of the node's repos, empty. */
-  createRepo(name: string): string;
+  /** Puts the node of another team at a base URL, with repos of its own. */
+  another(url: string, namespace: string): Site;
   dispose(): void;
 }
 
@@ -196,15 +207,16 @@ function repoName(body: { readonly repo?: unknown; readonly component?: unknown 
   return body.repo === "team" ? "team" : `${String(body.repo)}-${String(body.component)}`;
 }
 
-/** Makes a bench. A bench that shares another's remotes is a second command of the same team. */
-export function bench(sharing?: Bench): Bench {
-  const root = mkdtempSync(join(tmpdir(), "cairnfield-cli-"));
-  const home = join(root, "home");
-  const remotes = sharing?.remotes ?? join(root, "remotes");
-  mkdirSync(home, { recursive: true });
-  mkdirSync(join(remotes, NAMESPACE), { recursive: true });
+/** A site, and what its node answers a request with. */
+interface Hosted extends Site {
+  answer(seen: Seen, path: string, query: URLSearchParams): Response;
+}
 
-  const repo = (name: string): string => join(remotes, NAMESPACE, `${name}.git`);
+/** Makes the fake node of one team, with its repos in a folder of their own under `remotes`. */
+function host(remotes: string, namespace: string): Hosted {
+  mkdirSync(join(remotes, namespace), { recursive: true });
+
+  const repo = (name: string): string => join(remotes, namespace, `${name}.git`);
   const createRepo = (name: string): string => {
     const dir = repo(name);
     if (!existsSync(dir)) {
@@ -215,13 +227,14 @@ export function bench(sharing?: Bench): Bench {
     return dir;
   };
 
-  const node: FakeNode = { notReadyFor: 0, importRefusal: undefined, remote: remoteOf };
-  const index: FakeIndex = { nodes: [], components: [], notices: [], views: new Map(), noticeStatus: undefined };
+  const node: FakeNode = { notReadyFor: 0, importRefusal: undefined, remote: (name) => remoteOf(name, namespace) };
   const ready = (): boolean => {
     if (node.notReadyFor === 0) return true;
     node.notReadyFor -= 1;
     return false;
   };
+  const token = (name: string): Response =>
+    existsSync(repo(name)) ? Response.json({ remote: node.remote(name), token: TOKEN, expires: 1_900_000_000 }) : refuse("not-found");
 
   /** The team repo's head and its record files, as the node lists them. */
   function listing(): Response {
@@ -252,9 +265,16 @@ export function bench(sharing?: Bench): Bench {
     }
   }
 
-  function nodeAnswer(seen: Seen, path: string, query: URLSearchParams): Response {
+  /** The read token of a component's fork, for anyone who asks. */
+  function readToken(query: URLSearchParams): Response {
+    const { component } = Object.fromEntries(query);
+    return isCommit(component) ? token(`fork-${component}`) : refuse("bad-request");
+  }
+
+  function answer(seen: Seen, path: string, query: URLSearchParams): Response {
     if (seen.method === "GET" && path === "records") return listing();
     if (seen.method === "GET" && path === "file") return file(query);
+    if (seen.method === "GET" && path === "read-token") return readToken(query);
     if (!path.startsWith("admin/")) return refuse("not-found");
     if (seen.headers.get(ADMIN_KEY_HEADER) !== ADMIN_KEY) return refuse("unauthorized");
     const body = (seen.body ?? {}) as { readonly repo?: unknown; readonly component?: unknown; readonly commit?: unknown };
@@ -274,13 +294,27 @@ export function bench(sharing?: Bench): Bench {
       if (!existsSync(repo(name))) git(copy, ["push", "--quiet", createRepo(name), "refs/*:refs/*"]);
       return Response.json({ repo: name, ready: ready() });
     }
-    if (path === "admin/token") {
-      const name = repoName(body);
-      if (!existsSync(repo(name))) return refuse("not-found");
-      return Response.json({ remote: node.remote(name), token: TOKEN, expires: 1_900_000_000 });
-    }
+    if (path === "admin/token") return token(repoName(body));
     return refuse("not-found");
   }
+
+  return { node, repo, createRepo, answer };
+}
+
+/** Makes a bench. A bench that shares another's remotes is a second command of the same team. */
+export function bench(sharing?: Bench): Bench {
+  const root = mkdtempSync(join(tmpdir(), "cairnfield-cli-"));
+  const home = join(root, "home");
+  const remotes = sharing?.remotes ?? join(root, "remotes");
+  mkdirSync(home, { recursive: true });
+  const sites = new Map<string, Hosted>();
+  const another = (url: string, namespace: string): Site => {
+    const site = host(remotes, namespace);
+    sites.set(url, site);
+    return site;
+  };
+  const { node, repo, createRepo } = another(NODE, NAMESPACE);
+  const index: FakeIndex = { nodes: [], components: [], notices: [], views: new Map(), noticeStatus: undefined };
 
   function indexAnswer(seen: Seen, path: string): Response {
     const answer = (body: object, status = 200): Response => Response.json({ version: SCHEMA_VERSION, ...body }, { status });
@@ -343,7 +377,8 @@ export function bench(sharing?: Bench): Bench {
     requests.push(seen);
     const given = made.respond?.(seen);
     if (given) return given;
-    if (url.origin === NODE) return nodeAnswer(seen, url.pathname.slice(1), url.searchParams);
+    const site = sites.get(url.origin);
+    if (site) return site.answer(seen, url.pathname.slice(1), url.searchParams);
     if (url.origin === INDEX) return indexAnswer(seen, url.pathname);
     if (url.origin === MODEL_API && url.pathname === "/v1/messages") return modelAnswer(seen);
     throw new TypeError(`no such host: ${url.host}`);
@@ -414,6 +449,7 @@ export function bench(sharing?: Bench): Bench {
     run: (...argv) => run(made.io, argv),
     repo,
     createRepo,
+    another,
     dispose: () => {
       rmSync(root, { recursive: true, force: true });
     },
@@ -508,4 +544,79 @@ export function finding(component: string, overrides: { readonly [field: string]
 export function published(on: Bench): string[] {
   const listed = git(on.repo("team"), ["ls-tree", "-r", "--name-only", TEAM_BRANCH]);
   return listed === "" ? [] : listed.split("\n");
+}
+
+/** Adds record files to the branch of a node's team repo, as a publish would. Returns the ID of each. */
+export async function holdRecords(at: Site, records: readonly object[]): Promise<string[]> {
+  const team = at.createRepo("team");
+  let head: string | undefined;
+  try {
+    head = git(team, ["rev-parse", "--verify", "--quiet", `refs/heads/${TEAM_BRANCH}`]);
+  } catch {
+    head = undefined;
+  }
+  git(team, ["read-tree", head ?? "--empty"]);
+  const ids: string[] = [];
+  for (const record of records) {
+    const id = await recordId(record);
+    const blob = git(team, ["hash-object", "-w", "--stdin"], `${JSON.stringify(record, null, 2)}\n`);
+    git(team, ["update-index", "--add", "--cacheinfo", `100644,${blob},${recordPath(record as AnyRecord, id)}`]);
+    ids.push(id);
+  }
+  const commit = git(team, ["commit-tree", git(team, ["write-tree"]), ...(head === undefined ? [] : ["-p", head]), "-m", "a test publish"]);
+  git(team, ["update-ref", `refs/heads/${TEAM_BRANCH}`, commit]);
+  return ids;
+}
+
+/** One change a hand-made commit makes to its parent's tree. With no content and no mode, it takes the path out. */
+export interface Change {
+  readonly path: string;
+  readonly content?: string | Uint8Array;
+  readonly mode?: string;
+}
+
+/**
+ * Makes a commit by hand in a node's fork of a component, as a person who writes a patch
+ * does (R21). The fork gets the component from the repo `from` when it does not hold it
+ * yet. Returns the commit.
+ */
+export function forkCommit(at: Site, from: string, component: string, changes: readonly Change[], parent: string = component): string {
+  const fork = at.createRepo(`fork-${component}`);
+  try {
+    git(fork, ["cat-file", "-e", `${component}^{commit}`]);
+  } catch {
+    git(from, ["push", "--quiet", fork, `${component}:refs/heads/${TEAM_BRANCH}`]);
+  }
+  git(fork, ["read-tree", component]);
+  for (const change of changes) {
+    if (change.content === undefined && change.mode === undefined) {
+      // A line with mode 0 takes the path out of the index. A repo with no work tree takes no other form.
+      git(fork, ["update-index", "--index-info"], `0 ${"0".repeat(40)}\t${change.path}\n`);
+      continue;
+    }
+    // `<mode> blob <hash>`, a tab, the path. Nothing for a path the component does not hold.
+    const [mode = "", , held = ""] = git(fork, ["ls-tree", component, "--", change.path]).split(/[ \t]/);
+    const blob = change.content === undefined ? held : git(fork, ["hash-object", "-w", "--stdin"], change.content);
+    git(fork, ["update-index", "--add", "--cacheinfo", `${change.mode ?? (mode || "100644")},${blob},${change.path}`]);
+  }
+  const commit = git(fork, ["commit-tree", git(fork, ["write-tree"]), "-p", parent, "-m", "a patch by hand"]);
+  git(fork, ["update-ref", `refs/heads/patch/${component}/${commit}`, commit]);
+  return commit;
+}
+
+/** The files of a commit, as a node lists them. */
+function filesOf(repo: string, commit: string): { path: string; mode: string; blob: string }[] {
+  return git(repo, ["ls-tree", "-r", commit])
+    .split("\n")
+    .map((line) => {
+      const [entry = "", path = ""] = line.split("\t");
+      const [mode = "", , blob = ""] = entry.split(" ");
+      return { path, mode, blob };
+    });
+}
+
+/** The patch ID a commit amounts to on a component, as an honest index reports it. */
+export async function patchIdOf(repo: string, component: string, commit: string): Promise<string> {
+  const base = filesOf(repo, component);
+  return patchId(replacementsOf(base, changedPaths(base, filesOf(repo, commit))) ?? []);
 }
