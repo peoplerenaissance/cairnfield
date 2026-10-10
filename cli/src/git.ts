@@ -221,15 +221,15 @@ async function folderBytes(dir: string): Promise<number> {
 /**
  * Runs a transfer into the folder of a repo's objects, and ends it when the folder has
  * grown past the bound or the deadline has passed. Artifacts takes no partial-clone
- * filter, so Git cannot hold a transfer to a size itself (KTD33). Returns the run, or
- * which bound ended it.
+ * filter, so Git cannot hold a transfer to a size itself (KTD33). A transfer that a
+ * bound ended ends the command, with the bound's code.
  */
 async function bounded(
   io: Io,
   objects: string,
   bound: TransferBound,
   start: (signal: AbortSignal) => Promise<GitRun>,
-): Promise<GitRun | "fetch-too-large" | "fetch-too-slow"> {
+): Promise<GitRun> {
   const before = await folderBytes(objects);
   const tooLarge = async (): Promise<boolean> => (await folderBytes(objects)) - before > bound.bytes;
   const deadline = io.now() + bound.ms;
@@ -254,7 +254,7 @@ async function bounded(
   }
   // A transfer may end between two looks, so what it brought in is measured once more.
   if (ended === undefined && (await tooLarge())) ended = "fetch-too-large";
-  return ended ?? run;
+  return ended === undefined ? run : stop(EXIT.git, ended);
 }
 
 /** Runs work with a scratch repo, and deletes the repo afterwards. */
@@ -278,7 +278,6 @@ export async function withScratch<T>(io: Io, work: (scratch: Scratch) => Promise
       const run = options.bound
         ? await bounded(io, join(repo, "objects"), options.bound, (signal) => io.git(args, { ...call, signal }))
         : await io.git(args, call);
-      if (typeof run === "string") return stop(EXIT.git, run);
       if (run.overflowed) return stop(EXIT.failed, limit.error);
       if (run.code !== 0 && options.mayFail !== true) {
         scratch.report(run);
@@ -338,7 +337,7 @@ export async function commitChanges(
   // Git and the protocol must agree on every blob, or the commit is not what was checked.
   if (written.some((blob, at) => blob !== contents[at]?.[0])) stop(EXIT.git, "git-failed", { step: "hash-object" });
 
-  const index = join(await mkdtemp(join(scratch.dir, "index-")), "index");
+  const index = join(scratch.dir, "commit-index");
   await scratch.git("read-tree", ["read-tree", parent], { index });
   await scratch.git("update-index", ["update-index", "--index-info"], {
     index,

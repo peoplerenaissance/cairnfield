@@ -6,8 +6,18 @@
 // limit (KTD33). An answer is data. A refusal is a code from the service's closed list.
 // Assembly also reads from the nodes of other teams, through the same calls.
 
-import { ADMIN_REPO, INDEX_REFUSAL, MAX_LISTING_ENTRIES, MAX_RECORD_BYTES, NODE_REFUSAL, NODE_ROUTES, conforms } from "@cairnfield/protocol";
-import type { Infer, NodeListing, Route, ShapeKind } from "@cairnfield/protocol";
+import {
+  ADMIN_REPO,
+  INDEX_REFUSAL,
+  INDEX_ROUTES,
+  MAX_LISTING_ENTRIES,
+  MAX_RECORD_BYTES,
+  NODE_REFUSAL,
+  NODE_ROUTES,
+  conforms,
+  validateRecordFile,
+} from "@cairnfield/protocol";
+import type { Infer, NodeListing, RecordFileVerdict, Route, ShapeKind, View } from "@cairnfield/protocol";
 import { ADMIN_KEY, keyFrom } from "./config.ts";
 import type { Home } from "./config.ts";
 import { isArtifactsRemote } from "./git.ts";
@@ -102,7 +112,7 @@ async function call<R extends JsonRoute>(
 }
 
 /** Calls a node by its base URL. The node may be another team's. */
-export function callNodeAt<R extends JsonRoute>(io: Io, node: string, route: R, sent: Sent = {}) {
+function callNodeAt<R extends JsonRoute>(io: Io, node: string, route: R, sent: Sent = {}) {
   return call(io, node, route, NODE_REFUSAL, sent);
 }
 
@@ -152,6 +162,24 @@ export async function readRecordFile(io: Io, node: string, commit: string, path:
   }
 }
 
+/**
+ * Reads one record file of a node's team repo and holds it to its path. A record file's
+ * name is the hash of its content (KTD1), so a valid file at a path is that record,
+ * whichever node serves it. Returns nothing for a file the node does not serve.
+ */
+export async function readRecord(io: Io, node: string, commit: string, path: string): Promise<RecordFileVerdict | undefined> {
+  const content = await readRecordFile(io, node, commit, path);
+  return content === undefined ? undefined : validateRecordFile(path, content);
+}
+
+/** The index view of one component commit. A view of another commit ends the command. */
+export async function indexView(io: Io, index: string, component: string): Promise<View> {
+  const answer = await callIndex(io, index, INDEX_ROUTES.view, { params: { component } });
+  if (!answer.ok) return indexFailed(answer);
+  if (answer.body.component !== component) return stop(EXIT.index, "index-bad-answer");
+  return answer.body;
+}
+
 /** The node's admin key, from the environment. */
 export const adminKey = (io: Io): string => keyFrom(io, ADMIN_KEY);
 
@@ -188,6 +216,13 @@ export async function repoAccess(
   if (!answer.ok) return nodeFailed(answer);
   if (!isArtifactsRemote(answer.body.remote)) return stop(EXIT.node, "node-bad-answer");
   return { remote: answer.body.remote, token: answer.body.token };
+}
+
+/** Has the node make the fork of a component, waits until it is ready, and gets a token that writes to it. */
+export async function writableFork(io: Io, home: Home, key: string, component: string): Promise<Access> {
+  const fork = await untilReady(io, () => callNode(io, home, NODE_ROUTES.createFork, { key, body: { component } }));
+  if (!fork.ok) return nodeFailed(fork);
+  return repoAccess(io, home, { repo: "fork", component, scope: "write" });
 }
 
 /**

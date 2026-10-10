@@ -5,7 +5,7 @@
 // command keeps its own files in `.cairnfield/` beside the config file.
 
 import { readFile, realpath } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { MODELS, conforms, field, isIndexUrl, isToken } from "@cairnfield/protocol";
 import type { Infer, Model } from "@cairnfield/protocol";
 import type { Io } from "./io.ts";
@@ -67,7 +67,7 @@ export interface Home {
  * one counts too. Both hold a component's own files under their own names, and none of
  * them is the operator's.
  */
-export async function inCheckout(file: string): Promise<boolean> {
+export async function amongComponentFiles(file: string): Promise<boolean> {
   let real = file;
   try {
     real = await realpath(file);
@@ -82,7 +82,7 @@ export async function loadHome(io: Io, named: string | undefined): Promise<Home>
   const file = resolve(io.cwd, named ?? CONFIG_FILE);
   // A config file found in a checkout is the component's, and it could name a node of its
   // author's choosing.
-  if (await inCheckout(file)) return stop(EXIT.usage, "bad-config");
+  if (await amongComponentFiles(file)) return stop(EXIT.usage, "bad-config");
   let text: string;
   try {
     text = await readFile(file, "utf8");
@@ -110,6 +110,9 @@ export async function loadHome(io: Io, named: string | undefined): Promise<Home>
     recordings: resolve(root, recordings ?? join(STATE_FOLDER, "recordings")),
   };
 }
+
+/** A path as the command prints it: from the config file's folder, with forward slashes. */
+export const shownPath = (home: Home, file: string): string => relative(home.root, file).split(sep).join("/");
 
 /** Reads a key from the environment. It travels in a header, so it must be able to. */
 export function keyFrom(io: Io, name: string): string {

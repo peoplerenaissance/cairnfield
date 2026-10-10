@@ -10,7 +10,7 @@ import { EXIT } from "../../src/outcome.ts";
 import { run } from "../../src/run.ts";
 import { FIXTURES, INDEX, NODE, OTHER_NODE, bench, commitEntries, git, pinned, published, saveOutbox } from "../support.ts";
 import type { Bench, Entry } from "../support.ts";
-import { COPIES, RULES, TREE, bothRules, copied, otherTeam, ownPatch, patchBy, pinnedWith, printed, refsOf, rules, serveView, text } from "./team.ts";
+import { COPIES, NARROWED, RULES, TREE, bothRules, copied, otherTeam, ownPatch, patchBy, pinnedWith, printed, refsOf, rules, serveView, text } from "./team.ts";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -33,7 +33,7 @@ const withRules = (content: string): Entry[] => TREE.map((entry) => (entry.path.
 describe("the copy assemble builds", () => {
   it("holds two patches on adjoining lines of one content", async () => {
     const component = await pinnedWith(on, { patchLevel: 1 });
-    const third = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(rules({ 3: "allow fetch notes.fellbeck.example" })) });
+    const third = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(NARROWED) });
     const fourth = await ownPatch(on, component, { cites: [[4, 4]], changes: bothRules(rules({ 4: ["allow run sync --dry", "allow run sync --once"] })) });
 
     const outcome = await on.run("assemble", component);
@@ -61,7 +61,7 @@ describe("the copy assemble builds", () => {
 
   it("is refused when two patches change the same line, and the output names both", async () => {
     const component = await pinnedWith(on, { patchLevel: 1 });
-    const one = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(rules({ 3: "allow fetch notes.fellbeck.example" })) });
+    const one = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(NARROWED) });
     const two = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(rules({ 3: undefined })) });
 
     const outcome = await on.run("assemble", component);
@@ -86,7 +86,7 @@ describe("the copy assemble builds", () => {
   it("has one tree hash for two teams with the same patches, whichever team wrote which (AE6)", async () => {
     const component = await pinnedWith(on, { patchLevel: 2, teams: [OTHER_NODE] });
     const other = otherTeam(on);
-    const ours = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(rules({ 3: "allow fetch notes.fellbeck.example" })) });
+    const ours = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(NARROWED) });
     const theirs = await patchBy(on, other, OTHER_NODE, component, { cites: [[4, 4]], changes: bothRules(rules({ 4: undefined })) });
     serveView(on, component, [ours, theirs]);
 
@@ -131,7 +131,7 @@ describe("the copy assemble builds", () => {
 describe("the diff assemble prints", () => {
   it("holds every changed line of the copy and nothing else", async () => {
     const component = await pinnedWith(on, { patchLevel: 1 });
-    await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(rules({ 3: "allow fetch notes.fellbeck.example" })) });
+    await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(NARROWED) });
     await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
     on.warnings.length = 0;
 
@@ -189,7 +189,7 @@ describe("a lens that does not publish recipes", () => {
 describe("a lens that publishes recipes", () => {
   it("pushes the copy to its ref in the fork and publishes a recipe that names the patches and the tree", async () => {
     const component = await pinnedWith(on, { patchLevel: 1, publishRecipes: true });
-    const one = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(rules({ 3: "allow fetch notes.fellbeck.example" })) });
+    const one = await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(NARROWED) });
     const two = await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
 
     const outcome = await on.run("assemble", component);
@@ -207,7 +207,7 @@ describe("a lens that publishes recipes", () => {
 
   it("moves the copy's ref when the selection changes", async () => {
     const component = await pinnedWith(on, { patchLevel: 1, publishRecipes: true });
-    await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(rules({ 3: "allow fetch notes.fellbeck.example" })) });
+    await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(NARROWED) });
     const first = await on.run("assemble", component);
     await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
 

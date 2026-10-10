@@ -5,24 +5,9 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EXIT } from "../../src/outcome.ts";
-import { INDEX, NODE, OTHER_NODE, bench, published, remoteOf } from "../support.ts";
+import { INDEX, NODE, OTHER_NODE, THIRD_NODE, bench, published, remoteOf } from "../support.ts";
 import type { Bench } from "../support.ts";
-import {
-  COPIES,
-  OTHER_NAMESPACE,
-  THIRD_NAMESPACE,
-  THIRD_NODE,
-  bothRules,
-  copied,
-  otherTeam,
-  ownPatch,
-  patchBy,
-  pinnedWith,
-  refsOf,
-  rules,
-  serveView,
-  useLens,
-} from "./team.ts";
+import { COPIES, NARROWED, OTHER_NAMESPACE, bothRules, copied, otherTeam, ownPatch, patchBy, pinnedWith, refsOf, rules, serveView, thirdTeam, useLens } from "./team.ts";
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -34,7 +19,6 @@ afterEach(() => {
   on.dispose();
 });
 
-const NARROWED = rules({ 3: "allow fetch notes.fellbeck.example" });
 const hostsAsked = (): string[] => [...new Set(on.requests.map((seen) => new URL(seen.url).origin))];
 
 describe("assemble at level 0", () => {
@@ -114,7 +98,7 @@ describe("assemble at level 2", () => {
   it("does not select a valid patch of a node the lens does not name, and asks that node nothing (AE15)", async () => {
     const component = await pinnedWith(on, { patchLevel: 2, teams: [OTHER_NODE] });
     const named = await patchBy(on, otherTeam(on), OTHER_NODE, component, { cites: [[3, 3]], changes: bothRules(NARROWED) });
-    const unnamed = await patchBy(on, on.another(THIRD_NODE, THIRD_NAMESPACE), THIRD_NODE, component, {
+    const unnamed = await patchBy(on, thirdTeam(on), THIRD_NODE, component, {
       cites: [[5, 5]],
       changes: bothRules(rules({ 5: undefined })),
     });

@@ -7,13 +7,13 @@
 // else is done with it. What comes back are candidates. None is in the copy until its
 // commit was fetched and checked (see `verify.ts`).
 
-import { INDEX_ROUTES, parseRecordPath, validateRecordFile } from "@cairnfield/protocol";
+import { parseRecordPath } from "@cairnfield/protocol";
 import type { NodeListing, View } from "@cairnfield/protocol";
 import type { Home } from "../config.ts";
 import type { Io } from "../io.ts";
 import type { Lens } from "../lens.ts";
 import { EXIT, stop } from "../outcome.ts";
-import { callIndex, indexFailed, readRecordFile } from "../services.ts";
+import { indexView, readRecord } from "../services.ts";
 
 /** A patch that the lens lets in, as a record announced it. */
 export interface Candidate {
@@ -41,6 +41,14 @@ export interface Selection {
   readonly refused: readonly Refusal[];
 }
 
+/** The teams whose patches a lens lets in beside the team's own: those it names, at level 2. */
+export function namedTeams(lens: Lens, own: string): string[] {
+  return lens.patchLevel === 2 ? lens.teams.filter((team) => team !== own) : [];
+}
+
+/** How many record files are read from the node at once. */
+const READS_AT_ONCE = 8;
+
 /**
  * The patch records of one component in the team's own repo. The node validates nothing,
  * so each file is held to its name, which is the hash of its content (KTD1).
@@ -50,15 +58,21 @@ async function ownCandidates(io: Io, home: Home, component: string, held: NodeLi
   const candidates: Candidate[] = [];
   const refused: Refusal[] = [];
   if (!held) return { candidates, refused };
-  for (const { path } of held.records) {
+  const patches = held.records.flatMap(({ path }) => {
     const named = parseRecordPath(path);
-    if (named?.component !== component || named.type !== "patch") continue;
-    const content = await readRecordFile(io, node, held.head, path);
-    const file = content === undefined ? undefined : await validateRecordFile(path, content);
-    if (file?.ok && file.record.type === "patch") {
-      candidates.push({ node, record: named.id, commit: file.record.commit, findings: file.record.findings });
-    } else {
-      refused.push({ node, record: named.id, reason: file && !file.ok ? file.reason : "unresolved-reference" });
+    return named?.component === component && named.type === "patch" ? [{ path, id: named.id }] : [];
+  });
+  // A few at a time, and each batch in the listing's order, so two runs give the same lists.
+  for (let at = 0; at < patches.length; at += READS_AT_ONCE) {
+    const batch = patches.slice(at, at + READS_AT_ONCE);
+    const files = await Promise.all(batch.map(({ path }) => readRecord(io, node, held.head, path)));
+    for (const [which, { id }] of batch.entries()) {
+      const file = files[which];
+      if (file?.ok && file.record.type === "patch") {
+        candidates.push({ node, record: id, commit: file.record.commit, findings: file.record.findings });
+      } else {
+        refused.push({ node, record: id, reason: file && !file.ok ? file.reason : "unresolved-reference" });
+      }
     }
   }
   return { candidates, refused };
@@ -89,10 +103,7 @@ export async function select(io: Io, home: Home, lens: Lens, component: string, 
 
   const { index, node } = home.config;
   if (index === undefined) return stop(EXIT.noIndex, "no-index");
-  const answer = await callIndex(io, index, INDEX_ROUTES.view, { params: { component } });
-  if (!answer.ok) return indexFailed(answer);
-  if (answer.body.component !== component) return stop(EXIT.index, "index-bad-answer");
   // The team's own patches are read from its own repo, whatever the index says of them.
-  const named = new Set(lens.teams.filter((team) => team !== node));
-  return { candidates: [...own.candidates, ...namedCandidates(answer.body, named)], refused: own.refused };
+  const named = namedCandidates(await indexView(io, index, component), new Set(namedTeams(lens, node)));
+  return { candidates: [...own.candidates, ...named], refused: own.refused };
 }

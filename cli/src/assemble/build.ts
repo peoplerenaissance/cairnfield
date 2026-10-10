@@ -199,6 +199,12 @@ const MAX_COPY_LINES = MAX_RECIPE_PATCHES * MAX_PATCH_LINES;
 export function renderDiff(files: FileListing, changes: readonly FileEntry[], contentOf: (blob: string) => Uint8Array | undefined): string {
   const pinned = new Map(files.map((file) => [file.path, file]));
   const out: string[] = [];
+  const print = (sign: string, lines: readonly Uint8Array[], start: number, count: number): void => {
+    for (const line of lines.slice(start - 1, start - 1 + count)) {
+      out.push(`${sign}${shown(line)}`);
+      if (line[line.length - 1] !== LINE_FEED) out.push("\\ No newline at end of file");
+    }
+  };
   for (const { path, mode, blob } of changes) {
     const old = pinned.get(path);
     if (!old) return stop(EXIT.failed, "assembly-failed");
@@ -210,12 +216,6 @@ export function renderDiff(files: FileListing, changes: readonly FileEntry[], co
     const after = deleted ? new Uint8Array(0) : contentOf(blob);
     const diff = before && after ? diffLines(before, after, MAX_COPY_LINES) : undefined;
     if (!before || !after || !diff) return stop(EXIT.failed, "assembly-failed");
-    const print = (sign: string, lines: readonly Uint8Array[], start: number, count: number): void => {
-      for (const line of lines.slice(start - 1, start - 1 + count)) {
-        out.push(`${sign}${shown(line)}`);
-        if (line[line.length - 1] !== LINE_FEED) out.push("\\ No newline at end of file");
-      }
-    };
     const removed = splitLines(before);
     const added = splitLines(after);
     for (const hunk of diff.hunks) {

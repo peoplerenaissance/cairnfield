@@ -10,15 +10,14 @@
 // team, and it pushes nothing: the command does (R18, R19).
 
 import { readFile } from "node:fs/promises";
-import { relative, sep } from "node:path";
-import { NODE_ROUTES, SCHEMA_VERSION, isSha256, recordPath, validateRecordFile } from "@cairnfield/protocol";
+import { SCHEMA_VERSION, isSha256, recordPath } from "@cairnfield/protocol";
 import type { Finding, Model, Patch } from "@cairnfield/protocol";
 import { MODEL_KEY, runAgent } from "../agents/live.ts";
 import { readRecording, recordingFile, saveRecording } from "../agents/replay.ts";
 import { checkoutTools } from "../agents/tools.ts";
 import { readListing } from "../checkout.ts";
 import type { Listing } from "../checkout.ts";
-import { DEFAULT_MODEL, keyFrom } from "../config.ts";
+import { DEFAULT_MODEL, keyFrom, shownPath } from "../config.ts";
 import type { Home } from "../config.ts";
 import { fetchCommit, withScratch } from "../git.ts";
 import type { Io } from "../io.ts";
@@ -28,7 +27,7 @@ import type { Outcome } from "../outcome.ts";
 import { commitPatch, pushPatch } from "../patch/commit.ts";
 import { ANSWER_SCHEMA, draftPatch } from "../patch/edits.ts";
 import type { Drafted } from "../patch/edits.ts";
-import { adminKey, callNode, nodeFailed, nodeListing, readRecordFile, repoAccess, untilReady } from "../services.ts";
+import { adminKey, nodeFailed, nodeListing, readRecord, writableFork } from "../services.ts";
 import { claim } from "./claim.ts";
 import { publish } from "./publish.ts";
 import { verdict } from "./validate.ts";
@@ -88,7 +87,7 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
   if (finding?.type !== "finding") return unknown();
 
   const file = recordingFile(home, team, component, id);
-  const recording = relative(home.root, file).split(sep).join("/");
+  const recording = shownPath(home, file);
   const recorded = request.replay ? await readRecording(file, component, id) : undefined;
   if (request.replay && !recorded) return stop(EXIT.failed, "no-recording", { recording });
   // Both keys are read before anything is published, so a run that lacks one leaves no claim behind.
@@ -103,8 +102,7 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
   const held = await nodeListing(io, home.config.node);
   if (!held.ok) return held.error === "refused" && held.reason === "not-found" ? unknown() : nodeFailed(held);
   if (!held.body.records.some((record) => record.path === path)) return unknown();
-  const published = await readRecordFile(io, home.config.node, held.body.head, path);
-  if (!published || !(await validateRecordFile(path, published)).ok) return unknown();
+  if (!(await readRecord(io, home.config.node, held.body.head, path))?.ok) return unknown();
 
   // A replay publishes the claim with the number its recording holds (Appendix H).
   const claimed = await claim(io, home, {
@@ -133,9 +131,7 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
       await saveRecording(file, { version: SCHEMA_VERSION, component, finding: id, claim: made.number, model, edits: [...drafted.edits] });
     }
 
-    const fork = await untilReady(io, () => callNode(io, home, NODE_ROUTES.createFork, { key, body: { component } }));
-    if (!fork.ok) return nodeFailed(fork);
-    const access = await repoAccess(io, home, { repo: "fork", component, scope: "write" });
+    const access = await writableFork(io, home, key, component);
     const { patchId, kind, size, paths } = drafted.facts;
     const commit = await withScratch(io, async (scratch) => {
       await fetchCommit(scratch, access, component);

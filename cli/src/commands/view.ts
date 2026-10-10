@@ -10,14 +10,14 @@
 // content a path holds. This command shows work. Assembly fetches a patch from its node
 // and checks it there (KTD23).
 
-import { INDEX_ROUTES, hunksTouch, isConfirmed, matchGroups, patchConfirmations } from "@cairnfield/protocol";
+import { hunksTouch, isConfirmed, matchGroups, patchConfirmations } from "@cairnfield/protocol";
 import type { Sourced, View } from "@cairnfield/protocol";
 import type { Home } from "../config.ts";
 import type { Io } from "../io.ts";
 import { loadLens } from "../lens.ts";
 import { EXIT, done, stop } from "../outcome.ts";
 import type { Outcome } from "../outcome.ts";
-import { callIndex, indexFailed } from "../services.ts";
+import { indexView } from "../services.ts";
 
 type FindingGroup = View["findings"][number];
 type Patch = View["patches"][number]["patches"][number];
@@ -126,8 +126,5 @@ export async function view(io: Io, home: Home, component: string): Promise<Outco
   if (index === undefined) return stop(EXIT.noIndex, "no-index");
   // The nodes whose work counts for the team: its own, and those its lens names.
   const counted = new Set([home.config.node, ...(await loadLens(home)).teams]);
-  const answer = await callIndex(io, index, INDEX_ROUTES.view, { params: { component } });
-  if (!answer.ok) return indexFailed(answer);
-  if (answer.body.component !== component) return stop(EXIT.index, "index-bad-answer");
-  return done(throughLens(answer.body, counted));
+  return done(throughLens(await indexView(io, index, component), counted));
 }

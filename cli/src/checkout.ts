@@ -98,7 +98,8 @@ function collisions(paths: readonly string[]): ReadonlySet<string> {
   return colliding;
 }
 
-function decoded(path: Uint8Array): string | undefined {
+/** A path of a tree as text, or nothing when its bytes are no UTF-8. */
+export function decoded(path: Uint8Array): string | undefined {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(path);
   } catch {

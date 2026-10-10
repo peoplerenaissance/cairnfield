@@ -7,12 +7,11 @@ import { join } from "node:path";
 import { SCHEMA_VERSION, recordPath } from "@cairnfield/protocol";
 import type { AnyRecord } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
-import { INDEX, NODE, OTHER_NODE, finding, forkCommit, git, holdRecords, patchIdOf, pinTree } from "../support.ts";
+import { INDEX, NODE, OTHER_NODE, THIRD_NODE, finding, forkCommit, git, holdRecords, patchIdOf, pinTree } from "../support.ts";
 import type { Bench, Change, Entry, Site } from "../support.ts";
 
-export const THIRD_NODE = "https://node.team-c.example";
 export const OTHER_NAMESPACE = "cairnfield-team-b";
-export const THIRD_NAMESPACE = "cairnfield-team-c";
+const THIRD_NAMESPACE = "cairnfield-team-c";
 
 export const RULES = ["allow read notes", "allow write notes", "allow fetch *", "allow run sync", "allow read env"];
 export const text = (lines: readonly string[]): string => lines.map((line) => `${line}\n`).join("");
@@ -29,6 +28,9 @@ export const TREE: readonly Entry[] = [
 export function rules(replaced: { readonly [line: number]: string | readonly string[] | undefined }): string {
   return text(RULES.flatMap((line, at) => (Object.hasOwn(replaced, at + 1) ? (replaced[at + 1] ?? []) : line)));
 }
+
+/** The rules with the third narrowed to one host: a change of one line. */
+export const NARROWED = rules({ 3: "allow fetch notes.fellbeck.example" });
 
 /** Both paths of the rules file, with new content. A patch must rewrite every copy (R24). */
 export const bothRules = (content: string): Change[] => [
@@ -97,6 +99,8 @@ export const ownPatch = (on: Bench, component: string, wanted: Wanted): Promise<
 
 /** The node of the second team, which a lens may name. */
 export const otherTeam = (on: Bench): Site => on.another(OTHER_NODE, OTHER_NAMESPACE);
+/** The node of a third team, which no lens here names. */
+export const thirdTeam = (on: Bench): Site => on.another(THIRD_NODE, THIRD_NAMESPACE);
 
 /**
  * The view an index serves for a component: each patch as one entry, with the patch ID

@@ -11,7 +11,7 @@ import { EXIT } from "../../src/outcome.ts";
 import { run } from "../../src/run.ts";
 import { NODE, OTHER_NODE, TOKEN, bench, forkCommit, holdRecords, remoteOf } from "../support.ts";
 import type { Bench, Site } from "../support.ts";
-import { COPIES, OTHER_NAMESPACE, bothRules, copied, otherTeam, ownPatch, patchBy, pinnedWith, rules, serveView } from "./team.ts";
+import { COPIES, NARROWED, OTHER_NAMESPACE, bothRules, copied, otherTeam, ownPatch, patchBy, pinnedWith, rules, serveView } from "./team.ts";
 import type { Made, Wanted } from "./team.ts";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -28,7 +28,6 @@ afterEach(() => {
   on.dispose();
 });
 
-const NARROWED = rules({ 3: "allow fetch notes.fellbeck.example" });
 const theirs = (wanted: Wanted): Promise<Made> => patchBy(on, other, OTHER_NODE, component, wanted);
 const forkOfTheirs = (): string => remoteOf(`fork-${component}`, OTHER_NAMESPACE);
 

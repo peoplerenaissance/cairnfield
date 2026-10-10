@@ -11,15 +11,15 @@
 // publishes recipes has the command push the copy to the team's fork and publish a
 // recipe record. A team that does not publish recipes publishes nothing about its copy.
 
-import { relative, sep } from "node:path";
-import { DELETED_BLOB, DELETED_MODE, MAX_RECIPE_PATCHES, NODE_ROUTES, SCHEMA_VERSION, recordPath } from "@cairnfield/protocol";
+import { DELETED_BLOB, DELETED_MODE, MAX_RECIPE_PATCHES, SCHEMA_VERSION, recordPath } from "@cairnfield/protocol";
 import type { Recipe } from "@cairnfield/protocol";
 import { compose, renderDiff } from "../assemble/build.ts";
-import { select } from "../assemble/select.ts";
+import { namedTeams, select } from "../assemble/select.ts";
 import type { Refusal } from "../assemble/select.ts";
 import { verify } from "../assemble/verify.ts";
 import type { Assembly, Verified } from "../assemble/verify.ts";
-import { citedFileReader, readListing } from "../checkout.ts";
+import { citedFileReader, decoded, readListing } from "../checkout.ts";
+import { shownPath } from "../config.ts";
 import type { Home } from "../config.ts";
 import { copyDir, dropCopy, saveCopy } from "../copy.ts";
 import type { Copy } from "../copy.ts";
@@ -30,14 +30,14 @@ import { loadLens } from "../lens.ts";
 import { addRecord } from "../outbox.ts";
 import { EXIT, done, outcomeOf, stop } from "../outcome.ts";
 import type { Outcome } from "../outcome.ts";
-import { adminKey, callNode, nodeFailed, nodeListing, repoAccess, untilReady } from "../services.ts";
+import { adminKey, nodeFailed, nodeListing, repoAccess, writableFork } from "../services.ts";
 import { publish } from "./publish.ts";
 
 const MESSAGE = "Cairnfield copy";
 /** A ref of the scratch repo for the pinned commit. A fetch names what the repo's refs hold, so a fork sends only what its patch adds. */
 const PINNED_REF = "refs/cairnfield/pinned";
 /** The list of paths the copy changes is read up to this size. The command built the copy, so the list is its own. */
-const MAX_CHANGES_BYTES = 64 * 1024 * 1024;
+const MAX_BUILT_CHANGES_BYTES = 64 * 1024 * 1024;
 
 /** The branch of a fork that holds the team's copy of a component. */
 export const copyRef = (component: string): string => `refs/heads/copy/${component}`;
@@ -49,9 +49,7 @@ export const copyRef = (component: string): string => `refs/heads/copy/${compone
  */
 async function publishCopy(io: Io, home: Home, scratch: Scratch, key: string, copy: Copy): Promise<Outcome> {
   const { component, commit, patches, tree } = copy;
-  const fork = await untilReady(io, () => callNode(io, home, NODE_ROUTES.createFork, { key, body: { component } }));
-  if (!fork.ok) return nodeFailed(fork);
-  const access = await repoAccess(io, home, { repo: "fork", component, scope: "write" });
+  const access = await writableFork(io, home, key, component);
   await scratch.git("push", ["push", "--porcelain", "--force", access.remote, `${commit}:${copyRef(component)}`], { access });
 
   const record: Recipe = { version: SCHEMA_VERSION, type: "recipe", component, patches: [...patches], tree };
@@ -91,8 +89,9 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
       listing,
       scratch,
       files: citedFileReader(home, listing),
-      counted: [node, ...(level === 2 ? lens.teams.filter((team) => team !== node) : [])],
+      counted: [node, ...namedTeams(lens, node)],
       listings: new Map([[node, Promise.resolve(records)]]),
+      forks: new Map(),
     };
 
     // Two teams may have written the same patch. One of them is enough, and the team's own comes first.
@@ -123,9 +122,9 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
 
     // The diff is of the commit that was built: Git is asked which paths it changes, and
     // they must be the changes that were composed.
-    const built = await diffTrees(scratch, component, commit, { bytes: MAX_CHANGES_BYTES, error: "git-output-too-large" });
+    const built = await diffTrees(scratch, component, commit, { bytes: MAX_BUILT_CHANGES_BYTES, error: "git-output-too-large" });
     const entry = (path: string, mode: string, blob: string): string => `${mode} ${blob} ${path}`;
-    const inCommit = built.map((change) => entry(new TextDecoder().decode(change.path), change.new?.mode ?? DELETED_MODE, change.new?.hash ?? DELETED_BLOB));
+    const inCommit = built.map((change) => entry(decoded(change.path) ?? "", change.new?.mode ?? DELETED_MODE, change.new?.hash ?? DELETED_BLOB));
     const intended = composed.changes.map(({ path, mode, blob }) => entry(path, mode, blob));
     if (inCommit.sort().join("\n") !== intended.sort().join("\n")) return stop(EXIT.failed, "assembly-failed");
     const content = new Map<string, Uint8Array>(composed.blobs);
@@ -143,7 +142,7 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
         skipped,
         tree: copy.tree,
         commit,
-        copy: relative(home.root, copyDir(home, component)).split(sep).join("/"),
+        copy: shownPath(home, copyDir(home, component)),
         paths: composed.changes.map(({ path }) => path),
         ...published.output,
       },

@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { PATCH_KINDS, conforms, field } from "@cairnfield/protocol";
 import type { Infer } from "@cairnfield/protocol";
-import { inCheckout } from "./config.ts";
+import { amongComponentFiles } from "./config.ts";
 import type { Home } from "./config.ts";
 import { EXIT, stop } from "./outcome.ts";
 
@@ -60,7 +60,7 @@ export async function loadLens(home: Home): Promise<Lens> {
   if (home.config.lens === undefined) return stop(EXIT.usage, "no-lens");
   const file = resolve(home.root, home.config.lens);
   // A lens says whose work counts. One read from a checkout would be the component's own say.
-  if (await inCheckout(file)) return stop(EXIT.usage, "bad-lens", { reason: "in-checkout" });
+  if (await amongComponentFiles(file)) return stop(EXIT.usage, "bad-lens", { reason: "in-checkout" });
   let text: string;
   try {
     text = await readFile(file, "utf8");

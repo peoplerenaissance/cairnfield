@@ -31,6 +31,7 @@ import { run } from "../src/run.ts";
 export const FIXTURES = fileURLToPath(new URL("../../fixtures/", import.meta.url));
 export const NODE = "https://node.team-a.example";
 export const OTHER_NODE = "https://node.team-b.example";
+export const THIRD_NODE = "https://node.team-c.example";
 export const INDEX = "https://index.cairnfield.example";
 export const ACCOUNT = "0123456789abcdef0123456789abcdef";
 export const NAMESPACE = "cairnfield-team-a";

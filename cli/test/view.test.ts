@@ -8,10 +8,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SCHEMA_VERSION, VIEW, conforms, recordId, recordPath } from "@cairnfield/protocol";
 import type { AnyRecord } from "@cairnfield/protocol";
 import { EXIT } from "../src/outcome.ts";
-import { FIXTURES, INDEX, NODE, OTHER_NODE, bench } from "./support.ts";
+import { FIXTURES, INDEX, NODE, OTHER_NODE, THIRD_NODE, bench } from "./support.ts";
 import type { Bench } from "./support.ts";
 
-const THIRD_NODE = "https://node.team-c.example";
 const COMPONENT = "1f".repeat(20);
 const HEAD = "2e".repeat(20);
 const BLOB = "3d".repeat(20);

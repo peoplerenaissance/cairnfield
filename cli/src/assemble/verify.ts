@@ -28,15 +28,16 @@ import {
   recordPath,
   replacementsOf,
   validateAgainstFiles,
-  validateRecordFile,
 } from "@cairnfield/protocol";
 import type { CitedFiles, FileEntry, Finding, NodeListing, PatchFacts } from "@cairnfield/protocol";
+import { decoded } from "../checkout.ts";
 import type { Listing } from "../checkout.ts";
 import { blobSizes, diffTrees, fetchCommit, parentsOf, readBlobs } from "../git.ts";
-import type { Scratch, TransferBound } from "../git.ts";
+import type { Access, Scratch, TransferBound } from "../git.ts";
 import type { Io } from "../io.ts";
 import { EXIT, Stop, stop } from "../outcome.ts";
-import { forkAccess, nodeListing, readRecordFile } from "../services.ts";
+import { forkAccess, nodeListing, readRecord } from "../services.ts";
+import type { Answer } from "../services.ts";
 import type { Candidate } from "./select.ts";
 
 /** A fetch from another team's fork brings in at most the protocol's limit, and runs for at most two minutes. */
@@ -59,6 +60,8 @@ export interface Assembly {
   readonly counted: readonly string[];
   /** The listing of each node's team repo, asked for once. Nothing for a node that gave none. */
   readonly listings: Map<string, Promise<NodeListing | undefined>>;
+  /** The read token of each node's fork of the component, asked for once. */
+  readonly forks: Map<string, Promise<Answer<Access>>>;
 }
 
 /** A candidate that passed every check, with what the copy is built from. */
@@ -87,13 +90,18 @@ async function attempt<T>(step: () => Promise<T>): Promise<{ readonly ok: true; 
   }
 }
 
+/** Asks a node for something once in a run, however many candidates it holds. */
+function once<T>(asked: Map<string, Promise<T>>, node: string, ask: () => Promise<T>): Promise<T> {
+  const answer = asked.get(node) ?? ask();
+  asked.set(node, answer);
+  return answer;
+}
+
 function listingOf(run: Assembly, node: string): Promise<NodeListing | undefined> {
-  let asked = run.listings.get(node);
-  if (!asked) {
-    asked = nodeListing(run.io, node).then((answer) => (answer.ok ? answer.body : undefined));
-    run.listings.set(node, asked);
-  }
-  return asked;
+  return once(run.listings, node, async () => {
+    const answer = await nodeListing(run.io, node);
+    return answer.ok ? answer.body : undefined;
+  });
 }
 
 /**
@@ -111,8 +119,7 @@ async function findingsOf(run: Assembly, candidate: Candidate): Promise<Finding[
     for (const node of nodes) {
       const held = await listingOf(run, node);
       if (!held?.records.some((record) => record.path === path)) continue;
-      const content = await readRecordFile(run.io, node, held.head, path);
-      const file = content === undefined ? undefined : await validateRecordFile(path, content);
+      const file = await readRecord(run.io, node, held.head, path);
       if (file?.ok && file.record.type === "finding") {
         found = file.record;
         break;
@@ -122,18 +129,6 @@ async function findingsOf(run: Assembly, candidate: Candidate): Promise<Finding[
     findings.push(found);
   }
   return findings;
-}
-
-const UTF8 = new TextDecoder("utf-8", { fatal: true });
-
-/** A path of a tree as text, or nothing when it is no path the protocol accepts. */
-function pathOf(bytes: Uint8Array): string | undefined {
-  try {
-    const path = UTF8.decode(bytes);
-    return isPath(path) ? path : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /** Fetches a candidate's commit and checks it as a patch on the pinned commit. */
@@ -147,12 +142,12 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   if (!named.ok) return refuse(named.reason);
   if (!named.value) return refuse("unresolved-reference");
   for (const finding of named.value) {
-    const held = validateAgainstFiles(finding, await run.files(citedPaths(finding)));
-    if (!held.ok) return refuse(held.reason);
+    const valid = validateAgainstFiles(finding, await run.files(citedPaths(finding)));
+    if (!valid.ok) return refuse(valid.reason);
   }
   const cited = citedRanges(named.value, listing.files);
 
-  const access = await forkAccess(io, candidate.node, component);
+  const access = await once(run.forks, candidate.node, () => forkAccess(io, candidate.node, component));
   if (!access.ok) return refuse(`node-${access.error}`);
   const fetched = await attempt(async () => {
     // The team's own fork is its own. Another team's is held to a size and a deadline.
@@ -167,8 +162,8 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   const held = new Map(listing.files.map((file) => [file.path, file]));
   const changes: FileEntry[] = [];
   for (const change of fetched.value) {
-    const path = pathOf(change.path);
-    if (path === undefined) return refuse("bad-path");
+    const path = decoded(change.path);
+    if (path === undefined || !isPath(path)) return refuse("bad-path");
     // What a patch changes must be a file of the checkout. The pinned tree may hold more:
     // a link, a submodule entry, a path the checkout refuses. No finding can cite one.
     const file = held.get(path);
@@ -198,12 +193,11 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   const added = [...new Set(rewritten.filter(({ newMode }) => newMode !== DELETED_MODE).map(({ newBlob }) => newBlob))];
   const after = await attempt(async () => {
     const sizes = await blobSizes(scratch, added);
-    if (added.some((blob) => !sizes.has(blob))) return "blob-mismatch";
-    if (added.some((blob) => (sizes.get(blob) ?? 0) > MAX_BLOB_BYTES)) return "too-large";
+    if (added.some((blob) => !sizes.has(blob))) return stop(EXIT.invalid, "blob-mismatch");
+    if (added.some((blob) => (sizes.get(blob) ?? 0) > MAX_BLOB_BYTES)) return stop(EXIT.invalid, "too-large");
     return readBlobs(scratch, added, added.reduce((sum, blob) => sum + (sizes.get(blob) ?? 0), 0));
   });
   if (!after.ok) return refuse(after.reason);
-  if (typeof after.value === "string") return refuse(after.value);
 
   const checked = await checkPatch({
     base: { files: listing.files, content: before },
