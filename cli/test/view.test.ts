@@ -236,21 +236,33 @@ describe("view", () => {
     }
   });
 
-  it("no longer shows two patches side by side when the patch between them is gone", async () => {
-    on.configure({ node: NODE, index: INDEX, lens: "lenses/team-a-names-b.json" });
-    const patch = async (node: string, id: string, oldStart: number, removed: number) => ({
+  /** A patch record of a node for these findings. `id` tells its commit from another's. */
+  const patchRecord = (node: string, id: string, findings: readonly string[]) =>
+    from(node, { ...common, type: "patch", commit: id.repeat(40), findings: [...findings].sort(), model: "other" });
+
+  /** A patch entry of the fake index with these records, which removes lines of `plugin.json`. */
+  const patch = (id: string, oldStart: number, removed: number, records: readonly { readonly node: string }[]) => {
+    const nodes = [...new Set(records.map(({ node }) => node))].sort();
+    return {
       patchId: id.repeat(64),
       kind: "removes-only",
       size: removed,
       changes: [{ blob: BLOB, hunks: [{ oldStart, removed, newStart: oldStart, added: 0 }] }],
       paths: ["plugin.json"],
-      records: [await from(node, { ...common, type: "patch", commit: HEAD, findings: [id.repeat(64)], model: "other" })],
+      records,
       rechecks: [],
-      nodes: [node],
-      confirmed: false,
-    });
+      nodes,
+      confirmed: nodes.length > 1,
+    };
+  };
+
+  it("no longer shows two patches side by side when the patch between them is gone", async () => {
+    on.configure({ node: NODE, index: INDEX, lens: "lenses/team-a-names-b.json" });
+    // Each patch is for a finding that the team published itself, so the lens keeps the finding.
+    const hidden = await recordId(HIDDEN);
+    const one = async (node: string, id: string, oldStart: number, removed: number) => patch(id, oldStart, removed, [await patchRecord(node, id, [hidden])]);
     const other = "5b".repeat(20);
-    const group = { patches: [await patch(NODE, "1", 1, 2), await patch(THIRD_NODE, "2", 3, 6), await patch(OTHER_NODE, "3", 9, 2)] };
+    const group = { patches: [await one(NODE, "1", 1, 2), await one(THIRD_NODE, "2", 3, 6), await one(OTHER_NODE, "3", 9, 2)] };
     on.index.views.set(other, { ...(await served()), component: other, patches: [group] });
 
     const { output } = await on.run("view", other);
@@ -258,6 +270,30 @@ describe("view", () => {
     expect(output["patches"]).toEqual([
       { patches: [expect.objectContaining({ patchId: "1".repeat(64) })] },
       { patches: [expect.objectContaining({ patchId: "3".repeat(64) })] },
+    ]);
+  });
+
+  it("drops a patch record of a team the lens names when a finding it names came only from a team the lens does not name", async () => {
+    on.configure({ node: NODE, index: INDEX, lens: "lenses/team-a-names-b.json" });
+    // The team published the first finding itself. Only the third team published the second.
+    const [kept, gone] = [await recordId(HIDDEN), await recordId(ANY_HOST)];
+    const mine = await patchRecord(NODE, "4", [kept]);
+    const other = "5b".repeat(20);
+    const patches = [
+      { patches: [patch("1", 1, 2, [await patchRecord(OTHER_NODE, "1", [gone])])] },
+      { patches: [patch("2", 9, 2, [await patchRecord(OTHER_NODE, "2", [kept])])] },
+      { patches: [patch("3", 20, 2, [await patchRecord(OTHER_NODE, "3", [kept, gone])])] },
+      { patches: [patch("4", 30, 2, [mine, await patchRecord(OTHER_NODE, "5", [gone])])] },
+    ];
+    on.index.views.set(other, { ...(await served()), component: other, patches });
+
+    const { output } = await on.run("view", other);
+
+    expect(conforms(VIEW, output)).toBeUndefined();
+    // As in the index's own view of the same teams: a patch shows only while every finding it names is in the view.
+    expect(output["patches"]).toEqual([
+      { patches: [expect.objectContaining({ patchId: "2".repeat(64), nodes: [OTHER_NODE], confirmed: false })] },
+      { patches: [expect.objectContaining({ patchId: "4".repeat(64), records: [mine], nodes: [NODE], confirmed: false })] },
     ]);
   });
 

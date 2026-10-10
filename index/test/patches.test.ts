@@ -3,7 +3,8 @@
 // and shows the valid patches of a view in groups. Every commit here is made by hand
 // behind a fake node.
 
-import { VIEW, compare, conforms, patchId as patchIdOf } from "@cairnfield/protocol";
+import { VIEW, compare, conforms, patchId as patchIdOf, recordId } from "@cairnfield/protocol";
+import type { View } from "@cairnfield/protocol";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { PATCH_TRIES, PATCH_WAIT_SECONDS } from "../src/patches.ts";
@@ -80,6 +81,13 @@ async function oneNode(): Promise<{ on: Bench; node: FakeNode; component: string
 
 /** The requests the index made to a node's patch route or its blob route. */
 const asked = (node: FakeNode, route: "patch" | "blob"): string[] => node.requests.filter((url) => url.startsWith(`${node.url}/${route}?`));
+
+/** The record IDs behind each patch entry of a view, over all its groups. */
+const shown = (view: View): string[][] => view.patches.flatMap((group) => group.patches.map((entry) => entry.records.map(({ id }) => id)));
+
+/** The looks at a patch record that wait in the queue. */
+const looks = (on: Bench): { readonly node: string; readonly path: string }[] =>
+  on.queue.waiting.flatMap(({ body }) => (body.kind === "patch" ? [{ node: body.node, path: body.path }] : []));
 
 describe("a patch record and its commit (KTD7, KTD11)", () => {
   it("asks again after a while for a patch record published before its commit, and shows the patch as valid once the fork holds the commit", async () => {
@@ -164,6 +172,22 @@ describe("a patch record and its commit (KTD7, KTD11)", () => {
     expect(view.patches.map((group) => group.patches.map((entry) => entry.records.map(({ id }) => id)))).toEqual([[[patch]]]);
   });
 
+  it("reads no content from its own copy while the node serves the commit and not the content it puts in place", async () => {
+    const { on, node, component } = await oneNode();
+    const { patch } = await publishPatch(node, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
+    node.respond = (url) => (url.pathname === "/blob" ? Response.json({ error: "not-found" }, { status: 404 }) : undefined);
+    await on.notice(NODE_A);
+    // The sync reads the cited file once, for the finding.
+    await on.deliver();
+    expect(on.artifacts.reads(`copy-${component}`)).toEqual({ blobs: 1 });
+
+    await on.drain();
+    // Every look asked the node for the new content, and none read the old content from the copy.
+    expect(asked(node, "blob")).toHaveLength(PATCH_TRIES);
+    expect(on.artifacts.reads(`copy-${component}`)).toEqual({ blobs: 1 });
+    expect((await on.view(component)).pending).toEqual([{ node: NODE_A, hash: patch, type: "patch" }]);
+  });
+
   it("shows the same patches after a reset and a full sync of the nodes", async () => {
     const { on, node, component } = await oneNode();
     await publishPatch(node, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
@@ -178,6 +202,127 @@ describe("a patch record and its commit (KTD7, KTD11)", () => {
     // The reset queued a sync of the node, and the sync a look at the patch record's commit.
     await on.drain();
     expect((await on.view(component)).patches).toEqual(before.patches);
+  });
+});
+
+describe("a patch record that still waits when its tries are spent or its look was lost (KTD11)", () => {
+  it("checks a patch record at the retried sync when the queue took no look after the record was stored", async () => {
+    const { on, node, component } = await oneNode();
+    const { patch } = await publishPatch(node, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
+    await on.notice(NODE_A);
+    // The sync stores both records, and then the queue takes no look at the patch record.
+    on.queue.failures = 1;
+    await on.deliver();
+    expect(on.queue.waiting).toEqual([{ body: { kind: "node", node: NODE_A }, delaySeconds: 30, attempts: 2 }]);
+    expect((await on.view(component)).pending).toEqual([{ node: NODE_A, hash: patch, type: "patch" }]);
+
+    await on.drain();
+    const view = await on.view(component);
+    expect(view.pending).toEqual([]);
+    expect(shown(view)).toEqual([[patch]]);
+  });
+
+  it("checks a patch record whose tries are spent when another node publishes the finding it names", async () => {
+    const on = bench();
+    const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];
+    nodesBehindFetch(one, other);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    await on.registerNode(NODE_B);
+    // Team B patches a finding that Team A has not published yet.
+    const cited = await recordId(finding(component));
+    const commit = await other.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }]);
+    const [patch] = await other.publish(patchRecord(component, commit, [cited]));
+    await synced(on, NODE_B);
+    // Every look found no valid finding, so none asked the node for the commit.
+    expect(on.queue.sent.filter(({ body }) => body.kind === "patch")).toHaveLength(PATCH_TRIES);
+    expect(asked(other, "patch")).toEqual([]);
+    expect((await on.view(component)).pending).toEqual([{ node: NODE_B, hash: patch, type: "patch" }]);
+
+    expect(await one.publish(finding(component))).toEqual([cited]);
+    await synced(on, NODE_A);
+    const view = await on.view(component);
+    expect(view.pending).toEqual([]);
+    expect(shown(view)).toEqual([[patch]]);
+    expect(asked(other, "patch")).toHaveLength(1);
+  });
+
+  it("checks a patch record whose tries are spent at the next sync of its node, once the fork holds the commit", async () => {
+    const { on, node, component } = await oneNode();
+    const [cited] = await node.publish(finding(component));
+    const commit = "5e".repeat(20);
+    const [patch] = await node.publish(patchRecord(component, commit, [cited]));
+    await synced(on, NODE_A);
+    expect(asked(node, "patch")).toHaveLength(PATCH_TRIES);
+    expect((await on.view(component)).pending).toEqual([{ node: NODE_A, hash: patch, type: "patch" }]);
+
+    await node.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }], { commit });
+    await synced(on, NODE_A);
+    const view = await on.view(component);
+    expect(view.pending).toEqual([]);
+    expect(shown(view)).toEqual([[patch]]);
+    expect(asked(node, "patch")).toHaveLength(PATCH_TRIES + 1);
+  });
+
+  it("looks once at a waiting patch record at each later sync of its node, and queues nothing more when it must still wait", async () => {
+    const { on, node, component } = await oneNode();
+    const [cited] = await node.publish(finding(component));
+    const [patch] = await node.publish(patchRecord(component, "5e".repeat(20), [cited]));
+    await synced(on, NODE_A);
+    expect(asked(node, "patch")).toHaveLength(PATCH_TRIES);
+
+    for (const sync of [1, 2]) {
+      await on.notice(NODE_A);
+      await on.deliver();
+      expect(looks(on)).toEqual([{ node: NODE_A, path: patchPath(component, patch) }]);
+      await on.deliver();
+      // The fork still holds no commit, and the one look queued no other.
+      expect(asked(node, "patch")).toHaveLength(PATCH_TRIES + sync);
+      expect(on.queue.waiting).toEqual([]);
+    }
+    expect((await on.view(component)).pending).toEqual([{ node: NODE_A, hash: patch, type: "patch" }]);
+  });
+
+  it("looks at another node's patch record when the finding it names is settled by a check of waiting records that then fails", async () => {
+    const on = bench();
+    const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];
+    nodesBehindFetch(one, other);
+    const component = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit: component });
+    await on.registerNode(NODE_A);
+    await on.registerNode(NODE_B);
+    // Two findings of Team A on two files. Waiting records are checked in the order of their IDs.
+    const onSkill = { file: SKILL, text: SKILL_TEXT, changed: SKILL_FIXED, cites: {} };
+    const onLine12 = { file: README, text: README_TEXT, changed: edited(README_TEXT, { 12: "line twelve" }), cites: onReadme(12) };
+    const ids = await one.publish(finding(component, onSkill.cites), finding(component, onLine12.cites));
+    const [first = "", last = ""] = [...ids].sort();
+    const [checkedFirst, checkedLast] = ids[0] === first ? [onSkill, onLine12] : [onLine12, onSkill];
+    // Team B patches the finding that is checked first.
+    const commit = await other.patchCommit(component, [{ path: checkedFirst.file, content: checkedFirst.changed }]);
+    const [patch] = await other.publish(patchRecord(component, commit, [first]));
+    await on.notice(NODE_A);
+    await on.notice(NODE_B);
+    // The import starts and both nodes are synced. The look at the patch record finds no ready copy and queues no other.
+    await on.deliver();
+    await on.deliver();
+    expect((await on.view(component)).pending).toHaveLength(3);
+    expect(looks(on)).toEqual([]);
+
+    // The copy is ready, and the read of the file that the second finding cites fails.
+    on.artifacts.blobFaults.set(await blobHash(checkedLast.text), "INTERNAL_ERROR");
+    on.artifacts.finish();
+    await on.deliver();
+    expect(looks(on)).toEqual([{ node: NODE_B, path: patchPath(component, patch) }]);
+    await on.deliver();
+    const partial = await on.view(component);
+    expect(shown(partial)).toEqual([[patch]]);
+    expect(partial.pending).toEqual([{ node: NODE_A, hash: last, type: "finding" }]);
+
+    on.artifacts.blobFaults.clear();
+    await on.drain();
+    const view = await on.view(component);
+    expect(view.pending).toEqual([]);
+    expect(shown(view)).toEqual([[patch]]);
   });
 });
 

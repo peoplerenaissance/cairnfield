@@ -18,7 +18,8 @@ import { syncNode } from "./sync.ts";
 
 /**
  * What the queue carries: a node to sync, a component whose copy to look at again, or a
- * patch record whose commit to check. `tries` counts the looks at the record before this one.
+ * patch record whose commit to check. `tries` counts the looks of the set number that
+ * came before this one. A single look is sent as the last of them.
  */
 export type Message =
   | { readonly kind: "node"; readonly node: string }
@@ -102,7 +103,8 @@ async function handleComponent(env: Env, body: Extract<Message, { kind: "compone
 /**
  * Looks at a patch record's commit. Its message is always done with: a record that must
  * be looked at again gets a new message after a while, a set number of times (KTD11).
- * After the last look it stays pending.
+ * After the last look it stays pending. A later sync of its node, or a finding it names
+ * that becomes valid, queues a single look at it (see `lookOnceAtPatches`).
  */
 async function handlePatch(env: Env, body: Extract<Message, { kind: "patch" }>): Promise<boolean> {
   const again = await lookAtPatch(env, body);

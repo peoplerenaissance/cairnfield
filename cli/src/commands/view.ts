@@ -70,9 +70,12 @@ export function throughLens(view: View, counted: ReadonlySet<string>): View {
     if (group.host !== undefined) hosts.set(group.host, (hosts.get(group.host) ?? 0) + group.findings.length);
   }
 
+  // A patch record shows only while every finding it names is a finding of this view,
+  // which is the index's rule for a view it narrows itself (KTD5).
+  const named = new Set(findings.flatMap((group) => group.findings.map(({ id }) => id)));
   const patches = view.patches.flatMap((group) => {
     const left = group.patches.flatMap((patch) => {
-      const records = kept(patch.records);
+      const records = kept(patch.records).filter(({ record }) => record.findings.every((id) => named.has(id)));
       if (records.length === 0) return [];
       const rechecks = kept(patch.rechecks);
       const nodes = patchConfirmations(patch.patchId, records.map(({ node }) => ({ node, patchId: patch.patchId })), rechecks);

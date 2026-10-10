@@ -11,7 +11,8 @@
 //
 // A look at a patch record runs from the queue. A record whose commit the node does not
 // serve yet, or whose findings are not valid here yet, is looked at again after a while,
-// a set number of times (KTD11). After that it stays pending.
+// a set number of times (KTD11). After that it stays pending, and is looked at once more
+// at each later sync of its node and when a finding it names becomes valid.
 
 import {
   DELETED_MODE,
@@ -53,11 +54,70 @@ export interface ComputedPatch extends PatchName {
   readonly paths: string;
 }
 
-/** Queues a first look at each of these patch records. */
-export async function lookAtPatches(env: Env, patches: readonly PatchName[]): Promise<void> {
+/** Queues a look at each of these patch records, as the look that comes after `tries` others. */
+async function queueLooks(env: Env, patches: readonly PatchName[], tries: number): Promise<void> {
   for (let at = 0; at < patches.length; at += MAX_BATCH_MESSAGES) {
-    await env.SYNC.sendBatch(patches.slice(at, at + MAX_BATCH_MESSAGES).map(({ node, path }) => ({ body: { kind: "patch", node, path, tries: 0 } })));
+    await env.SYNC.sendBatch(patches.slice(at, at + MAX_BATCH_MESSAGES).map(({ node, path }) => ({ body: { kind: "patch", node, path, tries } })));
   }
+}
+
+/** Queues a first look at each of these patch records: the first of the set number of tries. */
+export function lookAtPatches(env: Env, patches: readonly PatchName[]): Promise<void> {
+  return queueLooks(env, patches, 0);
+}
+
+/** Names a patch record among the records of every node. Neither part holds a space. */
+const nameOf = ({ node, path }: PatchName): string => `${node} ${path}`;
+
+/**
+ * Queues one look at each of these patch records, and none at a record in `first`, whose
+ * first look was just queued. A record that is named twice gets one look. The look is
+ * sent as the last of the tries, so one that must still wait queues nothing more.
+ */
+export function lookOnceAtPatches(env: Env, patches: readonly PatchName[], first: readonly PatchName[] = []): Promise<void> {
+  const taken = new Set(first.map(nameOf));
+  const once = patches.filter((patch) => {
+    const name = nameOf(patch);
+    if (taken.has(name)) return false;
+    taken.add(name);
+    return true;
+  });
+  return queueLooks(env, once, PATCH_TRIES - 1);
+}
+
+/**
+ * The patch records of a node that still wait, on a component whose copy is ready. Each
+ * sync of the node looks at them once more: the look that the storing sync queued may
+ * have been lost, and the fork may hold the commit only after the tries were spent. That
+ * costs one read of the node for each such record at each sync of the node.
+ */
+export async function waitingPatchesOf(env: Env, node: string): Promise<PatchName[]> {
+  const { results } = await env.DB.prepare(
+    "SELECT records.node, records.path FROM records JOIN components ON components.component = records.component WHERE records.node = ? AND records.type = 'patch' AND records.state = 'pending' AND components.state = 'ready' ORDER BY records.path",
+  )
+    .bind(node)
+    .all<PatchName>();
+  return results;
+}
+
+/**
+ * The patch records that still wait and name one of these findings, from any node.
+ * `findings` holds the findings that became valid, by component. A patch can name a
+ * finding on a node the index reads later, when its own tries may be spent.
+ */
+export async function patchesWaitingFor(env: Env, findings: ReadonlyMap<string, readonly string[]>): Promise<PatchName[]> {
+  const waiting: PatchName[] = [];
+  for (const [component, ids] of findings) {
+    if (ids.length === 0) continue;
+    // The findings go in as one value, so a long list meets no limit on the values of a statement.
+    const { results } = await env.DB.prepare(
+      "SELECT node, path FROM records WHERE component = ?1 AND state = 'pending' AND type = 'patch' AND EXISTS (SELECT 1 FROM json_each(records.body, '$.findings') AS named WHERE named.value IN (SELECT value FROM json_each(?2))) ORDER BY node, path",
+    )
+      .bind(component, JSON.stringify(ids))
+      .all<PatchName>();
+    waiting.push(...results);
+  }
+  return waiting;
 }
 
 /**
@@ -132,18 +192,23 @@ async function check(env: Env, node: string, component: string, record: Patch): 
   // Only the content that the patch checks will read is fetched. The protocol runs the
   // checks that read no content first, so a commit that fails one of them costs no read
   // of the copy and no fetch from the node. A patch replaces at most three contents (KTD6).
-  const before = new Map<string, Uint8Array>();
+  const toRead = contentToRead(base, patched, cited);
+  // The node is asked first, for content that is short (KTD6). The copy may hold long
+  // content, and it is read only once the node has served all of its own. So a node that
+  // reports a commit and serves no blob costs no read of the copy, however often it is asked.
   const after = new Map<string, Uint8Array>();
-  for (const { oldBlob, newBlob, newMode } of contentToRead(base, patched, cited)) {
-    if (!before.has(oldBlob)) {
-      const content = await copy.read(oldBlob);
-      if (content === TOO_LARGE) return rejected(TOO_LARGE);
-      before.set(oldBlob, content);
-    }
+  for (const { newBlob, newMode } of toRead) {
     if (newMode === DELETED_MODE || after.has(newBlob)) continue;
     const content = await readForkBlob(node, component, newBlob);
     if (!content) return undefined;
     after.set(newBlob, content);
+  }
+  const before = new Map<string, Uint8Array>();
+  for (const { oldBlob } of toRead) {
+    if (before.has(oldBlob)) continue;
+    const content = await copy.read(oldBlob);
+    if (content === TOO_LARGE) return rejected(TOO_LARGE);
+    before.set(oldBlob, content);
   }
 
   // The verdict is the protocol's own, in the order the protocol checks.
