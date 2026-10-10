@@ -5,7 +5,7 @@
 
 import { MAX_BLOB_BYTES, citedBlob, citedPaths, isFileMode, validateAgainstFiles } from "@cairnfield/protocol";
 import type { AnyRecord, COMPONENT_STATES, CitedFile, FileEntry, RecordType, RejectionReason } from "@cairnfield/protocol";
-import { copyOf } from "./artifacts.ts";
+import { codeOf, copyOf } from "./artifacts.ts";
 import type { Repo } from "./artifacts.ts";
 import type { Env } from "./env.ts";
 
@@ -52,6 +52,14 @@ export function bump(db: D1Database, component?: string): D1PreparedStatement {
 const EMPTY = new Uint8Array(0);
 
 /**
+ * The longest file the index reads for a record: 32 MiB, the longest file a checkout of
+ * the command holds, so the longest a finding can cite.
+ */
+const MAX_CITED_BYTES = 32 * 1024 * 1024;
+/** The reason for a record that cites a longer file, from the protocol's closed list. */
+const TOO_LARGE = "too-large" satisfies RejectionReason;
+
+/**
  * The index's own copy of one component, for the checks of one pass. The copy is opened
  * once, and only when a record cites a file. Records that cite one file share its row
  * and its content.
@@ -84,24 +92,42 @@ export class Copy {
     return paths.flatMap((path) => this.#rows.get(path) ?? []);
   }
 
-  /** The files a record cites, as the copy holds them. A path the copy does not hold is left out. */
-  async #files(paths: readonly string[]): Promise<{ readonly files: Map<string, CitedFile>; readonly listing: FileEntry[] }> {
+  /**
+   * The files a record cites, as the copy holds them, or `too-large` when one of them is
+   * longer than the index reads. A path the copy does not hold is left out.
+   */
+  async #files(paths: readonly string[]): Promise<{ readonly files: Map<string, CitedFile>; readonly listing: FileEntry[] } | typeof TOO_LARGE> {
     const listing = await this.#listing(paths);
-    // The blobs of one record are read together. Only a regular file can be cited, and
-    // the check refuses any other before it reads content.
-    const files = await Promise.all(
-      listing.map(async ({ path, mode, blob }): Promise<[string, CitedFile]> => [path, { mode, content: isFileMode(mode) ? await this.#read(blob) : EMPTY }]),
-    );
-    return { files: new Map(files), listing };
+    const files = new Map<string, CitedFile>();
+    // The blobs of one record are read one after another, so the copy hands over one long
+    // blob at a time. Only a regular file can be cited, and the check refuses any other
+    // before it reads content.
+    for (const { path, mode, blob } of listing) {
+      const content = isFileMode(mode) ? await this.#read(blob) : EMPTY;
+      if (content === TOO_LARGE) return TOO_LARGE;
+      files.set(path, { mode, content });
+    }
+    return { files, listing };
   }
 
-  async #read(blob: string): Promise<Uint8Array> {
+  /** The content of a blob of the copy, or `too-large` for one that is longer than the index reads. Any other failed read throws. */
+  async #read(blob: string): Promise<Uint8Array | typeof TOO_LARGE> {
     const held = this.#contents.get(blob);
     if (held) return held;
     this.#repo ??= this.#env.ARTIFACTS.get(copyOf(this.#component));
-    const content = await (await this.#repo).readBlob(blob);
+    const repo = await this.#repo;
+    let content: Blob | null;
+    try {
+      content = await repo.readBlob(blob);
+    } catch (error) {
+      // The binding hands over no blob that is too long for it to hold.
+      if (codeOf(error) === "MEMORY_LIMIT") return TOO_LARGE;
+      throw error;
+    }
     // The listing came from this copy, so a blob it names is there.
     if (!content) throw new Error("the copy does not hold a blob of its own listing");
+    // The size is known before the content is asked for, so a longer blob is never buffered here.
+    if (content.size > MAX_CITED_BYTES) return TOO_LARGE;
     const bytes = new Uint8Array(await content.arrayBuffer());
     // A longer blob is read again each time a record cites it.
     if (bytes.length <= MAX_BLOB_BYTES) this.#contents.set(blob, bytes);
@@ -111,10 +137,13 @@ export class Copy {
   /**
    * Checks a record against the copy: a cited path is a regular file of the pinned
    * commit, a line range is within its file, and a finding's host appears in the lines
-   * it cites (R9). A valid finding comes back with its cited content (KTD5).
+   * it cites (R9). A valid finding comes back with its cited content (KTD5). A record
+   * that cites a file longer than the index reads is rejected as too large.
    */
   async check(record: AnyRecord): Promise<Judged> {
-    const { files, listing } = await this.#files(citedPaths(record));
+    const cites = await this.#files(citedPaths(record));
+    if (cites === TOO_LARGE) return { state: "rejected", reason: TOO_LARGE };
+    const { files, listing } = cites;
     const verdict = validateAgainstFiles(record, files);
     if (!verdict.ok) return { state: "rejected", reason: verdict.reason };
     const cited = record.type === "finding" ? citedBlob(record, listing) : undefined;

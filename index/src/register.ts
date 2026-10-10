@@ -49,8 +49,29 @@ function statusOf({ component, state, import_error: importError }: Component): R
 }
 
 /**
+ * Starts a failed component over, under the Git URL and branch it is stored with. Its
+ * import and the time it has count from now. The records that were rejected because the
+ * component had failed are dropped, so each node's next sync reads them again.
+ */
+async function startOver(env: Env, { component, url, branch }: Component, now: number): Promise<void> {
+  const db = env.DB;
+  // Both statements hold only for a component that is still failed, so of two calls at once one starts it over.
+  const failed = "component = ?1 AND state = 'failed' AND url = ?2 AND branch = ?3";
+  await db.batch([
+    // It runs first, under the condition of the statement after it, which ends that condition.
+    db.prepare(`DELETE FROM records WHERE component = ?1 AND state = 'rejected' AND reason = 'unknown-component' AND EXISTS (SELECT 1 FROM components WHERE ${failed})`).bind(component, url, branch),
+    db
+      .prepare(
+        `UPDATE components SET state = 'importing', import_error = NULL, import_started_at = NULL, registered_at = ?4, view_version = view_version + 1 WHERE ${failed}`,
+      )
+      .bind(component, url, branch, now),
+  ]);
+}
+
+/**
  * Registers a component with its Git URL, branch and commit (KTD12). The import runs
- * from the queue. A component that is registered already answers with its state.
+ * from the queue. A component that is registered already answers with its state, and
+ * one that failed is started over when the request names the URL and branch it has.
  */
 export async function registerComponent(env: Env, body: unknown, now: number): Promise<Response> {
   if (conforms(REGISTER_COMPONENT_REQUEST, body)) return refusal("bad-request");
@@ -65,8 +86,13 @@ export async function registerComponent(env: Env, body: unknown, now: number): P
       .run();
     held = await componentOf(env, commit);
     if (!held) return refusal("limit-reached");
+  } else if (held.state === "failed" && held.url === url && held.branch === branch) {
+    // A request that names another URL or branch for the commit starts nothing, and is told the state.
+    await startOver(env, held, now);
+    held = (await componentOf(env, commit)) ?? held;
   }
-  // Asked again for a component that is still importing, so a look that was lost is made up for.
+  // Asked for a component that is importing: one that was just registered or started
+  // over, or one that still imports, so a look that was lost is made up for.
   if (held.state === "importing") await env.SYNC.send({ kind: "component", component: commit });
   return statusOf(held);
 }

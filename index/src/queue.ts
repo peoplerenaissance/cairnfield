@@ -25,6 +25,8 @@ const LOST_AFTER_MS = 60_000;
 /** A sync that failed, or a message whose handling threw, is tried again after this many seconds. */
 const RETRY_SECONDS = 30;
 const RETRY: QueueRetryOptions = { delaySeconds: RETRY_SECONDS };
+/** One call to the queue takes at most this many messages. */
+const MAX_BATCH_MESSAGES = 100;
 
 /**
  * Queues a sync of each of these nodes after `delaySeconds`, unless one is queued for it
@@ -46,16 +48,17 @@ export async function schedule(env: Env, nodes: readonly string[], now: number, 
   // Three statements a node: whether it is registered, its notice and its mark.
   const registered = nodes.filter((_, at) => (results[3 * at]?.results.length ?? 0) > 0);
   const toQueue = nodes.filter((_, at) => (results[3 * at + 2]?.meta.changes ?? 0) > 0);
+  let queued = 0;
   try {
-    if (toQueue.length > 0) {
+    for (; queued < toQueue.length; queued += MAX_BATCH_MESSAGES) {
       await env.SYNC.sendBatch(
-        toQueue.map((node) => ({ body: { kind: "node", node } })),
+        toQueue.slice(queued, queued + MAX_BATCH_MESSAGES).map((node) => ({ body: { kind: "node", node } })),
         { delaySeconds },
       );
     }
   } catch (error) {
-    // Nothing was queued, so the marks go, and the next notice queues a sync.
-    await db.batch(toQueue.map((node) => db.prepare("UPDATE nodes SET queued_at = NULL WHERE url = ? AND queued_at = ?").bind(node, now)));
+    // No sync was queued for the nodes from here on, so their marks go, and the next notice queues one.
+    await db.batch(toQueue.slice(queued).map((node) => db.prepare("UPDATE nodes SET queued_at = NULL WHERE url = ? AND queued_at = ?").bind(node, now)));
     throw error;
   }
   return registered;

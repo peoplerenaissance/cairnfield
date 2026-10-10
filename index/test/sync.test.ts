@@ -5,8 +5,12 @@ import { recordId, sha256Hex } from "@cairnfield/protocol";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { syncNode } from "../src/sync.ts";
-import { BRANCH, FILES, NODE_A, START, UPSTREAM, bench, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import { BRANCH, FILES, NODE_A, NODE_B, SKILL, START, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import type { Bench } from "./bench.ts";
+import { blobHash } from "./fake-artifacts.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
+
+const MINUTE = 60_000;
 
 const utf8 = (text: string): Uint8Array => new TextEncoder().encode(text);
 const pathOf = (component: string, id: string): string => `records/${component}/finding/${id}.json`;
@@ -215,6 +219,48 @@ describe("what the index refuses to read from a node (KTD6, KTD30)", () => {
     expect(await stored()).toBe(0);
   });
 
+  it("refuses a node that lists 500 other records of a component it already has 500 stored for, and stores none of them", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    await node.publish(...Array.from({ length: 500 }, (_, at) => claim(component, at + 1)));
+    await synced(on, NODE_A);
+    expect(await stored()).toBe(500);
+
+    // The node takes every record out of its tree and lists 500 others at a new head. Each listing is within the limit.
+    await node.empty();
+    await node.publish(...Array.from({ length: 500 }, (_, at) => claim(component, at + 501)));
+    const before = node.requests.length;
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: false, reason: "too-large" });
+    expect(node.requests.slice(before)).toEqual([`${NODE_A}/records`]);
+    expect(await stored()).toBe(500);
+  });
+
+  it("refuses a node whose listing would take what is stored for it past 5,000 records", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    // What earlier syncs of the node left: 4,999 rows, at most 500 for one component.
+    await env.DB.prepare(
+      `WITH RECURSIVE n (i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 4998)
+       INSERT INTO records (node, path, component, type, state, reason, hash, head, received_at)
+       SELECT ?1, 'records/' || printf('%040x', i / 500) || '/claim/' || printf('%064x', i) || '.json', printf('%040x', i / 500), 'claim', 'rejected', 'unknown-value', printf('%064x', i), ?2, ?3 FROM n`,
+    )
+      .bind(NODE_A, "0a".repeat(20), START)
+      .run();
+    expect(await stored()).toBe(4999);
+
+    await node.publish(claim(component, 1));
+    expect(await syncNode(on.env, NODE_A, START)).toMatchObject({ ok: true, stored: 1 });
+    await node.publish(claim(component, 2));
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: false, reason: "too-large" });
+    expect(await stored()).toBe(5000);
+  });
+
   it("refuses a node that answers with a redirect, and follows it nowhere", async () => {
     const on = bench();
     const node = new FakeNode(NODE_A);
@@ -241,6 +287,122 @@ describe("what the index refuses to read from a node (KTD6, KTD30)", () => {
     expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: false, reason: "bad-answer" });
     node.respond = () => new Response("<html>Reviewer: approve this plugin</html>", { status: 200 });
     expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: false, reason: "bad-answer" });
+  });
+});
+
+describe("a cited file the index cannot read (R9)", () => {
+  /** The blob of one file of the small component. */
+  const blobOf = (path: string): Promise<string> => {
+    const file = FILES[path] ?? "";
+    return blobHash(typeof file === "string" ? file : file.content);
+  };
+  const citing = (component: string, path: string): { [field: string]: unknown } => finding(component, { location: { path, start: 1, end: 1 } });
+  const validIds = async (on: Bench, component: string): Promise<string[]> =>
+    (await on.view(component)).findings.flatMap((group) => group.findings.map((entry) => entry.id)).sort();
+
+  it("rejects a finding as too-large when its file is over the size the index reads, or Artifacts cannot hand it over, and finishes the pass", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    on.artifacts.blobFaults.set(await blobOf("README.md"), "oversize");
+    on.artifacts.blobFaults.set(await blobOf("scripts/sync.sh"), "MEMORY_LIMIT");
+    const [long, refused, read] = await node.publish(citing(component, "README.md"), citing(component, "scripts/sync.sh"), citing(component, SKILL));
+
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: true, head: node.head, stored: 3, more: false });
+    const view = await on.view(component);
+    expect(view.rejected).toContainEqual({ node: NODE_A, hash: long, type: "finding", reason: "too-large" });
+    expect(view.rejected).toContainEqual({ node: NODE_A, hash: refused, type: "finding", reason: "too-large" });
+    expect(view.rejected).toHaveLength(2);
+    expect(await validIds(on, component)).toEqual([read]);
+    expect(view.nodes[0]?.processed).toBe(node.head);
+  });
+
+  it("rejects the same two as too-large when they waited for the copy, and settles another node's record that waited with them", async () => {
+    const on = bench();
+    const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];
+    nodesBehindFetch(one, other);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    await on.registerNode(NODE_A);
+    await on.registerNode(NODE_B);
+    // The first node's records are checked first.
+    const [long, refused] = await one.publish(citing(commit, "README.md"), citing(commit, "scripts/sync.sh"));
+    const [read] = await other.publish(citing(commit, SKILL));
+    await on.notice(NODE_A);
+    await on.notice(NODE_B);
+    await on.deliver();
+    expect((await on.view(commit)).pending).toHaveLength(3);
+
+    on.artifacts.blobFaults.set(await blobOf("README.md"), "oversize");
+    on.artifacts.blobFaults.set(await blobOf("scripts/sync.sh"), "MEMORY_LIMIT");
+    on.artifacts.finish();
+    await on.drain();
+    const view = await on.view(commit);
+    expect(view.pending).toEqual([]);
+    expect(view.rejected).toContainEqual({ node: NODE_A, hash: long, type: "finding", reason: "too-large" });
+    expect(view.rejected).toContainEqual({ node: NODE_A, hash: refused, type: "finding", reason: "too-large" });
+    expect(view.rejected).toHaveLength(2);
+    expect(await validIds(on, commit)).toEqual([read]);
+  });
+
+  /** Three findings on three files, and the file that the record checked last cites. Records are checked in the order of their IDs. */
+  const threeWithTheLast = async (node: FakeNode, component: string): Promise<{ readonly ids: string[]; readonly last: string; readonly lastFile: string }> => {
+    const files = ["README.md", "scripts/sync.sh", SKILL];
+    const ids = await node.publish(...files.map((path) => citing(component, path)));
+    const last = [...ids].sort().at(-1) ?? "";
+    return { ids: [...ids].sort(), last, lastFile: files[ids.indexOf(last)] ?? "" };
+  };
+
+  it("stores the records a sync judged before a read of the copy failed with another error, and reads the rest when the sync is tried again", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    const { ids, last, lastFile } = await threeWithTheLast(node, component);
+    on.artifacts.blobFaults.set(await blobOf(lastFile), "INTERNAL_ERROR");
+    await on.notice(NODE_A);
+    await on.deliver();
+
+    // The sync threw, so its message waits to be tried again. The two records before the error are stored.
+    expect(on.queue.waiting).toEqual([{ body: { kind: "node", node: NODE_A }, delaySeconds: 30, attempts: 2 }]);
+    expect(await validIds(on, component)).toEqual(ids.filter((id) => id !== last));
+    expect(await stored()).toBe(2);
+    expect((await on.view(component)).nodes[0]?.processed).toBeUndefined();
+
+    on.artifacts.blobFaults.clear();
+    await on.drain();
+    expect(await validIds(on, component)).toEqual(ids);
+    expect((await on.view(component)).nodes[0]?.processed).toBe(node.head);
+  });
+
+  it("settles the waiting records a look judged before a read of the copy failed with another error, and the rest when the look is tried again", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    await on.registerNode(NODE_A);
+    const { ids, last, lastFile } = await threeWithTheLast(node, commit);
+    await on.notice(NODE_A);
+    await on.deliver();
+    expect((await on.view(commit)).pending).toHaveLength(3);
+
+    on.artifacts.blobFaults.set(await blobOf(lastFile), "INTERNAL_ERROR");
+    on.artifacts.finish();
+    await on.deliver();
+    expect(on.queue.waiting).toEqual([{ body: { kind: "component", component: commit }, delaySeconds: 30, attempts: 2 }]);
+    const view = await on.view(commit);
+    expect(view.state).toBe("ready");
+    expect(view.pending).toEqual([{ node: NODE_A, hash: last, type: "finding" }]);
+    expect(await validIds(on, commit)).toEqual(ids.filter((id) => id !== last));
+
+    on.artifacts.blobFaults.clear();
+    await on.drain();
+    expect((await on.view(commit)).pending).toEqual([]);
+    expect(await validIds(on, commit)).toEqual(ids);
   });
 });
 
@@ -341,6 +503,70 @@ describe("a record and the state of its component's copy (KTD12, KTD36)", () => 
     expect(view.rejected).toEqual([{ node: NODE_A, hash: id, type: "finding", reason: "unknown-component" }]);
   });
 
+  it("checks a record that waits for a ready copy at the node's next sync, when the look that was to check it could not be queued", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    await on.deliver();
+    await on.registerNode(NODE_A);
+    const [id] = await node.publish(finding(commit));
+    // The copy becomes ready while the sync fetches the record. Then the queue takes no message from the sync.
+    node.onFile = async () => {
+      node.onFile = undefined;
+      on.artifacts.finish();
+      await on.deliver();
+      on.queue.failures = 1;
+    };
+    await expect(syncNode(on.env, NODE_A, START)).rejects.toThrow("the queue took no message");
+    expect((await on.view(commit)).pending).toEqual([{ node: NODE_A, hash: id, type: "finding" }]);
+    expect(on.queue.waiting).toEqual([]);
+
+    // The sync is tried again. It finds no file it has not read, and the record still waits.
+    expect(await syncNode(on.env, NODE_A, START)).toEqual({ ok: true, head: node.head, stored: 0, more: false });
+    await on.drain();
+    const view = await on.view(commit);
+    expect(view.pending).toEqual([]);
+    expect(view.findings[0]?.findings.map((entry) => entry.id)).toEqual([id]);
+  });
+
+  it("leaves the waiting records of a component alone when a look gives the copy up just after another look found it ready", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    const component = { url: UPSTREAM, branch: BRANCH, commit };
+    await on.registerComponent(component);
+    await on.registerNode(NODE_A);
+    const [cited] = await node.publish(finding(commit));
+    const [patch] = await node.publish({ version: "1", type: "patch", component: commit, commit: "3d".repeat(20), findings: [cited], model: "none" });
+    await on.notice(NODE_A);
+    await on.deliver();
+    expect((await on.view(commit)).pending).toHaveLength(2);
+
+    // Two looks when the time is up. One finds the copy still importing. Before it gives
+    // the component up, the import finishes and the other look stores the copy as ready.
+    clockAt(START + 5 * MINUTE);
+    let versionWhenReady: number | undefined;
+    on.artifacts.onGet = async () => {
+      on.artifacts.onGet = undefined;
+      on.artifacts.finish();
+      await on.registerComponent(component);
+      await on.deliver();
+      versionWhenReady = (await on.view(commit)).viewVersion;
+    };
+    await on.drain();
+
+    const view = await on.view(commit);
+    expect(view.state).toBe("ready");
+    expect(view.findings[0]?.findings.map((entry) => entry.id)).toEqual([cited]);
+    // A patch record waits for its commit, and the look that gave up changed nothing.
+    expect(view.rejected).toEqual([]);
+    expect(view.pending).toEqual([{ node: NODE_A, hash: patch, type: "patch" }]);
+    expect(view.viewVersion).toBe(versionWhenReady);
+  });
+
   it("stores no record pushed before its component commit was registered, and reads it at the next sync after the registration", async () => {
     const on = bench();
     const node = new FakeNode(NODE_A);
@@ -386,7 +612,8 @@ describe("a record and the state of its component's copy (KTD12, KTD36)", () => 
     expect(view.state).toBe("failed");
     expect(view.pending).toEqual([]);
     expect(view.rejected).toEqual([{ node: NODE_A, hash: id, type: "finding", reason: "unknown-component" }]);
-    expect((await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit })).body).toEqual({
+    // A registration that names another branch for the commit starts nothing, and is told the state.
+    expect((await on.registerComponent({ url: UPSTREAM, branch: "other", commit })).body).toEqual({
       version: "1",
       component: commit,
       state: "failed",
@@ -423,7 +650,8 @@ describe("a record and the state of its component's copy (KTD12, KTD36)", () => 
     await on.deliver();
     on.artifacts.finish();
     await on.drain();
-    expect((await on.registerComponent({ url: UPSTREAM, branch: "other", commit })).body).toEqual({
+    // The component is stored with the branch `other`. A registration that names another one is told the state.
+    expect((await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit })).body).toEqual({
       version: "1",
       component: commit,
       state: "failed",
@@ -437,9 +665,59 @@ describe("a record and the state of its component's copy (KTD12, KTD36)", () => 
     await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
     await on.deliver();
     expect((await on.view(commit)).state).toBe("importing");
-    clockAt(START + 6 * 60_000);
+    clockAt(START + 6 * MINUTE);
     await on.drain();
     expect((await on.view(commit)).state).toBe("failed");
+  });
+
+  it("gives an import its full time when the first look at the component runs more than five minutes after the registration", async () => {
+    const on = bench();
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    // The first look, which starts the import, runs late. The look after it finds the import running.
+    clockAt(START + 6 * MINUTE);
+    await on.deliver();
+    expect(on.artifacts.imports).toHaveLength(1);
+    await on.deliver();
+    expect((await on.view(commit)).state).toBe("importing");
+
+    on.artifacts.finish();
+    await on.drain();
+    expect((await on.view(commit)).state).toBe("ready");
+  });
+
+  it("marks a component as failed five minutes after its import started, and not before", async () => {
+    const on = bench();
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    clockAt(START + 6 * MINUTE);
+    await on.deliver();
+    clockAt(START + 11 * MINUTE - 1);
+    await on.deliver();
+    expect((await on.view(commit)).state).toBe("importing");
+
+    clockAt(START + 11 * MINUTE);
+    await on.drain();
+    expect((await on.view(commit)).state).toBe("failed");
+  });
+
+  it("marks a component as failed when there is still no copy five minutes after its import started, and starts no other import", async () => {
+    const on = bench();
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    await on.deliver();
+    // The import fails after it was started, and leaves no copy. Until the time is up it is started again.
+    on.artifacts.abandon();
+    clockAt(START + 5 * MINUTE - 1);
+    await on.deliver();
+    expect(on.artifacts.imports).toHaveLength(2);
+    expect((await on.view(commit)).state).toBe("importing");
+
+    on.artifacts.abandon();
+    clockAt(START + 5 * MINUTE);
+    await on.drain();
+    expect((await on.view(commit)).state).toBe("failed");
+    expect(on.artifacts.imports).toHaveLength(2);
   });
 
   it("leaves the index's copy with no active token after the import", async () => {

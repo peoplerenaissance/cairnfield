@@ -2,7 +2,10 @@
 // components, and the reset route.
 
 import { describe, expect, it } from "vitest";
-import { BRANCH, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, UPSTREAM, bench, freshIndexForEachTest } from "./bench.ts";
+import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, START, UPSTREAM, bench, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
+
+const MINUTE = 60_000;
 
 const unauthorized = { status: 401, body: { version: "1", error: "unauthorized" } };
 
@@ -77,12 +80,16 @@ describe("component registration (KTD12, KTD30)", () => {
   it("answers with the state of a component that is registered already, and imports nothing twice", async () => {
     const on = bench();
     const commit = await on.component();
+    const before = await on.view(commit);
     expect(await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit })).toEqual({
       status: 200,
       body: { version: "1", component: commit, state: "ready" },
     });
+    // A component that is ready is left as it is: no look is queued and its view does not change.
+    expect(on.queue.waiting).toEqual([]);
     await on.drain();
     expect(on.artifacts.imports).toHaveLength(1);
+    expect(await on.view(commit)).toEqual(before);
   });
 
   it("refuses a component whose Git URL is not on the allow-list", async () => {
@@ -132,6 +139,94 @@ describe("component registration (KTD12, KTD30)", () => {
     expect(await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit: "1F".repeat(20) })).toEqual(refused);
     expect(await on.registerComponent({ url: UPSTREAM, branch: "--upload-pack=sh", commit: "1f".repeat(20) })).toEqual(refused);
     expect(await on.registerComponent({ url: "https://user:pw@git.fellbeck-tools.example/x.git", branch: BRANCH, commit: "1f".repeat(20) })).toEqual(refused);
+  });
+});
+
+describe("a failed component that is registered again (KTD12)", () => {
+  it("starts over a component that failed by its deadline, and the component becomes ready", async () => {
+    const on = bench();
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    const component = { url: UPSTREAM, branch: BRANCH, commit };
+    await on.registerComponent(component);
+    await on.deliver();
+    clockAt(START + 6 * MINUTE);
+    await on.drain();
+    const failed = await on.view(commit);
+    expect(failed.state).toBe("failed");
+
+    // A request that names another branch for the commit starts nothing, and is told the state.
+    expect(await on.registerComponent({ ...component, branch: "other" })).toEqual({ status: 200, body: { version: "1", component: commit, state: "failed" } });
+    expect(on.queue.waiting).toEqual([]);
+    expect(await on.view(commit)).toEqual(failed);
+
+    expect(await on.registerComponent(component)).toEqual({ status: 200, body: { version: "1", component: commit, state: "importing" } });
+    expect(on.queue.waiting).toEqual([{ body: { kind: "component", component: commit }, delaySeconds: 0, attempts: 1 }]);
+    const again = await on.view(commit);
+    expect(again.state).toBe("importing");
+    expect(again.viewVersion).toBeGreaterThan(failed.viewVersion);
+
+    // The import that was started before still runs. Its time counts again from this registration.
+    await on.deliver();
+    expect((await on.view(commit)).state).toBe("importing");
+    on.artifacts.finish();
+    await on.drain();
+    expect((await on.view(commit)).state).toBe("ready");
+  });
+
+  it("gives a component that is registered again five minutes from then, and no more", async () => {
+    const on = bench();
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    const component = { url: UPSTREAM, branch: BRANCH, commit };
+    await on.registerComponent(component);
+    await on.deliver();
+    clockAt(START + 6 * MINUTE);
+    await on.drain();
+    await on.registerComponent(component);
+
+    clockAt(START + 11 * MINUTE - 1);
+    await on.deliver();
+    expect((await on.view(commit)).state).toBe("importing");
+    clockAt(START + 11 * MINUTE);
+    await on.drain();
+    expect((await on.view(commit)).state).toBe("failed");
+  });
+
+  it("drops the records that were rejected for the failed component, so the node's next sync reads them again and they are valid", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    const component = { url: UPSTREAM, branch: BRANCH, commit };
+    on.artifacts.importFailure = "REMOTE_AUTH_REQUIRED";
+    await on.registerComponent(component);
+    await on.registerNode(NODE_A);
+    await on.drain();
+    const [id] = await node.publish(finding(commit));
+    // A file that is no record of its name is rejected for a reason of its own.
+    await node.push(`records/${commit}/finding/${"ab".repeat(32)}.json`, JSON.stringify(finding(commit)));
+    await synced(on, NODE_A);
+    const misnamed = { node: NODE_A, hash: expect.stringMatching(/^[0-9a-f]{64}$/), type: "finding", reason: "hash-mismatch" };
+    const failed = await on.view(commit);
+    expect(failed.state).toBe("failed");
+    expect(failed.rejected).toHaveLength(2);
+    expect(failed.rejected).toContainEqual({ node: NODE_A, hash: id, type: "finding", reason: "unknown-component" });
+    expect(failed.rejected).toContainEqual(misnamed);
+
+    // The remote takes the import now. The error code of the last one is gone from the answer.
+    on.artifacts.importFailure = undefined;
+    expect(await on.registerComponent(component)).toEqual({ status: 200, body: { version: "1", component: commit, state: "importing" } });
+    expect((await on.view(commit)).rejected).toEqual([misnamed]);
+    await on.deliver();
+    on.artifacts.finish();
+    await on.drain();
+    // No node is synced because a component was registered.
+    expect((await on.view(commit)).findings).toEqual([]);
+
+    await synced(on, NODE_A);
+    const view = await on.view(commit);
+    expect(view.state).toBe("ready");
+    expect(view.rejected).toEqual([misnamed]);
+    expect(view.findings[0]?.findings.map((entry) => entry.id)).toEqual([id]);
   });
 });
 

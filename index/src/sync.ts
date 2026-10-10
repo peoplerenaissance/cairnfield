@@ -7,7 +7,7 @@
 // The index neither fetches nor stores a record of a component that is not registered,
 // so a later sync reads it once the component is (KTD12).
 
-import { MAX_RECORDS_PER_COMPONENT, canonicalJson, compare, parseRecordPath, sha256Hex, validateRecordFile } from "@cairnfield/protocol";
+import { MAX_LISTING_ENTRIES, MAX_RECORDS_PER_COMPONENT, canonicalJson, compare, parseRecordPath, sha256Hex, validateRecordFile } from "@cairnfield/protocol";
 import type { RecordType } from "@cairnfield/protocol";
 import type { Env } from "./env.ts";
 import { readListing, readRecordFile } from "./fetch.ts";
@@ -45,6 +45,23 @@ async function examine(copy: Copy, state: ComponentState, path: string, bytes: U
   };
 }
 
+/**
+ * Queues a look at each component that is no longer importing and still holds a record
+ * of this node that waits for its copy. Such a record was stored while the component was
+ * importing. The copy may have become ready, or failed, after the pass read the
+ * component's state, and then nothing else would look at the record again. Every sync
+ * asks, not only the one that stored the record: that one may have ended before its look
+ * was queued. A patch record is not asked for: it waits for its commit.
+ */
+async function lookAtSettled(env: Env, node: string): Promise<void> {
+  const settled = await env.DB.prepare(
+    "SELECT component FROM components WHERE state != 'importing' AND component IN (SELECT component FROM records WHERE node = ? AND state = 'pending' AND type != 'patch')",
+  )
+    .bind(node)
+    .all<{ component: string }>();
+  if (settled.results.length > 0) await env.SYNC.sendBatch(settled.results.map(({ component }) => ({ body: { kind: "component", component } })));
+}
+
 /** Reads what a registered node holds that the index has not read yet. */
 export async function syncNode(env: Env, node: string, now: number): Promise<SyncOutcome> {
   const db = env.DB;
@@ -52,10 +69,10 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
   // queues a sync of its own, and the notices so far are the ones this sync stands for (KTD11).
   const held = await db
     .prepare(
-      "UPDATE nodes SET queued_at = NULL, absorbed_at = COALESCE(absorbed_at, noticed_at), noticed_at = NULL, syncs = syncs + 1 WHERE url = ? RETURNING processed, rebuilding, syncs",
+      "UPDATE nodes SET queued_at = NULL, absorbed_at = COALESCE(absorbed_at, noticed_at), noticed_at = NULL, syncs = syncs + 1 WHERE url = ? RETURNING processed, syncs",
     )
     .bind(node)
-    .first<{ processed: string | null; rebuilding: number; syncs: number }>();
+    .first<{ processed: string | null; syncs: number }>();
   // Only a registered node is read, and only at the URL it was registered with.
   if (!held) return { ok: true, stored: 0, more: false };
 
@@ -68,13 +85,21 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
   const { head } = listing;
   if (head === undefined) {
     await finished(held.processed).run();
+    await lookAtSettled(env, node);
     return { ok: true, stored: 0, more: false };
   }
 
   const components = await db.prepare("SELECT component, state FROM components").all<{ component: string; state: ComponentState }>();
   const states = new Map(components.results.map(({ component, state }) => [component, state]));
-  const known = await db.prepare("SELECT path FROM records WHERE node = ?").bind(node).all<{ path: string }>();
+  const known = await db.prepare("SELECT path, component FROM records WHERE node = ?").bind(node).all<{ path: string; component: string }>();
   const read = new Set(known.results.map(({ path }) => path));
+  // The limits of a listing also hold for what the index would keep for the node: the
+  // records stored so far with the ones this listing adds. No stored record is ever
+  // dropped, so a node that lists other records at each head would add to them without
+  // end. A node that never takes a record away is held to its listing and no more.
+  const kept = new Map<string, number>();
+  for (const { component } of known.results) kept.set(component, (kept.get(component) ?? 0) + 1);
+  let keptForNode = known.results.length;
   const perComponent = new Map<string, number>();
   const unseen: Listed[] = [];
   for (const path of listing.paths) {
@@ -86,6 +111,10 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
     perComponent.set(named.component, count);
     if (!states.has(named.component) || read.has(path)) continue;
     read.add(path);
+    const keptForComponent = (kept.get(named.component) ?? 0) + 1;
+    keptForNode += 1;
+    if (keptForComponent > MAX_RECORDS_PER_COMPONENT || keptForNode > MAX_LISTING_ENTRIES) return { ok: false, reason: "too-large" };
+    kept.set(named.component, keptForComponent);
     unseen.push({ path, component: named.component, type: named.type });
   }
   // In a fixed order, so two passes over one listing take the same files.
@@ -94,6 +123,8 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
   const copies = new Map<string, Copy>();
   const statements: D1PreparedStatement[] = [];
   const touched = new Set<string>();
+  /** The view of each component that the pass stored a record for has changed. */
+  const bumps = (): D1PreparedStatement[] => [...touched].map((component) => bump(db, component));
   let failure: ReadFailure | undefined;
   const pass = unseen.slice(0, PASS_RECORDS);
   for (let at = 0; at < pass.length && failure === undefined; at += FETCH_AHEAD) {
@@ -110,13 +141,24 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
       const { path, component, type } = listed;
       const copy = copies.get(component) ?? new Copy(env, component);
       copies.set(component, copy);
-      const { state, reason, hash, body, cited } = await examine(copy, states.get(component) ?? "failed", path, file.bytes);
+      let examined: Examined;
+      try {
+        examined = await examine(copy, states.get(component) ?? "failed", path, file.bytes);
+      } catch (error) {
+        // The copy could not be read. What the pass judged before this record is written
+        // first, so the sync that is tried next starts after it. The head is not processed.
+        if (statements.length > 0) await db.batch([...statements, ...bumps()]);
+        throw error;
+      }
+      const { state, reason, hash, body, cited } = examined;
       statements.push(
         db
           .prepare(
-            "INSERT INTO records (node, path, component, type, state, reason, hash, head, body, cited, received_at, rebuilt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (node, path) DO NOTHING",
+            // Whether the node is being rebuilt is read as the record is stored. A reset
+            // may have come since this sync started, and its records count as rebuilt then.
+            "INSERT INTO records (node, path, component, type, state, reason, hash, head, body, cited, received_at, rebuilt) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, (SELECT rebuilding FROM nodes WHERE url = ?1)) ON CONFLICT (node, path) DO NOTHING",
           )
-          .bind(node, path, component, type, state, reason, hash, head, body, cited, now, held.rebuilding),
+          .bind(node, path, component, type, state, reason, hash, head, body, cited, now),
       );
       touched.add(component);
     }
@@ -129,19 +171,9 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
   if (complete) statements.push(finished(head));
   // Every view lists each node with the commit last processed.
   if (complete && head !== held.processed) statements.push(bump(db));
-  else for (const component of touched) statements.push(bump(db, component));
+  else statements.push(...bumps());
   if (statements.length > 0) await db.batch(statements);
 
-  // A record stored for a component that was importing waits for the copy. The copy may
-  // have become ready, or failed, after this pass read the component's state, and then
-  // nothing would look at the record again. So such a component is looked at once more.
-  const waited = [...touched].filter((component) => states.get(component) === "importing");
-  if (waited.length > 0) {
-    const settled = await db
-      .prepare(`SELECT component FROM components WHERE state != 'importing' AND component IN (${waited.map(() => "?").join(", ")})`)
-      .bind(...waited)
-      .all<{ component: string }>();
-    if (settled.results.length > 0) await env.SYNC.sendBatch(settled.results.map(({ component }) => ({ body: { kind: "component", component } })));
-  }
+  await lookAtSettled(env, node);
   return failure === undefined ? { ok: true, head, stored, more: !complete } : { ok: false, reason: failure };
 }

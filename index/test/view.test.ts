@@ -3,6 +3,7 @@
 
 import { ACCEPTED, COMPONENT_STATUS, INDEX_REFUSAL, NODE_REGISTERED, VIEW, conforms, recordId } from "@cairnfield/protocol";
 import { describe, expect, it } from "vitest";
+import { syncNode } from "../src/sync.ts";
 import { BRANCH, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SKILL, START, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
 import type { Answer } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
@@ -280,6 +281,30 @@ describe("a rebuild from the nodes (R12, KTD13)", () => {
 
     // The rebuild is over: a claim that arrives now is live.
     const [fresh] = await one.publish(claim(component, 9));
+    await synced(on, NODE_A);
+    expect((await on.view(component)).claims.find((entry) => entry.id === fresh)?.state).toBe("live");
+  });
+
+  it("shows a claim as expired when the reset came while a sync of its node was waiting for the node's listing", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    const [open] = await node.publish(claim(component, 1));
+    await synced(on, NODE_A);
+    expect((await on.view(component)).claims).toMatchObject([{ id: open, state: "live" }]);
+
+    // The sync started before the reset, and stores the node's records after it.
+    node.onListing = async () => {
+      node.onListing = undefined;
+      expect((await on.call("POST", "/reset", undefined, [RESET_HEADER, RESET_KEY])).status).toBe(200);
+    };
+    expect(await syncNode(on.env, NODE_A, START)).toMatchObject({ ok: true, stored: 1 });
+    // The sync that the reset queued ends the rebuild.
+    await on.drain();
+    expect((await on.view(component)).claims).toMatchObject([{ id: open, state: "expired" }]);
+    const [fresh] = await node.publish(claim(component, 2));
     await synced(on, NODE_A);
     expect((await on.view(component)).claims.find((entry) => entry.id === fresh)?.state).toBe("live");
   });

@@ -89,6 +89,23 @@ function failure(code: ArtifactsErrorCode): ArtifactsError {
   return Object.assign(new Error(code), { name: "ArtifactsError" as const, code, numericCode: 0 });
 }
 
+/** One byte more than the longest file the index reads for a record: 32 MiB. */
+const OVERSIZE_BYTES = 32 * 1024 * 1024 + 1;
+
+/** A blob that only says how long it is. Its size is enough to refuse it, so asking for its content is an error. */
+class OversizeBlob extends Blob {
+  override get size(): number {
+    return OVERSIZE_BYTES;
+  }
+
+  override arrayBuffer(): Promise<ArrayBuffer> {
+    throw new Error("the index asked for the content of a blob over its limit");
+  }
+}
+
+/** What a read of one blob gives in place of its content: a blob over the index's limit, or an error of the service. */
+export type BlobFault = "oversize" | ArtifactsErrorCode;
+
 interface IssuedToken {
   readonly id: string;
   readonly scope: "read" | "write";
@@ -132,6 +149,10 @@ export class FakeArtifacts implements Store {
   }[] = [];
   /** Set by a test: every import fails with this code, as when Artifacts refuses the remote. */
   importFailure: ArtifactsErrorCode | undefined;
+  /** Set by a test, by blob hash: every read of that blob gives this in place of its content. */
+  readonly blobFaults = new Map<string, BlobFault>();
+  /** Called each time a repo is asked for, once its state is read and before the answer is given. */
+  onGet: (() => Promise<void>) | undefined;
   readonly #repos = new Map<string, RepoState>();
   readonly #upstreams = new Map<string, Upstream>();
   #serial = 0;
@@ -140,8 +161,10 @@ export class FakeArtifacts implements Store {
 
   async get(name: string): Promise<Repo> {
     const state = this.#repos.get(name);
+    const importing = state?.importing;
+    await this.onGet?.();
     if (!state) throw failure("NOT_FOUND");
-    if (state.importing) throw failure("IMPORT_IN_PROGRESS");
+    if (importing) throw failure("IMPORT_IN_PROGRESS");
     return this.#handle(state);
   }
 
@@ -199,6 +222,13 @@ export class FakeArtifacts implements Store {
     for (const state of this.#repos.values()) state.importing = false;
   }
 
+  /** Every import in progress fails after `import` returned, and leaves no repo. */
+  abandon(): void {
+    for (const [name, state] of this.#repos) {
+      if (state.importing) this.#repos.delete(name);
+    }
+  }
+
   /** The repos of the namespace, by name. */
   repos(): string[] {
     return [...this.#repos.keys()];
@@ -241,6 +271,9 @@ export class FakeArtifacts implements Store {
       },
       readBlob: async (hash) => {
         state.blobReads += 1;
+        const fault = this.blobFaults.get(hash);
+        if (fault === "oversize") return new OversizeBlob();
+        if (fault !== undefined) throw failure(fault);
         const object = state.objects.get(hash);
         return object?.kind === "blob" ? new Blob([object.content]) : null;
       },

@@ -35,6 +35,9 @@ CREATE TABLE components (
   -- The Artifacts error code of a failed import, when there is one.
   import_error TEXT,
   registered_at INTEGER NOT NULL,
+  -- When the import of the copy was started. The time a copy has to become ready counts
+  -- from here. Empty until the first look at the component has started the import.
+  import_started_at INTEGER,
   -- Goes up with every change to what the component's view holds (KTD11).
   view_version INTEGER NOT NULL DEFAULT 0
 ) STRICT;
