@@ -29,7 +29,7 @@ import {
   replacementsOf,
   validateAgainstFiles,
 } from "@cairnfield/protocol";
-import type { CitedFiles, FileEntry, Finding, NodeListing, Patch, PatchFacts } from "@cairnfield/protocol";
+import type { CitedFiles, CitedRange, FileEntry, Finding, NodeListing, Patch, PatchFacts } from "@cairnfield/protocol";
 import { decoded } from "../checkout.ts";
 import type { Listing } from "../checkout.ts";
 import { blobSizes, changedEntry, diffTrees, fetchCommit, parentsOf, readBlobs } from "../git.ts";
@@ -67,6 +67,8 @@ export interface Verified {
   readonly node: string;
   readonly commit: string;
   readonly facts: PatchFacts;
+  /** The lines the patch's findings cite, which are the lines it may change. */
+  readonly cited: readonly CitedRange[];
   /** The content of each blob the patch replaces, by its hash. */
   readonly before: ReadonlyMap<string, Uint8Array>;
   /** The content of each blob the patch puts in its place, by its hash. */
@@ -220,5 +222,5 @@ export async function verify(run: Assembly, candidate: Candidate): Promise<Verdi
   const { ok, ...facts } = checked;
   // The index may be wrong about a patch, or lie about it. Its patch ID only says which one it meant.
   if (candidate.expected !== undefined && candidate.expected !== facts.patchId) return refuse("patch-id-mismatch");
-  return { ok, node: candidate.node, commit, facts, before, after: after.value };
+  return { ok, node: candidate.node, commit, facts, cited, before, after: after.value };
 }
