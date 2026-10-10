@@ -9,7 +9,7 @@
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { FILE_MODES, LINK_MODE, SUBMODULE_MODE, conforms, field, gitBlobHash, isFileMode, isPath } from "@cairnfield/protocol";
-import type { CitedFile, CitedFiles, Infer } from "@cairnfield/protocol";
+import type { CitedFile, CitedFiles, ContractKind, Infer } from "@cairnfield/protocol";
 import type { Home } from "./config.ts";
 import { listTree, readBlobs } from "./git.ts";
 import type { Scratch } from "./git.ts";
@@ -50,26 +50,32 @@ export type Listing = Infer<typeof LISTING>;
 export const checkoutDir = (home: Home, component: string): string => join(home.checkouts, component);
 const listingFile = (home: Home, component: string): string => join(home.checkouts, `${component}.json`);
 
-/** Reads the listing of a pinned commit. Returns nothing when the commit is not pinned here. */
-export async function readListing(home: Home, component: string): Promise<Listing | undefined> {
+/**
+ * Reads a JSON file the command keeps and holds it to its shape. Returns nothing when
+ * there is no file. A file that cannot be read, or that has another form, is not the
+ * same as no file: `bad` ends the command for it.
+ */
+export async function readWhole<K extends ContractKind>(file: string, kind: K, bad: () => never): Promise<Infer<K> | undefined> {
   let text: string;
   try {
-    text = await readFile(listingFile(home, component), "utf8");
+    text = await readFile(file, "utf8");
   } catch (error) {
-    // No listing means the commit is not pinned here. A listing that cannot be read does not.
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    return stop(EXIT.failed, "bad-checkout", { component });
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : bad();
   }
-  let listing: unknown;
+  let value: unknown;
   try {
-    listing = JSON.parse(text);
+    value = JSON.parse(text);
   } catch {
-    listing = undefined;
+    value = undefined;
   }
-  if (conforms(LISTING, listing) || (listing as Listing).component !== component) {
-    return stop(EXIT.failed, "bad-checkout", { component });
-  }
-  return listing as Listing;
+  return conforms(kind, value) ? bad() : (value as Infer<K>);
+}
+
+/** Reads the listing of a pinned commit. Returns nothing when the commit is not pinned here. */
+export async function readListing(home: Home, component: string): Promise<Listing | undefined> {
+  const bad = (): never => stop(EXIT.failed, "bad-checkout", { component });
+  const listing = await readWhole(listingFile(home, component), LISTING, bad);
+  return listing && listing.component !== component ? bad() : listing;
 }
 
 /**

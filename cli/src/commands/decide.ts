@@ -5,7 +5,6 @@
 // when the team built a copy of that commit, the copy's file-tree hash. That hash is
 // what `verify` later holds an installed copy to.
 
-import { SCHEMA_VERSION } from "@cairnfield/protocol";
 import { readListing } from "../checkout.ts";
 import type { Home } from "../config.ts";
 import { readCopy } from "../copy.ts";
@@ -31,6 +30,6 @@ export async function decide(io: Io, home: Home, request: DecideRequest): Promis
   if (verdict === "approved-with-required-mitigations" && !copy) return stop(EXIT.invalid, "no-copy", { component: commit });
 
   const decision: Decision = { url, commit, verdict, date: new Date(io.now()).toISOString(), ...(copy ? { tree: copy.tree } : {}) };
-  await recordDecision(home, decision, SCHEMA_VERSION);
-  return done({ ...decision });
+  await recordDecision(home, decision);
+  return done(decision);
 }

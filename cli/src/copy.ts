@@ -3,22 +3,22 @@
 // what it built. Nothing here is published: a lens that publishes recipes does that
 // through the outbox and the fork (R25).
 
-import { readFile, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { MAX_RECIPE_PATCHES, conforms, field } from "@cairnfield/protocol";
+import { MAX_RECIPE_PATCHES, field } from "@cairnfield/protocol";
 import type { Infer } from "@cairnfield/protocol";
-import { exportTree, writeWhole } from "./checkout.ts";
+import { exportTree, readWhole, writeWhole } from "./checkout.ts";
 import type { Home } from "./config.ts";
 import type { Scratch } from "./git.ts";
 import { EXIT, stop } from "./outcome.ts";
 
-/** What a built copy is: the pinned commit, the patches in it by ID and in order, its file-tree hash and its commit. */
 const COPY = field.shape({
   component: field.gitHash(),
   patches: field.listOf(field.sha256(), MAX_RECIPE_PATCHES),
   tree: field.gitHash(),
   commit: field.gitHash(),
 });
+/** What a built copy is: the pinned commit, the patches in it by ID and in order, its file-tree hash and its commit. */
 export type Copy = Infer<typeof COPY>;
 
 export const copyDir = (home: Home, component: string): string => join(home.copies, component);
@@ -26,21 +26,9 @@ const copyFile = (home: Home, component: string): string => join(home.copies, `$
 
 /** Reads what the team built of a pinned commit. Returns nothing when it built no copy. */
 export async function readCopy(home: Home, component: string): Promise<Copy | undefined> {
-  let text: string;
-  try {
-    text = await readFile(copyFile(home, component), "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    return stop(EXIT.failed, "bad-copy", { component });
-  }
-  let copy: unknown;
-  try {
-    copy = JSON.parse(text);
-  } catch {
-    copy = undefined;
-  }
-  if (conforms(COPY, copy) || (copy as Copy).component !== component) return stop(EXIT.failed, "bad-copy", { component });
-  return copy as Copy;
+  const bad = (): never => stop(EXIT.failed, "bad-copy", { component });
+  const copy = await readWhole(copyFile(home, component), COPY, bad);
+  return copy && copy.component !== component ? bad() : copy;
 }
 
 /** Takes away the copy of a pinned commit, so a run that builds none leaves none behind. */

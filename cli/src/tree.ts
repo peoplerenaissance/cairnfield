@@ -17,21 +17,21 @@ const OWNER_MAY_RUN = 0o100;
 const [PLAIN, RUNNABLE] = FILE_MODES;
 
 /**
- * The hash of the tree Git would write for a folder. Paths are bytes, because a tree may
- * hold any name. Returns nothing for a folder that holds what no tree can: a socket, a
- * device, a pipe.
+ * The entries of the tree Git would write for a folder. Paths are bytes, because a tree
+ * may hold any name. Returns nothing for a folder that holds what no tree can: a socket,
+ * a device, a pipe.
  */
-async function hashFolder(dir: Buffer, top: boolean): Promise<string | undefined> {
+async function entriesOf(dir: Buffer, top: boolean): Promise<FolderEntry[] | undefined> {
   const entries: FolderEntry[] = [];
   for (const entry of await readdir(dir, { withFileTypes: true, encoding: "buffer" })) {
     const name = entry.name;
     if (top && name.equals(GIT_FOLDER)) continue;
     const path = Buffer.concat([dir, SEPARATOR, name]);
     if (entry.isDirectory()) {
-      const hash = await hashFolder(path, false);
-      if (hash === undefined) return undefined;
+      const inner = await entriesOf(path, false);
+      if (!inner) return undefined;
       // Git holds no empty folder, so one adds nothing to a tree.
-      if (hash !== EMPTY_TREE) entries.push({ name, mode: TREE_MODE, hash });
+      if (inner.length > 0) entries.push({ name, mode: TREE_MODE, hash: await gitTreeHash(inner) });
     } else if (entry.isSymbolicLink()) {
       entries.push({ name, mode: LINK_MODE, hash: await gitBlobHash(await readlink(path, { encoding: "buffer" })) });
     } else if (entry.isFile()) {
@@ -41,13 +41,11 @@ async function hashFolder(dir: Buffer, top: boolean): Promise<string | undefined
       return undefined;
     }
   }
-  return gitTreeHash(entries);
+  return entries;
 }
 
-/** The hash Git gives a tree with no entry. */
-const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-
 /** The file-tree hash of a folder, or nothing when the folder holds what no tree can. */
-export function folderTree(folder: string): Promise<string | undefined> {
-  return hashFolder(Buffer.from(folder), true);
+export async function folderTree(folder: string): Promise<string | undefined> {
+  const entries = await entriesOf(Buffer.from(folder), true);
+  return entries && gitTreeHash(entries);
 }

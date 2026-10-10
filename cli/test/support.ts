@@ -496,16 +496,22 @@ export async function pinned(on: Bench): Promise<Commits> {
   return plugin;
 }
 
+/** The Git URL `pinTree` pins its component from, and another one. Both are invented. */
+export const PLUGIN_URL = "https://git.fellbeck-tools.example/plugin.git";
+export const OTHER_PLUGIN_URL = "https://git.fellbeck-tools.example/another-plugin.git";
+
 /** Makes the node's copy of a component from the given tree, and pins it. */
 export async function pinTree(on: Bench, tree: readonly Entry[]): Promise<{ readonly commit: string; readonly outcome: Outcome }> {
   const source = on.createRepo("source");
   const commit = commitEntries(source, tree);
   git(source, ["push", "--quiet", on.createRepo(`copy-${commit}`), TEAM_BRANCH]);
-  const outcome = await on.run("pin", "https://git.fellbeck-tools.example/plugin.git", "--branch", TEAM_BRANCH, "--commit", commit);
+  const outcome = await on.run("pin", PLUGIN_URL, "--branch", TEAM_BRANCH, "--commit", commit);
   return { commit, outcome };
 }
 
 export const OUTBOX = ".cairnfield/outbox";
+/** The team's table of verdicts. */
+export const DECISIONS = ".cairnfield/decisions.json";
 
 /** Writes a record file to the outbox as a person would, with spaces and line breaks. Returns its path there. */
 export async function putRecord(on: Bench, record: object): Promise<string> {

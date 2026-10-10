@@ -38,20 +38,22 @@ import type { Outcome } from "./outcome.ts";
 type Options = { readonly [name: string]: string | undefined };
 type Flags = { readonly [name: string]: boolean | undefined };
 
-interface Command {
+interface Declared {
   /** The options the command takes beside `--config`. Each has a value. */
   readonly options: readonly string[];
   /** The options the command takes that have no value. */
   readonly flags?: readonly string[];
   /** How many arguments the command takes that are no option. */
   readonly arguments: number;
+}
+
+interface Command extends Declared {
   run(io: Io, home: Home, args: readonly string[], options: Options, flags: Flags): Promise<Outcome>;
 }
 
-/** A command that reads no config file, so it runs on a machine that has none. */
-interface Standalone {
-  readonly options: readonly string[];
-  readonly arguments: number;
+/** A command that reads no config file and takes no `--config`, so it runs on a machine that has none. */
+interface Standalone extends Declared {
+  readonly standalone: true;
   run(io: Io, args: readonly string[], options: Options): Promise<Outcome>;
 }
 
@@ -99,6 +101,7 @@ const COMMANDS: { readonly [name: string]: Command } = {
 
 const STANDALONE: { readonly [name: string]: Standalone } = {
   verify: {
+    standalone: true,
     options: ["approvals"],
     arguments: 2,
     run: (io, [url, folder], { approvals: file }) => (isHttpsUrl(url) && folder !== undefined ? verify(io, { url, folder, approvals: file }) : usage()),
@@ -107,25 +110,22 @@ const STANDALONE: { readonly [name: string]: Standalone } = {
 
 async function dispatch(io: Io, argv: readonly string[]): Promise<Outcome> {
   const [name = "", ...rest] = argv;
-  const standalone = Object.hasOwn(STANDALONE, name) ? STANDALONE[name] : undefined;
-  const command = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined;
-  const declared = standalone ?? command;
-  if (!declared) return usage();
-  // A command that reads no config file takes no `--config` either.
-  const options: NonNullable<ParseArgsConfig["options"]> = standalone ? {} : { config: { type: "string" } };
-  for (const option of declared.options) options[option] = { type: "string" };
-  for (const flag of command?.flags ?? []) options[flag] = { type: "boolean" };
+  const named = (commands: { readonly [name: string]: Command | Standalone }) => (Object.hasOwn(commands, name) ? commands[name] : undefined);
+  const command = named(COMMANDS) ?? named(STANDALONE);
+  if (!command) return usage();
+  const options: NonNullable<ParseArgsConfig["options"]> = "standalone" in command ? {} : { config: { type: "string" } };
+  for (const option of command.options) options[option] = { type: "string" };
+  for (const flag of command.flags ?? []) options[flag] = { type: "boolean" };
   let parsed;
   try {
     parsed = parseArgs({ args: rest, options, allowPositionals: true, strict: true });
   } catch {
     return usage();
   }
-  if (parsed.positionals.length !== declared.arguments) return usage();
+  if (parsed.positionals.length !== command.arguments) return usage();
   // Each option was declared above with a value or without one, and is read as it was declared.
   const values = parsed.values as Options;
-  if (standalone) return standalone.run(io, parsed.positionals, values);
-  if (!command) return usage();
+  if ("standalone" in command) return command.run(io, parsed.positionals, values);
   return command.run(io, await loadHome(io, values["config"]), parsed.positionals, values, parsed.values as Flags);
 }
 

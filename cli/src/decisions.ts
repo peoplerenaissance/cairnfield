@@ -6,10 +6,9 @@
 // published. A team shares it by its own means, and `verify` reads the copy it is given
 // (R36).
 
-import { readFile } from "node:fs/promises";
-import { conforms, field } from "@cairnfield/protocol";
+import { SCHEMA_VERSION, compare, field } from "@cairnfield/protocol";
 import type { Infer } from "@cairnfield/protocol";
-import { writeWhole } from "./checkout.ts";
+import { readWhole, writeWhole } from "./checkout.ts";
 import type { Home } from "./config.ts";
 import { EXIT, stop } from "./outcome.ts";
 
@@ -47,31 +46,17 @@ const TABLE = field.shape({ version: field.version(), decisions: field.listOf(DE
  * cannot be read says nothing about what may be installed.
  */
 export async function readDecisions(file: string): Promise<Decision[] | undefined> {
-  let text: string;
-  try {
-    text = await readFile(file, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    return stop(EXIT.failed, "bad-decisions");
-  }
-  let table: unknown;
-  try {
-    table = JSON.parse(text);
-  } catch {
-    table = undefined;
-  }
-  if (conforms(TABLE, table)) return stop(EXIT.failed, "bad-decisions");
-  const { decisions } = table as Infer<typeof TABLE>;
-  if (decisions.some(({ date }) => !TIME.test(date))) return stop(EXIT.failed, "bad-decisions");
-  return decisions;
+  const bad = (): never => stop(EXIT.failed, "bad-decisions");
+  const table = await readWhole(file, TABLE, bad);
+  return table?.decisions.some(({ date }) => !TIME.test(date)) ? bad() : table?.decisions;
 }
 
 /**
  * Writes a verdict into the team's table. A component has one entry, so a verdict for a
  * newer commit takes the place of the one before it.
  */
-export async function recordDecision(home: Home, decision: Decision, version: string): Promise<void> {
+export async function recordDecision(home: Home, decision: Decision): Promise<void> {
   const others = ((await readDecisions(home.decisions)) ?? []).filter(({ url }) => url !== decision.url);
-  const decisions = [...others, decision].sort((a, b) => (a.url < b.url ? -1 : 1));
-  await writeWhole(home.decisions, { version, decisions });
+  const decisions = [...others, decision].sort((a, b) => compare(a.url, b.url));
+  await writeWhole(home.decisions, { version: SCHEMA_VERSION, decisions });
 }

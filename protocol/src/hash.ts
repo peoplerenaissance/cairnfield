@@ -1,5 +1,8 @@
 // Hashes come from Web Crypto, which Workers and Node both provide. So every hash is async.
 
+import { TREE_MODE } from "./enums.ts";
+import type { FileMode, LINK_MODE } from "./enums.ts";
+
 function hex(digest: ArrayBuffer): string {
   let out = "";
   for (const byte of new Uint8Array(digest)) {
@@ -8,19 +11,29 @@ function hex(digest: ArrayBuffer): string {
   return out;
 }
 
-// Joins a header and content in a buffer of its own. Web Crypto wants bytes backed by an
-// ArrayBuffer, and the Git hash needs the header in front of the content.
-function framed(header: Uint8Array, content: Uint8Array): Uint8Array<ArrayBuffer> {
-  const bytes = new Uint8Array(header.length + content.length);
-  bytes.set(header);
-  bytes.set(content, header.length);
+// The bytes a hash in hexadecimal stands for.
+function unhex(text: string): Uint8Array {
+  const bytes = new Uint8Array(text.length / 2);
+  for (let at = 0; at < bytes.length; at++) bytes[at] = Number.parseInt(text.slice(at * 2, at * 2 + 2), 16);
   return bytes;
 }
 
-const NO_HEADER = new Uint8Array(0);
+// Joins parts in a buffer of its own. Web Crypto wants bytes backed by an ArrayBuffer,
+// and a Git hash needs a header in front of the content.
+function joined(parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    bytes.set(part, at);
+    at += part.length;
+  }
+  return bytes;
+}
+
+const text = (value: string): Uint8Array => new TextEncoder().encode(value);
 
 export async function sha256Hex(content: Uint8Array): Promise<string> {
-  return hex(await crypto.subtle.digest("SHA-256", framed(NO_HEADER, content)));
+  return hex(await crypto.subtle.digest("SHA-256", joined([content])));
 }
 
 /**
@@ -29,8 +42,7 @@ export async function sha256Hex(content: Uint8Array): Promise<string> {
  * is not a choice made here. It names content. It is never used for a secret or a password.
  */
 async function gitObjectHash(type: "blob" | "tree", content: Uint8Array): Promise<string> {
-  const header = new TextEncoder().encode(`${type} ${content.length}\0`);
-  return hex(await crypto.subtle.digest("SHA-1", framed(header, content)));
+  return hex(await crypto.subtle.digest("SHA-1", joined([text(`${type} ${content.length}\0`), content])));
 }
 
 /** The hash Git gives a file: the object hash of its bytes as a blob. */
@@ -38,19 +50,16 @@ export function gitBlobHash(content: Uint8Array): Promise<string> {
   return gitObjectHash("blob", content);
 }
 
-/** The mode Git writes for a folder in a tree. */
-export const TREE_MODE = "40000";
-
 /** One entry of a folder: its name there, its Git mode and the hash of its blob or tree. */
 export interface FolderEntry {
   /** A name is bytes, because a file system may hold any. */
   readonly name: Uint8Array;
-  /** As Git writes it in a tree: `100644`, `100755`, `120000`, or `TREE_MODE` for a folder. */
-  readonly mode: string;
+  readonly mode: FileMode | typeof LINK_MODE | typeof TREE_MODE;
   readonly hash: string;
 }
 
 const SLASH = 0x2f;
+const ZERO = new Uint8Array(1);
 
 // Git orders the entries of a tree by the bytes of their names, and reads a folder's
 // name as if a slash ended it.
@@ -70,19 +79,6 @@ function inTreeOrder(a: FolderEntry, b: FolderEntry): number {
  * The entries may come in any order.
  */
 export function gitTreeHash(entries: readonly FolderEntry[]): Promise<string> {
-  const parts = [...entries].sort(inTreeOrder).map(({ name, mode, hash }) => {
-    const head = new TextEncoder().encode(`${mode} `);
-    const part = new Uint8Array(head.length + name.length + 21);
-    part.set(head);
-    part.set(name, head.length);
-    for (let at = 0; at < 20; at++) part[head.length + name.length + 1 + at] = Number.parseInt(hash.slice(at * 2, at * 2 + 2), 16);
-    return part;
-  });
-  const tree = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
-  let at = 0;
-  for (const part of parts) {
-    tree.set(part, at);
-    at += part.length;
-  }
-  return gitObjectHash("tree", tree);
+  const ordered = [...entries].sort(inTreeOrder);
+  return gitObjectHash("tree", joined(ordered.flatMap(({ name, mode, hash }) => [text(`${mode} `), name, ZERO, unhex(hash)])));
 }

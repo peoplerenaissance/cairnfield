@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { canonicalJson, recordId } from "../src/canonical.ts";
-import { TREE_MODE, gitBlobHash, gitTreeHash, sha256Hex } from "../src/hash.ts";
+import { TREE_MODE } from "../src/enums.ts";
+import { gitBlobHash, gitTreeHash, sha256Hex } from "../src/hash.ts";
+import type { FolderEntry } from "../src/hash.ts";
 import { utf8 } from "./fixtures.ts";
 
 
@@ -69,7 +71,7 @@ describe("hashes", () => {
     expect(await gitTreeHash([])).toBe("4b825dc642cb6eb9a060e54bf8d69288fbee4904");
     const lib = await gitTreeHash([{ name: utf8("b.txt"), mode: "100644", hash: "61780798228d17af2d34fce4cfbdf35556832472" }]);
     expect(lib).toBe("f8f7aefc2900a3d737cea9eee45729fd55761e1a");
-    const entries = [
+    const entries: FolderEntry[] = [
       { name: utf8("run.sh"), mode: "100755", hash: "1a2485251c33a70432394c93fb89330ef214bfc9" },
       { name: utf8("lib"), mode: TREE_MODE, hash: lib },
       { name: utf8("lib.txt"), mode: "100644", hash: "718f4d2ff533cf8ead8d3556cf43912bd245fbc4" },
