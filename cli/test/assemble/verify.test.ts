@@ -63,6 +63,15 @@ describe("a candidate from a named team", () => {
     expect(on.gitCalls.slice(before).some((args) => args.includes(forkOfTheirs()))).toBe(false);
   });
 
+  it("is checked once when the index lists its record under many patch IDs", async () => {
+    const made = await theirs({ cites: [[3, 3]], changes: bothRules(NARROWED) });
+    serveView(on, component, ["a", "b", "c"].map((digit) => ({ ...made, says: digit.repeat(64) })));
+    const before = on.gitCalls.length;
+
+    expectRefused(await on.run("assemble", component), made, "patch-id-mismatch");
+    expect(on.gitCalls.slice(before).filter((args) => args[0] === "fetch" && args.includes(forkOfTheirs()))).toHaveLength(1);
+  });
+
   it("takes the commit and the findings from the team's own record, whatever the index shows as that record", async () => {
     const made = await theirs({ cites: [[3, 3]], changes: bothRules(NARROWED) });
     // Under the record's ID the index shows another commit of the fork, which also drops the last rule.

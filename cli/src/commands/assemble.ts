@@ -134,8 +134,12 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
     for (const { before } of selected) for (const [blob, bytes] of before) content.set(blob, bytes);
     io.warn(renderDiff(listing.files, composed.changes, (blob) => content.get(blob)));
 
-    await saveCopy(home, scratch, copy);
     const published = lens.publishRecipes ? await publishCopy(io, home, scratch, key, copy) : done({});
+    // The copy counts as built only when what the lens asked for was done, so a run that
+    // could not publish leaves none behind. A notice the index did not take is no failure
+    // of the copy: its recipe is published all the same.
+    const kept = published.code === EXIT.ok || published.output["notice"] === "failed";
+    if (kept) await saveCopy(home, scratch, copy);
     return done(
       {
         component,
@@ -145,7 +149,7 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
         skipped,
         tree: copy.tree,
         commit,
-        copy: shownPath(home, copyDir(home, component)),
+        ...(kept ? { copy: shownPath(home, copyDir(home, component)) } : {}),
         paths: composed.changes.map(({ path }) => path),
         ...published.output,
       },

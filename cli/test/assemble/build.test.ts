@@ -2,7 +2,7 @@
 // applied as line edits against the old content, so the copy does not depend on the
 // order of the patches, and the operator is shown every line the copy changes.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCHEMA_VERSION, TEAM_BRANCH, recordId } from "@cairnfield/protocol";
@@ -318,6 +318,36 @@ describe("a lens that publishes recipes", () => {
     expect(outcome.output["recipe"]).toBe(await recordId(recipe));
     expect(outcome.output["published"]).toEqual([`records/${component}/recipe/${await recordId(recipe)}.json`]);
     expect(JSON.parse(git(on.repo("team"), ["cat-file", "blob", `${TEAM_BRANCH}:records/${component}/recipe/${await recordId(recipe)}.json`]))).toEqual(recipe);
+  });
+
+  it("leaves no copy behind when the copy cannot be pushed to the fork", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1, publishRecipes: true });
+    await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
+    const records = published(on);
+    // The fork goes away just before the push of the copy.
+    on.beforeGit = (args) => {
+      if (args[0] === "push" && args.some((arg) => arg.includes("refs/heads/copy/"))) rmSync(on.repo(`fork-${component}`), { recursive: true, force: true });
+    };
+
+    const outcome = await on.run("assemble", component);
+
+    expect(outcome).toEqual({ code: EXIT.git, output: { error: "git-failed", step: "push" } });
+    expect(existsSync(join(on.home, COPIES, component))).toBe(false);
+    expect(existsSync(join(on.home, COPIES, `${component}.json`))).toBe(false);
+    expect(published(on)).toEqual(records);
+  });
+
+  it("keeps the copy when only the notice to the index fails, because the recipe is published all the same", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1, publishRecipes: true });
+    await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
+    on.configure({ node: NODE, lens: "lenses/lens.json", index: INDEX });
+    on.index.noticeStatus = 500;
+
+    const outcome = await on.run("assemble", component);
+
+    expect(outcome).toMatchObject({ code: EXIT.index, output: { notice: "failed", copy: `${COPIES}/${component}` } });
+    expect(outcome.output["published"]).toHaveLength(1);
+    expect(existsSync(join(on.home, COPIES, `${component}.json`))).toBe(true);
   });
 
   it("moves the copy's ref when the selection changes", async () => {
