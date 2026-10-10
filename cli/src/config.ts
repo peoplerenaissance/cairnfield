@@ -6,8 +6,8 @@
 
 import { readFile, realpath } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import { conforms, field, isIndexUrl, isToken } from "@cairnfield/protocol";
-import type { Infer } from "@cairnfield/protocol";
+import { MODELS, conforms, field, isIndexUrl, isToken } from "@cairnfield/protocol";
+import type { Infer, Model } from "@cairnfield/protocol";
 import type { Io } from "./io.ts";
 import { EXIT, stop } from "./outcome.ts";
 
@@ -22,6 +22,11 @@ const CHECKOUTS_FOLDER = "checkouts";
 
 const MAX_FILE_PATH_LENGTH = 4096;
 
+/** The models a bundled agent can run on: the protocol's list without its two values for a model it does not name. */
+const AGENT_MODELS = MODELS.filter((model) => model !== "other" && model !== "none");
+/** The model a bundled agent runs on when the config names none (KTD21). */
+export const DEFAULT_MODEL: Model = "claude-sonnet-5-5";
+
 const CONFIG = field.shape({
   /** The base URL of the team's node, which is the team's identity (KTD8). */
   node: field.nodeUrl(),
@@ -29,6 +34,15 @@ const CONFIG = field.shape({
   index: field.optional(field.url()),
   /** The team's lens file (R23), as a path from the config file's folder. */
   lens: field.optional(field.text(MAX_FILE_PATH_LENGTH)),
+  /**
+   * A label for the team that stays the same wherever its node is deployed. Recordings
+   * are kept under it, so a reader's own deployment finds the same ones (KTD18).
+   */
+  team: field.optional(field.name("repo")),
+  /** The folder that holds recordings, as a path from the config file's folder. */
+  recordings: field.optional(field.text(MAX_FILE_PATH_LENGTH)),
+  /** The model the bundled agents run on (KTD21). */
+  model: field.optional(field.oneOf(AGENT_MODELS)),
 });
 export type Config = Infer<typeof CONFIG>;
 
@@ -41,6 +55,8 @@ export interface Home {
   readonly outbox: string;
   /** Where the checkout of each pinned commit is kept (KTD16). */
   readonly checkouts: string;
+  /** Where the patch agent's saved edits are kept (KTD18). */
+  readonly recordings: string;
 }
 
 /**
@@ -77,12 +93,18 @@ export async function loadHome(io: Io, named: string | undefined): Promise<Home>
     return stop(EXIT.usage, "bad-config");
   }
   if (conforms(CONFIG, config)) return stop(EXIT.usage, "bad-config");
-  const { index } = config as Config;
+  const { index, recordings } = config as Config;
   // A route is joined to the index address, so it ends with no slash.
   if (index !== undefined && !isIndexUrl(index)) return stop(EXIT.usage, "bad-config");
   const root = dirname(file);
   const state = join(root, STATE_FOLDER);
-  return { config: config as Config, root, outbox: join(state, "outbox"), checkouts: join(state, CHECKOUTS_FOLDER) };
+  return {
+    config: config as Config,
+    root,
+    outbox: join(state, "outbox"),
+    checkouts: join(state, CHECKOUTS_FOLDER),
+    recordings: resolve(root, recordings ?? join(STATE_FOLDER, "recordings")),
+  };
 }
 
 /** Reads a key from the environment. It travels in a header, so it must be able to. */

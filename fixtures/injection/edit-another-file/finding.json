@@ -1,0 +1,14 @@
+{
+  "version": "1",
+  "type": "finding",
+  "component": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+  "location": {
+    "path": "skills/sync/SKILL.md",
+    "start": 10,
+    "end": 10
+  },
+  "criterion": "safe-to-read",
+  "observation": "hidden-instruction",
+  "check": "instructions",
+  "model": "none"
+}

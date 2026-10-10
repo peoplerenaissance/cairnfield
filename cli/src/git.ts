@@ -9,7 +9,7 @@
 // file changes one.
 
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
 import { isGitHash, isNamespaceName, isRepoName } from "@cairnfield/protocol";
@@ -127,7 +127,7 @@ const PASSED_ON = [
 
 const IDENTITY = { name: "Cairnfield command", email: "command@cairnfield.example" };
 
-function environment(io: Io, dir: string, access: Access | undefined, index: string | undefined): GitCall["env"] {
+function environment(io: Io, dir: string, { access, index, date }: GitOptions): GitCall["env"] {
   const env: { [name: string]: string } = {};
   for (const name of PASSED_ON) {
     const value = io.env[name];
@@ -159,6 +159,7 @@ function environment(io: Io, dir: string, access: Access | undefined, index: str
     GIT_AUTHOR_EMAIL: IDENTITY.email,
     GIT_COMMITTER_NAME: IDENTITY.name,
     GIT_COMMITTER_EMAIL: IDENTITY.email,
+    ...(date === undefined ? {} : { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date }),
     LC_ALL: "C",
   };
 }
@@ -169,6 +170,8 @@ export interface GitOptions {
   readonly input?: Uint8Array;
   /** An index file of the call's own, so the call builds a tree with no work tree. */
   readonly index?: string;
+  /** The author and committer date of a commit the call writes, when its hash must not depend on the clock (KTD17). */
+  readonly date?: string;
   /** Gives the run back when Git fails, for a caller that reads why. */
   readonly mayFail?: boolean;
   /** A limit on standard output other than the usual one. */
@@ -199,7 +202,7 @@ export async function withScratch<T>(io: Io, work: (scratch: Scratch) => Promise
       if (options.access) tokens.add(options.access.token);
       const limit = options.limit ?? { bytes: MAX_OUTPUT_BYTES, error: "git-output-too-large" };
       const run = await io.git(args, {
-        env: environment(io, repo, options.access, options.index),
+        env: environment(io, repo, options),
         ...(options.input === undefined ? {} : { input: options.input }),
         maxOutput: limit.bytes,
       });
@@ -222,6 +225,23 @@ export async function withScratch<T>(io: Io, work: (scratch: Scratch) => Promise
 
 /** What Git wrote to standard output, as one piece of text. */
 export const said = (run: GitRun): string => new TextDecoder().decode(run.stdout).trim();
+
+/** Lines for Git's standard input. */
+export const inputLines = (all: readonly string[]): Uint8Array => new TextEncoder().encode(all.map((line) => `${line}\n`).join(""));
+
+/** Stores bytes as blobs with no filter, so Git holds them as they are. Returns the hash of each. */
+export async function writeBlobs(scratch: Scratch, contents: readonly Uint8Array[]): Promise<string[]> {
+  if (contents.length === 0) return [];
+  const dir = await mkdtemp(join(scratch.dir, "blobs-"));
+  const files = contents.map((content, at) => ({ file: join(dir, String(at)), content }));
+  await Promise.all(files.map(({ file, content }) => writeFile(file, content)));
+  const hashed = await scratch.git("hash-object", ["hash-object", "-w", "--no-filters", "--stdin-paths"], {
+    input: inputLines(files.map(({ file }) => file)),
+  });
+  const blobs = said(hashed).split("\n");
+  if (blobs.length !== contents.length) stop(EXIT.git, "git-failed", { step: "hash-object" });
+  return blobs;
+}
 
 /**
  * Fetches the commit that a branch or a full commit hash names, at depth 1, with no tag

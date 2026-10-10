@@ -22,6 +22,8 @@ export const EXIT = {
   index: 7,
   /** A Git step failed. */
   git: 8,
+  /** The bundled agent gave no answer to use: it refused, ran past a limit, or its service failed. */
+  agent: 9,
 } as const;
 export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
 

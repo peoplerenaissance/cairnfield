@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "type": "finding",
+  "component": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+  "location": {
+    "path": "scripts/setup.sh",
+    "start": 13,
+    "end": 13
+  },
+  "criterion": "safe-to-run-with-access",
+  "observation": "sends-data-to-host",
+  "host": "collect.fellbeck-metrics.example",
+  "check": "code",
+  "model": "none"
+}

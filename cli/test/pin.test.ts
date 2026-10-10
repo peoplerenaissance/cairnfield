@@ -13,9 +13,8 @@ import {
   NODE,
   REGISTRATION_KEY,
   bench,
-  commitEntries,
   demoPlugin,
-  git,
+  pinTree as pin,
 } from "./support.ts";
 import type { Bench, Entry } from "./support.ts";
 
@@ -37,14 +36,7 @@ function entries(dir: string): string[] {
     .sort();
 }
 
-/** Makes the node's copy of a component from the given tree, and pins it. */
-async function pinTree(tree: readonly Entry[]) {
-  const source = on.createRepo("source");
-  const commit = commitEntries(source, tree);
-  git(source, ["push", "--quiet", on.createRepo(`copy-${commit}`), "main"]);
-  const outcome = await on.run("pin", "https://git.fellbeck-tools.example/plugin.git", "--branch", "main", "--commit", commit);
-  return { commit, outcome };
-}
+const pinTree = (tree: readonly Entry[]) => pin(on, tree);
 
 describe("pin", () => {
   it("has the node import the component, waits until the copy is ready and makes the checkout", async () => {

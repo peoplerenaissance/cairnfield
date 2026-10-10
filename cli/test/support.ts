@@ -3,6 +3,7 @@
 // Artifacts repos. Every host, key and token here is invented.
 
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -12,6 +13,8 @@ import {
   REGISTRATION_KEY_HEADER,
   SCHEMA_VERSION,
   TEAM_BRANCH,
+  isCommit,
+  parseRecordPath,
   recordId,
   recordPath,
 } from "@cairnfield/protocol";
@@ -30,6 +33,9 @@ export const ACCOUNT = "0123456789abcdef0123456789abcdef";
 export const NAMESPACE = "cairnfield-team-a";
 export const ADMIN_KEY = "the-admin-key-of-team-a";
 export const REGISTRATION_KEY = "the-registration-key";
+export const MODEL_API = "https://api.anthropic.com";
+// Drawn for each run. It stands in for a model key, and no service ever sees it.
+export const MODEL_KEY = `model-key-${randomUUID()}`;
 // Built here, so the secret scan does not read the source as holding a token.
 export const TOKEN = `art_v2_${"5e".repeat(20)}?expires=1900000000`;
 
@@ -83,6 +89,8 @@ export interface Seen {
   readonly url: string;
   readonly headers: Headers;
   readonly body: unknown;
+  /** What the request asked `fetch` to do with a redirect. */
+  readonly redirect: string | undefined;
 }
 
 export interface FakeNode {
@@ -93,6 +101,39 @@ export interface FakeNode {
   /** The remote the token route names for a repo. */
   remote: (repo: string) => string;
 }
+
+/** One answer of the fake model: the content of its message and why it stopped. */
+export interface ModelAnswer {
+  readonly content: readonly object[];
+  readonly stop: string;
+  readonly details?: object;
+  /** The tokens the answer reports, when a test counts them. */
+  readonly usage?: { readonly input_tokens: number; readonly output_tokens: number };
+}
+
+export interface FakeModel {
+  /** The answers the model gives, in order. */
+  readonly answers: ModelAnswer[];
+  /** Every request the command sent to the model. */
+  readonly requests: Seen[];
+}
+
+let toolCalls = 0;
+
+/** An answer in which the model calls tools. */
+export function calls(...uses: readonly (readonly [name: string, input: object])[]): ModelAnswer {
+  return {
+    stop: "tool_use",
+    content: uses.map(([name, input]) => ({ type: "tool_use", id: `toolu_${toolCalls++}`, name, input })),
+  };
+}
+
+/** An answer that ends the model's turn with a value, or with text that is no JSON. */
+export function answers(value: unknown): ModelAnswer {
+  return { stop: "end_turn", content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }] };
+}
+
+export const REFUSAL: ModelAnswer = { stop: "refusal", content: [], details: { type: "refusal", category: "cyber", explanation: null } };
 
 export interface FakeIndex {
   readonly nodes: string[];
@@ -122,6 +163,7 @@ export interface Bench {
   readonly sleeps: number[];
   readonly node: FakeNode;
   readonly index: FakeIndex;
+  readonly model: FakeModel;
   /** The whole number the command draws next. */
   nextRandom: number;
   /** Called before each Git call, so a test can change the remote under the command. */
@@ -181,7 +223,38 @@ export function bench(sharing?: Bench): Bench {
     return false;
   };
 
-  function nodeAnswer(seen: Seen, path: string): Response {
+  /** The team repo's head and its record files, as the node lists them. */
+  function listing(): Response {
+    let head: string;
+    try {
+      head = git(repo("team"), ["rev-parse", "--verify", "--quiet", `refs/heads/${TEAM_BRANCH}`]);
+    } catch {
+      return refuse("not-found");
+    }
+    const listed = git(repo("team"), ["ls-tree", "-r", head, "records/"]);
+    const records = (listed === "" ? [] : listed.split("\n")).map((line) => {
+      const [entry = "", path = ""] = line.split("\t");
+      return { path, blob: entry.split(" ")[2] };
+    });
+    return Response.json({ head, records });
+  }
+
+  /** One file of the team repo at a commit, as the node serves it: the bytes, unchecked. */
+  function file(query: URLSearchParams): Response {
+    const { commit, path } = Object.fromEntries(query);
+    // As on the node: only a commit hash and a record's path name a file.
+    if (!isCommit(commit) || path === undefined || !parseRecordPath(path)) return refuse("bad-request");
+    try {
+      const bytes = execFileSync("git", ["-C", repo("team"), "cat-file", "blob", `${commit}:${path}`], { env: GIT_ENV });
+      return new Response(bytes, { headers: { "content-type": "application/json" } });
+    } catch {
+      return refuse("not-found");
+    }
+  }
+
+  function nodeAnswer(seen: Seen, path: string, query: URLSearchParams): Response {
+    if (seen.method === "GET" && path === "records") return listing();
+    if (seen.method === "GET" && path === "file") return file(query);
     if (!path.startsWith("admin/")) return refuse("not-found");
     if (seen.headers.get(ADMIN_KEY_HEADER) !== ADMIN_KEY) return refuse("unauthorized");
     const body = (seen.body ?? {}) as { readonly repo?: unknown; readonly component?: unknown; readonly commit?: unknown };
@@ -192,6 +265,14 @@ export function bench(sharing?: Bench): Bench {
     if (path === "admin/team-repo") {
       createRepo("team");
       return Response.json({ repo: "team", ready: ready() });
+    }
+    if (path === "admin/fork") {
+      const copy = repo(`copy-${String(body.component)}`);
+      if (!existsSync(copy)) return refuse("not-found");
+      const name = `fork-${String(body.component)}`;
+      // A fork holds everything its copy holds.
+      if (!existsSync(repo(name))) git(copy, ["push", "--quiet", createRepo(name), "refs/*:refs/*"]);
+      return Response.json({ repo: name, ready: ready() });
     }
     if (path === "admin/token") {
       const name = repoName(body);
@@ -229,6 +310,25 @@ export function bench(sharing?: Bench): Bench {
     return answer({ error: "not-found" }, 404);
   }
 
+  const model: FakeModel = { answers: [], requests: [] };
+  function modelAnswer(seen: Seen): Response {
+    model.requests.push(seen);
+    const next = model.answers.shift();
+    // A status the command does not try again.
+    if (!next) return Response.json({ type: "error", error: { type: "invalid_request_error", message: "no answer left" } }, { status: 400 });
+    return Response.json({
+      id: `msg_${model.requests.length}`,
+      type: "message",
+      role: "assistant",
+      model: (seen.body as { readonly model: string }).model,
+      content: next.content,
+      stop_reason: next.stop,
+      stop_sequence: null,
+      stop_details: next.details ?? null,
+      usage: next.usage ?? { input_tokens: 100, output_tokens: 10 },
+    });
+  }
+
   const requests: Seen[] = [];
   const fetchFake = async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : String(input));
@@ -238,12 +338,14 @@ export function bench(sharing?: Bench): Bench {
       url: url.href,
       headers: new Headers(init?.headers),
       body: text === undefined ? undefined : (JSON.parse(text) as unknown),
+      redirect: init?.redirect,
     };
     requests.push(seen);
     const given = made.respond?.(seen);
     if (given) return given;
-    if (url.origin === NODE) return nodeAnswer(seen, url.pathname.slice(1));
+    if (url.origin === NODE) return nodeAnswer(seen, url.pathname.slice(1), url.searchParams);
     if (url.origin === INDEX) return indexAnswer(seen, url.pathname);
+    if (url.origin === MODEL_API && url.pathname === "/v1/messages") return modelAnswer(seen);
     throw new TypeError(`no such host: ${url.host}`);
   };
 
@@ -272,6 +374,7 @@ export function bench(sharing?: Bench): Bench {
     PATH: process.env["PATH"],
     CAIRNFIELD_ADMIN_KEY: ADMIN_KEY,
     CAIRNFIELD_REGISTRATION_KEY: REGISTRATION_KEY,
+    ANTHROPIC_API_KEY: MODEL_KEY,
   };
   const warnings: string[] = [];
   const sleeps: number[] = [];
@@ -286,6 +389,7 @@ export function bench(sharing?: Bench): Bench {
     sleeps,
     node,
     index,
+    model,
     nextRandom: 7,
     beforeGit: undefined,
     respond: undefined,
@@ -354,6 +458,15 @@ export async function pinned(on: Bench): Promise<Commits> {
   const outcome = await on.run("pin", plugin.url, "--branch", plugin.branch, "--commit", plugin.first);
   if (outcome.code !== 0) throw new Error(`the pin failed: ${JSON.stringify(outcome.output)}`);
   return plugin;
+}
+
+/** Makes the node's copy of a component from the given tree, and pins it. */
+export async function pinTree(on: Bench, tree: readonly Entry[]): Promise<{ readonly commit: string; readonly outcome: Outcome }> {
+  const source = on.createRepo("source");
+  const commit = commitEntries(source, tree);
+  git(source, ["push", "--quiet", on.createRepo(`copy-${commit}`), TEAM_BRANCH]);
+  const outcome = await on.run("pin", "https://git.fellbeck-tools.example/plugin.git", "--branch", TEAM_BRANCH, "--commit", commit);
+  return { commit, outcome };
 }
 
 export const OUTBOX = ".cairnfield/outbox";

@@ -1,0 +1,17 @@
+{
+  "version": "1",
+  "component": "f7bea8e45539da2eb26841551a553418437d2a58",
+  "finding": "72b5c551a1e4d6e2a878068dfd3dc3eceac11ed32d56e0110d54dcc67fd83ba9",
+  "claim": 4052138790,
+  "model": "claude-sonnet-5-5",
+  "edits": [
+    {
+      "path": "plugin.json",
+      "start": 12,
+      "end": 12,
+      "lines": [
+        "    \"network\": { \"hosts\": [\"api.fellbeck-notes.example\"] },"
+      ]
+    }
+  ]
+}
