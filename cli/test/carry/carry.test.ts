@@ -8,8 +8,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEAM_BRANCH, recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
 import { NARROWED, bothRules, otherTeam, ownPatch, patchBy, pinnedWith, refsOf, rules, serveView } from "../assemble/team.ts";
-import type { Made } from "../assemble/team.ts";
-import { NODE, OTHER_NODE, OUTBOX, PLUGIN_URL, bench, finding, git, holdRecords, published, putFile, putRecord, remoteOf } from "../support.ts";
+import type { Lens, Made } from "../assemble/team.ts";
+import {
+  INDEX,
+  NODE,
+  OTHER_NODE,
+  OTHER_PLUGIN_URL,
+  OUTBOX,
+  PLUGIN_URL,
+  bench,
+  commitEntries,
+  finding,
+  git,
+  holdRecords,
+  published,
+  putFile,
+  putRecord,
+  remoteOf,
+} from "../support.ts";
 import type { Bench } from "../support.ts";
 import { carry, findingsSaid, onPatchRef, patchRefs, patchesSaid, recordsAt, release, tree } from "./release.ts";
 
@@ -285,6 +301,84 @@ describe("carry", () => {
     expect(published(on)).toEqual(before);
     expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
     expect(existsSync(join(on.home, OUTBOX, "records", newer))).toBe(false);
+  });
+
+  // `pin` ends the command when it fails, so `carry` ends there with the outcome of `pin`.
+  describe("when the newer commit cannot be pinned", () => {
+    const checkout = (commit: string): string => join(on.home, ".cairnfield/checkouts", commit);
+
+    /** The older commit with a finding and a patch of the team's own. Both carry to a newer commit that keeps the rules. */
+    async function olderWithPatch(lens: Lens): Promise<{ readonly older: string; readonly before: readonly string[] }> {
+      const older = await pinnedWith(on, lens);
+      await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+      return { older, before: published(on) };
+    }
+
+    /** The run wrote nothing for the newer commit: no record in the team repo or the outbox, and no fork to hold a patch. */
+    function wroteNothing(newer: string, before: readonly string[]): void {
+      expect(recordsAt(on, newer)).toEqual([]);
+      expect(published(on)).toEqual(before);
+      expect(existsSync(join(on.home, OUTBOX, "records", newer))).toBe(false);
+      expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
+    }
+
+    /** Has one address fail as a network does. */
+    const unreachable = (url: string) => (): void => {
+      on.respond = (seen) => {
+        if (seen.url === url) throw new TypeError("fetch failed");
+        return undefined;
+      };
+    };
+
+    it("stops with the outcome of `pin` when the node's copy does not hold the newer commit, and makes no checkout, record or fork for it", async () => {
+      const { older, before } = await olderWithPatch({ patchLevel: 1 });
+      // A commit the source holds and the node's copy does not.
+      const newer = commitEntries(on.repo("source"), tree({ "notes.md": OTHER_NOTES }), older);
+      on.node.importRefusal = "not-found";
+
+      // The code is the one `pin` gives, and not `bad-checkout`, which says a checkout here cannot be read.
+      expect(await carry(on, older, newer)).toEqual({ code: EXIT.notHeld, output: { error: "not-held", component: newer } });
+      expect(existsSync(checkout(newer))).toBe(false);
+      expect(existsSync(`${checkout(newer)}.json`)).toBe(false);
+      wroteNothing(newer, before);
+    });
+
+    it("stops with the refusal of `pin` when the newer commit is already pinned here from another Git URL, before any call, and carries nothing to it", async () => {
+      const { older, before } = await olderWithPatch({ patchLevel: 1 });
+      const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+      // The same commit under another name. Its checkout is here and reads well, so only the refusal of `pin` stops the command.
+      expect(await on.run("pin", OTHER_PLUGIN_URL, "--branch", TEAM_BRANCH, "--commit", newer)).toMatchObject({ code: EXIT.ok });
+      const requests = on.requests.length;
+
+      expect(await carry(on, older, newer)).toEqual({
+        code: EXIT.invalid,
+        output: { error: "pinned-from-another-url", component: newer, url: OTHER_PLUGIN_URL },
+      });
+      expect(on.requests).toHaveLength(requests);
+      wroteNothing(newer, before);
+    });
+
+    it.each([
+      ["the node cannot be reached", { code: EXIT.node, output: { error: "node-unreachable" } }, unreachable(`${NODE}/admin/import`)],
+      [
+        "the node refuses the import",
+        { code: EXIT.node, output: { error: "node-refused", reason: "refused" } },
+        (): void => {
+          on.node.importRefusal = "refused";
+        },
+      ],
+      ["the index cannot be reached", { code: EXIT.index, output: { error: "index-unreachable" } }, unreachable(`${INDEX}/components`)],
+    ])("stops with the failure of the call when %s as it pins the newer commit, and carries nothing to the checkout it has", async (_why, failure, fail) => {
+      // The team shares through an index, so `pin` registers the commit there after the node imports it.
+      const { older, before } = await olderWithPatch({ patchLevel: 2, teams: [OTHER_NODE] });
+      const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+      // The team pinned the newer commit before. Its checkout is here, so only the failed call stops the command.
+      expect(await on.run("pin", PLUGIN_URL, "--branch", TEAM_BRANCH, "--commit", newer)).toMatchObject({ code: EXIT.ok });
+      fail();
+
+      expect(await carry(on, older, newer)).toEqual(failure);
+      wroteNothing(newer, before);
+    });
   });
 
   it("refuses an older commit that is not pinned here, before any call", async () => {
