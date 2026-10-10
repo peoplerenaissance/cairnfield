@@ -61,13 +61,15 @@ const EMPTY = new Uint8Array(0);
  * the command holds, so the longest a finding can cite.
  */
 const MAX_CITED_BYTES = 32 * 1024 * 1024;
-/** The reason for a record that cites a longer file, from the protocol's closed list. */
+/** The reason for a record that cites a longer file, and for a patch that replaces a longer content, from the protocol's closed list. */
 export const TOO_LARGE = "too-large" satisfies RejectionReason;
 
 /**
- * The index's own copy of one component, for the checks of one pass. The copy is opened
- * once, and only when a record cites a file. Records that cite one file share its row
- * and its content.
+ * The index's own copy of one component, for the checks of one pass or of one look at a
+ * patch record. A record check asks for the rows and the content of the paths a record
+ * cites, and records that cite one file share its row and its content. A patch check
+ * asks for the whole listing and for the content a patch replaces. The copy is opened
+ * once, and only when content is read.
  */
 export class Copy {
   readonly #env: Env;
@@ -90,7 +92,7 @@ export class Copy {
   }
 
   /** The rows of the paths a record cites. A path the copy does not hold is left out. */
-  async #listing(paths: readonly string[]): Promise<FileEntry[]> {
+  async #rowsOf(paths: readonly string[]): Promise<FileEntry[]> {
     const unasked = paths.filter((path) => !this.#rows.has(path));
     if (unasked.length > 0) {
       const marks = unasked.map(() => "?").join(", ");
@@ -108,7 +110,7 @@ export class Copy {
    * longer than the index reads. A path the copy does not hold is left out.
    */
   async #files(paths: readonly string[]): Promise<{ readonly files: Map<string, CitedFile>; readonly listing: FileEntry[] } | typeof TOO_LARGE> {
-    const listing = await this.#listing(paths);
+    const listing = await this.#rowsOf(paths);
     const files = new Map<string, CitedFile>();
     // The blobs of one record are read one after another, so the copy hands over one long
     // blob at a time. Only a regular file can be cited, and the check refuses any other

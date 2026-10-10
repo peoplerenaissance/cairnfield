@@ -191,7 +191,8 @@ async function check(env: Env, node: string, component: string, record: Patch): 
 
   // Only the content that the patch checks will read is fetched. The protocol runs the
   // checks that read no content first, so a commit that fails one of them costs no read
-  // of the copy and no fetch from the node. A patch replaces at most three contents (KTD6).
+  // of the copy and no fetch from the node. A patch replaces no more contents than
+  // `MAX_PATCH_REPLACEMENTS` allows (KTD6).
   const toRead = contentToRead(base, patched, cited);
   // The node is asked first, for content that is short (KTD6). The copy may hold long
   // content, and it is read only once the node has served all of its own. So a node that

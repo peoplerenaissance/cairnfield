@@ -3,7 +3,7 @@
 // at a commit, a patch commit's parent and changed paths, and one blob of a fork (KTD7).
 // Like a real node, it validates nothing. Every host is invented.
 
-import { gitBlobHash, isGitHash, parseRecordPath, recordId, recordPath, sha256Hex } from "@cairnfield/protocol";
+import { DELETED_BLOB, DELETED_MODE, gitBlobHash, isGitHash, parseRecordPath, recordId, recordPath, sha256Hex } from "@cairnfield/protocol";
 import type { AnyRecord } from "@cairnfield/protocol";
 import { vi } from "vitest";
 
@@ -15,10 +15,13 @@ interface Held {
   readonly since: number;
 }
 
-/** One path a patch commit changes, with its new content. The mode is given for a file that is no plain file. */
+/**
+ * One path a patch commit changes, with its new content. The mode is given for a file
+ * that is no plain file. A change with no content deletes the path.
+ */
 export interface Change {
   readonly path: string;
-  readonly content: string;
+  readonly content?: string;
   readonly mode?: string;
 }
 
@@ -99,6 +102,11 @@ export class FakeNode {
     const parent = made.parent ?? component;
     const changed = [];
     for (const { path, content, mode } of changes) {
+      if (content === undefined) {
+        // A deleted path carries the deletion marker, as a real node serves it. The fork holds no blob for it.
+        changed.push({ path, mode: DELETED_MODE, blob: DELETED_BLOB });
+        continue;
+      }
       const bytes = encoder.encode(content);
       const blob = await gitBlobHash(bytes);
       fork.blobs.set(blob, bytes);
