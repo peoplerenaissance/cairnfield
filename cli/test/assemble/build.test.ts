@@ -5,7 +5,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SCHEMA_VERSION, TEAM_BRANCH, recordId } from "@cairnfield/protocol";
+import { SCHEMA_VERSION, TEAM_BRANCH, gitBlobHash, patchId, recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
 import { run } from "../../src/run.ts";
 import { FIXTURES, INDEX, NODE, OTHER_NODE, bench, commitEntries, git, pinned, published, saveOutbox } from "../support.ts";
@@ -121,6 +121,30 @@ describe("the copy assemble builds", () => {
       code: EXIT.invalid,
       output: { error: "patches-conflict", patches: [removes.patchId, adds.patchId].sort(), refused: [], skipped: [] },
     });
+  });
+
+  it("names the two patches that leave the cited lines together, and not a third on another line", async () => {
+    // One more line at the end, with a line between it and the equal lines.
+    const withEnv = (rows: readonly string[], last = "allow read env"): string => text([...rows, last]);
+    const component = await pinnedWith(on, { patchLevel: 1 }, [{ path: "config/rules.txt", content: withEnv(TWICE_DENIED) }]);
+    const removes = await ownPatch(on, component, { cites: [[2, 2]], changes: [{ path: "config/rules.txt", content: withEnv(ONCE_DENIED) }] });
+    const adds = await ownPatch(on, component, { cites: [[2, 2]], changes: [{ path: "config/rules.txt", content: withEnv(WITH_A_FETCH) }] });
+    // A third patch changes the last line, which the other two leave alone. Its text is
+    // chosen so that its ID comes before theirs.
+    const blobOf = (content: string): Promise<string> => gitBlobHash(new TextEncoder().encode(content));
+    const oldBlob = await blobOf(withEnv(TWICE_DENIED));
+    let other = "";
+    for (let job = 0; other === ""; job++) {
+      const content = withEnv(TWICE_DENIED, `allow read env JOB_${job}`);
+      const id = await patchId([{ oldBlob, oldMode: "100644", newBlob: await blobOf(content), newMode: "100644" }]);
+      if (id < removes.patchId && id < adds.patchId) other = content;
+    }
+    const third = await ownPatch(on, component, { cites: [[5, 5]], changes: [{ path: "config/rules.txt", content: other }] });
+    expect([third.patchId, removes.patchId, adds.patchId].sort()[0]).toBe(third.patchId);
+
+    const outcome = await on.run("assemble", component);
+
+    expect(outcome).toMatchObject({ code: EXIT.invalid, output: { error: "patches-conflict", patches: [removes.patchId, adds.patchId].sort() } });
   });
 
   it("holds two such patches when their findings cite both of the equal lines", async () => {

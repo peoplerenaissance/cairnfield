@@ -184,25 +184,36 @@ describe("scope (R11)", () => {
     expect(reasonOf(await scoped(before, ["first", "old one", "keep a", "old two", "last"], ...cited))).toBe("patch-out-of-scope");
   });
 
+  it("gives no say to a range that cites no line of the content", async () => {
+    const before = ["first", "second", "third"];
+    // Lines 10 to 12 are past the end, so they let nothing be added there.
+    expect(reasonOf(await scoped(before, [...before, "added"], [10, 12]))).toBe("patch-out-of-scope");
+    expect(reasonOf(await scoped(before, [...before, "added"], [3, 3], [10, 12]))).toBe("ok");
+    // A range that ends before it starts cites nothing either.
+    expect(reasonOf(await scoped(before, ["first", "second", "second", "third"], [3, 1]))).toBe("patch-out-of-scope");
+  });
+
   it("passes exactly the patches that keep every uncited line in place, for random contents", async () => {
     const random = seeded(20261009);
     const words = ["allow", "deny", "log"];
     const rows = (count: number): string[] => Array.from({ length: count }, () => words[random(words.length)] ?? "allow");
     const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((row, at) => row === b[at]);
-    // The rule by the plainest search: each uncited stretch is looked for at every place in turn.
+    // The rule by the plainest means. A line is cited when any range holds it, the lines
+    // between two cited runs are a stretch, and each stretch is looked for at every place in turn.
     const keeps = (before: readonly string[], after: readonly string[], cited: readonly Range[]): boolean => {
-      const stretches: string[][] = [];
-      let next = 0;
-      for (const [start, end] of cited) {
-        stretches.push(before.slice(next, start - 1));
-        next = end;
-      }
-      const last = before.slice(next);
-      const [first = [], ...between] = stretches;
+      const isCited = (at: number): boolean => cited.some(([start, end]) => start <= at + 1 && at + 1 <= end);
+      const stretches: string[][] = [[]];
+      before.forEach((row, at) => {
+        if (!isCited(at)) stretches[stretches.length - 1]?.push(row);
+        else if (at === 0 || !isCited(at - 1)) stretches.push([]);
+      });
+      if (stretches.length === 1) return same(before, after);
+      const first = stretches[0] ?? [];
+      const last = stretches[stretches.length - 1] ?? [];
       const under = after.length - last.length;
       if (under < first.length || !same(after.slice(0, first.length), first) || !same(after.slice(under), last)) return false;
       let from = first.length;
-      for (const stretch of between) {
+      for (const stretch of stretches.slice(1, -1)) {
         let found = -1;
         for (let at = from; found < 0 && at + stretch.length <= under; at++) {
           if (same(after.slice(at, at + stretch.length), stretch)) found = at;
@@ -217,14 +228,11 @@ describe("scope (R11)", () => {
       const before = rows(1 + random(9));
       const after = rows(1 + random(10));
       if (same(before, after)) continue;
-      // One to three ranges, with at least one uncited line between each two.
-      const cited: Range[] = [];
-      for (let start = 1 + random(3); start <= before.length && cited.length < 3; ) {
-        const end = Math.min(before.length, start + random(2));
-        cited.push([start, end]);
-        start = end + 2 + random(3);
-      }
-      if (cited.length === 0) continue;
+      // One to three ranges in any order. They may overlap, adjoin or start past the last line.
+      const cited: Range[] = Array.from({ length: 1 + random(3) }, () => {
+        const start = 1 + random(before.length + 1);
+        return [start, start + random(3)];
+      });
       const verdict = await scoped(before, after, ...cited);
       expect(reasonOf(verdict), `${before.join()} to ${after.join()} citing ${JSON.stringify(cited)}`).toBe(
         keeps(before, after, cited) ? "ok" : "patch-out-of-scope",

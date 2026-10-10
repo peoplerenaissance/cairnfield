@@ -24,8 +24,8 @@ interface Edit {
 interface Edited {
   readonly before: Uint8Array;
   readonly edits: Edit[];
-  /** The lines of the content that the patches editing it cite. */
-  readonly cited: CitedRange[];
+  /** The lines of the content that each patch editing it cites, by patch. */
+  readonly cited: Map<string, readonly CitedRange[]>;
   /** The new content each patch gave, by patch. */
   readonly wrote: Map<string, string>;
 }
@@ -84,6 +84,24 @@ function applyEdits(before: Uint8Array, edits: readonly Edit[]): { readonly cont
 }
 
 /**
+ * The two patches to name when a content of the copy leaves the lines its patches cite:
+ * the first two, in the order of their IDs, whose edits alone leave the lines those two
+ * cite. When no two do so alone, the first two that edit the content.
+ */
+function strayPair(before: Uint8Array, edits: readonly Edit[], cited: ReadonlyMap<string, readonly CitedRange[]>): readonly [string, string] {
+  const patches = [...cited.keys()];
+  for (const [at, one] of patches.entries()) {
+    for (const two of patches.slice(at + 1)) {
+      const alone = applyEdits(before, edits.filter(({ patch }) => patch === one || patch === two));
+      const theirs = [...(cited.get(one) ?? []), ...(cited.get(two) ?? [])];
+      if ("content" in alone && !linesAreInScope(before, alone.content, theirs)) return [one, two];
+    }
+  }
+  const [one = "", two = one] = patches;
+  return [one, two];
+}
+
+/**
  * Composes patches that each passed the patch checks on the pinned commit. Returns the
  * copy as changes to the pinned tree, or the two patches that do not compose. The result
  * is the same whatever order the patches are given in.
@@ -113,12 +131,12 @@ export async function compose(files: FileListing, patches: readonly Verified[]):
       const old = before.get(oldBlob);
       const content = after.get(newBlob);
       if (!old || !content) return stop(EXIT.failed, "assembly-failed");
-      const edited: Edited = editing.get(oldBlob) ?? { before: old, edits: [], cited: [], wrote: new Map() };
+      const edited: Edited = editing.get(oldBlob) ?? { before: old, edits: [], cited: new Map(), wrote: new Map() };
       editing.set(oldBlob, edited);
       // Copies of one content with two modes are two replacements and one change of lines.
       if (edited.wrote.has(patch)) continue;
       edited.wrote.set(patch, newBlob);
-      edited.cited.push(...cited.filter((range) => range.blob === oldBlob));
+      edited.cited.set(patch, cited.filter((range) => range.blob === oldBlob));
       const lines = splitLines(content);
       for (const hunk of facts.changes[at]?.hunks ?? []) {
         edited.edits.push({ patch, hunk, lines: lines.slice(hunk.newStart - 1, hunk.newStart - 1 + hunk.added) });
@@ -140,11 +158,8 @@ export async function compose(files: FileListing, patches: readonly Verified[]):
     // The copy keeps to the lines its patches cite, as each patch does (KTD37). A patch is
     // in scope when some reading of it is, and its edits go where the diff reports them,
     // so two patches on a run of equal lines can each pass and still move an uncited line
-    // together. The patches named are the first two that edit the content.
-    if (!linesAreInScope(before, applied.content, cited)) {
-      const [one = "", two = one] = wrote.keys();
-      return conflict(one, two);
-    }
+    // together.
+    if (!linesAreInScope(before, applied.content, [...cited.values()].flat())) return conflict(...strayPair(before, edits, cited));
     const newBlob = await gitBlobHash(applied.content);
     // The hunks of one patch alone must give back the content that was checked.
     const [alone] = wrote.size === 1 ? wrote.values() : [];

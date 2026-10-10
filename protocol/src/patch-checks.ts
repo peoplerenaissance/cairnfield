@@ -184,12 +184,14 @@ function findStretch(lines: readonly Uint8Array[], stretch: readonly Uint8Array[
 export function linesAreInScope(before: Uint8Array, after: Uint8Array, cited: readonly LineRange[]): boolean {
   const old = splitLines(before);
   const now = splitLines(after);
+  // A range that holds no line of the old content cites nothing, and gives a patch no room.
+  const ranges = mergedRanges(cited.filter(({ start, end }) => start >= 1 && start <= end && start <= old.length));
   // The stretches of uncited lines: above the first range, between each two, and under the last.
   const stretches: Uint8Array[][] = [];
   let next = 0;
-  for (const { start, end } of mergedRanges(cited)) {
-    stretches.push(old.slice(next, Math.max(next, start - 1)));
-    next = Math.max(next, end);
+  for (const { start, end } of ranges) {
+    stretches.push(old.slice(next, start - 1));
+    next = end;
   }
   const last = old.slice(next);
   const holdsAt = (stretch: readonly Uint8Array[], at: number): boolean =>
