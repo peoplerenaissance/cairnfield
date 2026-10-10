@@ -21,20 +21,29 @@ const failed = (reason: ReadFailure): Failed => ({ ok: false, reason });
  * the limit says the body was longer, and nothing past it is kept.
  */
 export async function readUpTo(body: ReadableStream<Uint8Array> | null, max: number): Promise<Uint8Array> {
-  const bytes = new Uint8Array(max + 1);
+  const chunks: Uint8Array[] = [];
   let size = 0;
-  if (!body) return bytes.subarray(0, 0);
-  const reader = body.getReader();
-  for (let read = await reader.read(); !read.done; read = await reader.read()) {
-    const room = bytes.length - size;
-    bytes.set(read.value.subarray(0, room), size);
-    size += Math.min(room, read.value.length);
-    if (read.value.length >= room) {
-      await reader.cancel();
-      break;
+  if (body) {
+    const reader = body.getReader();
+    for (let read = await reader.read(); !read.done; read = await reader.read()) {
+      const room = max + 1 - size;
+      const chunk = read.value.subarray(0, room);
+      chunks.push(chunk);
+      size += chunk.length;
+      if (read.value.length >= room) {
+        await reader.cancel();
+        break;
+      }
     }
   }
-  return bytes.subarray(0, size);
+  // Joined once, in a buffer no longer than what was read.
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.length;
+  }
+  return bytes;
 }
 
 type Read = { readonly ok: true; readonly status: number; readonly bytes: Uint8Array } | Failed;

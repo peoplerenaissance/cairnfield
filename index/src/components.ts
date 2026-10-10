@@ -10,7 +10,7 @@ import type { AnyRecord, FileEntry } from "@cairnfield/protocol";
 import { codeOf, copyOf, open } from "./artifacts.ts";
 import type { Repo } from "./artifacts.ts";
 import type { Env } from "./env.ts";
-import { Copy, bump, settle } from "./records.ts";
+import { Copy, PASS_RECORDS, bump, settle } from "./records.ts";
 import type { ComponentState } from "./records.ts";
 
 type ImportError = (typeof IMPORT_ERRORS)[number];
@@ -19,8 +19,6 @@ type ImportError = (typeof IMPORT_ERRORS)[number];
 const POLL_SECONDS = 5;
 /** A copy that is not ready this long after its registration never will be (KTD12). A first value. */
 const IMPORT_DEADLINE_MS = 5 * 60_000;
-/** The most waiting records checked in one pass, so a pass stays within what one invocation may call. */
-const PASS_RECORDS = 120;
 /** One statement holds this many rows of a listing: four values a row, under the limit of 100 a statement. */
 const ROWS_PER_STATEMENT = 25;
 const STATEMENTS_PER_BATCH = 40;
@@ -39,12 +37,14 @@ export function componentOf(env: Env, component: string): Promise<Component | nu
   return env.DB.prepare("SELECT * FROM components WHERE component = ?").bind(component).first<Component>();
 }
 
-/** Every file under a tree, with its path after `prefix`. `readTree` gives the children of one tree per call. */
-async function filesUnder(repo: Repo, tree: string, prefix: string): Promise<FileEntry[]> {
-  const files: FileEntry[] = [];
+/**
+ * Every file under a tree, with its path after `prefix`. `readTree` gives the children of
+ * one tree per call. The trees below add to the one list.
+ */
+async function filesUnder(repo: Repo, tree: string, prefix: string, files: FileEntry[] = []): Promise<FileEntry[]> {
   for (const child of (await repo.readTree(tree)) ?? []) {
     const path = `${prefix}${child.name}`;
-    if (child.type === "tree") files.push(...(await filesUnder(repo, child.hash, `${path}/`)));
+    if (child.type === "tree") await filesUnder(repo, child.hash, `${path}/`, files);
     else files.push({ path, mode: child.mode, blob: child.hash });
   }
   return files;
@@ -78,12 +78,12 @@ async function fail(env: Env, component: string, error: ImportError | undefined)
 async function storeListing(env: Env, component: string, repo: Repo, tree: string): Promise<void> {
   // A path that no record can cite is left out, and so is an entry with a mode Git does not have.
   const files = (await filesUnder(repo, tree, "")).filter(({ path, mode }) => isPath(path) && (ENTRY_MODES as readonly string[]).includes(mode));
-  // A commit's tree never changes, so a look that runs twice writes the same rows twice.
+  // A commit's tree never changes, so a look that runs twice finds its rows there and leaves them.
   const statements = [];
   for (let at = 0; at < files.length; at += ROWS_PER_STATEMENT) {
     const rows = files.slice(at, at + ROWS_PER_STATEMENT);
     statements.push(
-      env.DB.prepare(`INSERT OR REPLACE INTO files (component, path, mode, blob) VALUES ${rows.map(() => "(?, ?, ?, ?)").join(", ")}`).bind(
+      env.DB.prepare(`INSERT OR IGNORE INTO files (component, path, mode, blob) VALUES ${rows.map(() => "(?, ?, ?, ?)").join(", ")}`).bind(
         ...rows.flatMap(({ path, mode, blob }) => [component, path, mode, blob]),
       ),
     );
@@ -168,8 +168,8 @@ export async function advance(env: Env, component: string, now: number): Promise
     return undefined;
   }
   if (held.state === "importing") {
-    const copy = await lookAtCopy(env, held, now);
-    if (copy !== "ready") return copy === "waiting" ? POLL_SECONDS : undefined;
+    const looked = await lookAtCopy(env, held, now);
+    if (looked !== "ready") return looked === "waiting" ? POLL_SECONDS : undefined;
   }
   return (await checkWaiting(env, component)) ? 0 : undefined;
 }

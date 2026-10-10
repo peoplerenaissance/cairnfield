@@ -2,10 +2,8 @@
 // components, and the reset route.
 
 import { describe, expect, it } from "vitest";
-import { BRANCH, NODE_A, NODE_B, NODE_C, REGISTRATION_KEY, RESET_KEY, UPSTREAM, bench, freshIndexForEachTest } from "./bench.ts";
+import { BRANCH, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, UPSTREAM, bench, freshIndexForEachTest } from "./bench.ts";
 
-const REGISTRATION = "x-cairnfield-registration-key";
-const RESET = "x-cairnfield-reset-key";
 const unauthorized = { status: 401, body: { version: "1", error: "unauthorized" } };
 
 freshIndexForEachTest();
@@ -19,11 +17,11 @@ describe("node registration (KTD8, KTD30)", () => {
   it("refuses a registration without the key, with another key and with an empty one", async () => {
     const on = bench();
     expect(await on.call("POST", "/nodes", { url: NODE_A })).toEqual(unauthorized);
-    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION, "another-key"])).toEqual(unauthorized);
-    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION, ""])).toEqual(unauthorized);
+    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION_HEADER, "another-key"])).toEqual(unauthorized);
+    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION_HEADER, ""])).toEqual(unauthorized);
     // The reset key registers nothing, in either header.
-    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION, RESET_KEY])).toEqual(unauthorized);
-    expect(await on.call("POST", "/nodes", { url: NODE_A }, [RESET, RESET_KEY])).toEqual(unauthorized);
+    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION_HEADER, RESET_KEY])).toEqual(unauthorized);
+    expect(await on.call("POST", "/nodes", { url: NODE_A }, [RESET_HEADER, RESET_KEY])).toEqual(unauthorized);
   });
 
   it("refuses a URL that is already registered", async () => {
@@ -55,8 +53,8 @@ describe("node registration (KTD8, KTD30)", () => {
   it("refuses a body that is not the registration of a node", async () => {
     const on = bench();
     const refused = { status: 400, body: { version: "1", error: "bad-request" } };
-    expect(await on.call("POST", "/nodes", { url: NODE_A, note: "added by hand" }, [REGISTRATION, REGISTRATION_KEY])).toEqual(refused);
-    expect(await on.call("POST", "/nodes", undefined, [REGISTRATION, REGISTRATION_KEY])).toEqual(refused);
+    expect(await on.call("POST", "/nodes", { url: NODE_A, note: "added by hand" }, [REGISTRATION_HEADER, REGISTRATION_KEY])).toEqual(refused);
+    expect(await on.call("POST", "/nodes", undefined, [REGISTRATION_HEADER, REGISTRATION_KEY])).toEqual(refused);
   });
 });
 
@@ -125,7 +123,7 @@ describe("component registration (KTD12, KTD30)", () => {
     const on = bench();
     const component = { url: UPSTREAM, branch: BRANCH, commit: "1f".repeat(20) };
     expect(await on.call("POST", "/components", component)).toEqual(unauthorized);
-    expect(await on.call("POST", "/components", component, [REGISTRATION, RESET_KEY])).toEqual(unauthorized);
+    expect(await on.call("POST", "/components", component, [REGISTRATION_HEADER, RESET_KEY])).toEqual(unauthorized);
   });
 
   it("refuses a commit, a branch or a URL in no accepted form", async () => {
@@ -140,13 +138,13 @@ describe("component registration (KTD12, KTD30)", () => {
 describe("the reset route (KTD30)", () => {
   it("accepts a reset with the reset key", async () => {
     const on = bench();
-    expect(await on.call("POST", "/reset", undefined, [RESET, RESET_KEY])).toEqual({ status: 200, body: { version: "1" } });
+    expect(await on.call("POST", "/reset", undefined, [RESET_HEADER, RESET_KEY])).toEqual({ status: 200, body: { version: "1" } });
   });
 
   it("refuses a reset call with the registration key", async () => {
     const on = bench();
-    expect(await on.call("POST", "/reset", undefined, [RESET, REGISTRATION_KEY])).toEqual(unauthorized);
-    expect(await on.call("POST", "/reset", undefined, [REGISTRATION, REGISTRATION_KEY])).toEqual(unauthorized);
+    expect(await on.call("POST", "/reset", undefined, [RESET_HEADER, REGISTRATION_KEY])).toEqual(unauthorized);
+    expect(await on.call("POST", "/reset", undefined, [REGISTRATION_HEADER, REGISTRATION_KEY])).toEqual(unauthorized);
     expect(await on.call("POST", "/reset")).toEqual(unauthorized);
   });
 });
@@ -156,16 +154,16 @@ describe("an index with neither key set", () => {
     const on = bench({ REGISTRATION_KEY: undefined, RESET_KEY: undefined });
     const component = { url: UPSTREAM, branch: BRANCH, commit: "1f".repeat(20) };
     expect(await on.call("POST", "/nodes", { url: NODE_A })).toEqual(unauthorized);
-    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION, ""])).toEqual(unauthorized);
+    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION_HEADER, ""])).toEqual(unauthorized);
     expect(await on.call("POST", "/components", component)).toEqual(unauthorized);
-    expect(await on.call("POST", "/components", component, [REGISTRATION, ""])).toEqual(unauthorized);
+    expect(await on.call("POST", "/components", component, [REGISTRATION_HEADER, ""])).toEqual(unauthorized);
     expect(await on.call("POST", "/reset")).toEqual(unauthorized);
-    expect(await on.call("POST", "/reset", undefined, [RESET, ""])).toEqual(unauthorized);
+    expect(await on.call("POST", "/reset", undefined, [RESET_HEADER, ""])).toEqual(unauthorized);
   });
 
   it("refuses the same with each key set to nothing", async () => {
     const on = bench({ REGISTRATION_KEY: "", RESET_KEY: "" });
-    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION, ""])).toEqual(unauthorized);
-    expect(await on.call("POST", "/reset", undefined, [RESET, ""])).toEqual(unauthorized);
+    expect(await on.call("POST", "/nodes", { url: NODE_A }, [REGISTRATION_HEADER, ""])).toEqual(unauthorized);
+    expect(await on.call("POST", "/reset", undefined, [RESET_HEADER, ""])).toEqual(unauthorized);
   });
 });

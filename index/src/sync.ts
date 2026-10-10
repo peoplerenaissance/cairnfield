@@ -12,15 +12,11 @@ import type { RecordType } from "@cairnfield/protocol";
 import type { Env } from "./env.ts";
 import { readListing, readRecordFile } from "./fetch.ts";
 import type { ReadFailure } from "./fetch.ts";
-import { Copy, bump, judge } from "./records.ts";
+import { Copy, PASS_RECORDS, bump, judge, reasonAndCited } from "./records.ts";
 import type { ComponentState, StoredRecord } from "./records.ts";
 
-/**
- * The most record files read in one pass. A pass is one invocation, which may make a set
- * number of calls, and each record costs one fetch and up to three reads of the copy.
- * A node with more new records is read over several passes.
- */
-const PASS_RECORDS = 120;
+/** Record files are fetched this many at a time: as many connections as one invocation holds open at once. */
+const FETCH_AHEAD = 6;
 
 export type SyncOutcome =
   /** `more` says the node holds records that this pass did not get to. */
@@ -36,17 +32,16 @@ interface Listed {
 type Examined = Pick<StoredRecord, "state" | "reason" | "hash" | "body" | "cited">;
 
 /** Checks the bytes of one record file and says what to store for it. */
-async function examine(copy: Copy, component: ComponentState, path: string, bytes: Uint8Array): Promise<Examined> {
+async function examine(copy: Copy, state: ComponentState, path: string, bytes: Uint8Array): Promise<Examined> {
   const verdict = await validateRecordFile(path, bytes);
   // No string of a refused file is kept: only the index's own hash of the bytes it read.
   if (!verdict.ok) return { state: "rejected", reason: verdict.reason, hash: await sha256Hex(bytes), body: null, cited: null };
-  const judged = await judge(copy, component, verdict.record);
+  const judged = await judge(copy, state, verdict.record);
   return {
     state: judged.state,
-    reason: judged.state === "rejected" ? judged.reason : null,
     hash: verdict.id,
     body: judged.state === "rejected" ? null : canonicalJson(verdict.record),
-    cited: judged.state === "valid" ? (judged.cited ?? null) : null,
+    ...reasonAndCited(judged),
   };
 }
 
@@ -100,23 +95,31 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
   const statements: D1PreparedStatement[] = [];
   const touched = new Set<string>();
   let failure: ReadFailure | undefined;
-  for (const { path, component, type } of unseen.slice(0, PASS_RECORDS)) {
-    const file = await readRecordFile(node, head, path);
-    if (!file.ok) {
-      failure = file.reason;
-      break;
-    }
-    const copy = copies.get(component) ?? new Copy(env, component);
-    copies.set(component, copy);
-    const { state, reason, hash, body, cited } = await examine(copy, states.get(component) ?? "failed", path, file.bytes);
-    statements.push(
-      db
-        .prepare(
-          "INSERT INTO records (node, path, component, type, state, reason, hash, head, body, cited, received_at, rebuilt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (node, path) DO NOTHING",
-        )
-        .bind(node, path, component, type, state, reason, hash, head, body, cited, now, held.rebuilding),
+  const pass = unseen.slice(0, PASS_RECORDS);
+  for (let at = 0; at < pass.length && failure === undefined; at += FETCH_AHEAD) {
+    // The files are fetched together. Each is then checked by itself, in the order of the pass.
+    const fetched = await Promise.all(
+      pass.slice(at, at + FETCH_AHEAD).map(async (listed) => ({ listed, file: await readRecordFile(node, head, listed.path) })),
     );
-    touched.add(component);
+    for (const { listed, file } of fetched) {
+      // The pass stops at the first file that was not read, and keeps nothing that came after it.
+      if (!file.ok) {
+        failure = file.reason;
+        break;
+      }
+      const { path, component, type } = listed;
+      const copy = copies.get(component) ?? new Copy(env, component);
+      copies.set(component, copy);
+      const { state, reason, hash, body, cited } = await examine(copy, states.get(component) ?? "failed", path, file.bytes);
+      statements.push(
+        db
+          .prepare(
+            "INSERT INTO records (node, path, component, type, state, reason, hash, head, body, cited, received_at, rebuilt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (node, path) DO NOTHING",
+          )
+          .bind(node, path, component, type, state, reason, hash, head, body, cited, now, held.rebuilding),
+      );
+      touched.add(component);
+    }
   }
   const stored = statements.length;
 
@@ -138,7 +141,7 @@ export async function syncNode(env: Env, node: string, now: number): Promise<Syn
       .prepare(`SELECT component FROM components WHERE state != 'importing' AND component IN (${waited.map(() => "?").join(", ")})`)
       .bind(...waited)
       .all<{ component: string }>();
-    for (const { component } of settled.results) await env.SYNC.send({ kind: "component", component });
+    if (settled.results.length > 0) await env.SYNC.sendBatch(settled.results.map(({ component }) => ({ body: { kind: "component", component } })));
   }
   return failure === undefined ? { ok: true, head, stored, more: !complete } : { ok: false, reason: failure };
 }

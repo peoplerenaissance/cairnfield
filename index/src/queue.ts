@@ -24,6 +24,7 @@ const COALESCE_SECONDS = 5;
 const LOST_AFTER_MS = 60_000;
 /** A sync that failed, or a message whose handling threw, is tried again after this many seconds. */
 const RETRY_SECONDS = 30;
+const RETRY: QueueRetryOptions = { delaySeconds: RETRY_SECONDS };
 
 /**
  * Queues a sync of each of these nodes after `delaySeconds`, unless one is queued for it
@@ -35,13 +36,16 @@ export async function schedule(env: Env, nodes: readonly string[], now: number, 
   const db = env.DB;
   const results = await db.batch(
     nodes.flatMap((node) => [
-      db.prepare("UPDATE nodes SET noticed_at = COALESCE(noticed_at, ?) WHERE url = ?").bind(now, node),
+      db.prepare("SELECT 1 FROM nodes WHERE url = ?").bind(node),
+      // Only the oldest notice that no sync has taken up is written down, so a later one writes nothing.
+      db.prepare("UPDATE nodes SET noticed_at = ? WHERE url = ? AND noticed_at IS NULL").bind(now, node),
       // The mark is what makes fifty notices one sync. A sync takes it away before it reads the node's head.
       db.prepare("UPDATE nodes SET queued_at = ? WHERE url = ? AND (queued_at IS NULL OR queued_at <= ?)").bind(now, node, now - LOST_AFTER_MS),
     ]),
   );
-  const changed = (at: number): boolean => (results[at]?.meta.changes ?? 0) > 0;
-  const toQueue = nodes.filter((_, at) => changed(2 * at + 1));
+  // Three statements a node: whether it is registered, its notice and its mark.
+  const registered = nodes.filter((_, at) => (results[3 * at]?.results.length ?? 0) > 0);
+  const toQueue = nodes.filter((_, at) => (results[3 * at + 2]?.meta.changes ?? 0) > 0);
   try {
     if (toQueue.length > 0) {
       await env.SYNC.sendBatch(
@@ -54,7 +58,7 @@ export async function schedule(env: Env, nodes: readonly string[], now: number, 
     await db.batch(toQueue.map((node) => db.prepare("UPDATE nodes SET queued_at = NULL WHERE url = ? AND queued_at = ?").bind(node, now)));
     throw error;
   }
-  return nodes.filter((_, at) => changed(2 * at));
+  return registered;
 }
 
 /** Takes a notice. One for a node that is not registered is ignored: nothing is queued and nothing is fetched. */
@@ -65,33 +69,40 @@ export async function notice(env: Env, body: unknown, now: number): Promise<Resp
   return registered.length === 0 ? refusal("not-found") : answer({});
 }
 
+/** Syncs a node. Returns whether its message is done with: a sync that failed is tried again. */
+async function handleNode(env: Env, node: string, now: number): Promise<boolean> {
+  const outcome = await syncNode(env, node, now);
+  if (!outcome.ok) {
+    // A code from a closed list and a registered URL. Nothing a node sent is logged.
+    console.warn(JSON.stringify({ event: "sync-failed", node, reason: outcome.reason }));
+    return false;
+  }
+  // The node holds more new records than one pass takes. The rest is read at once.
+  if (outcome.more) await schedule(env, [node], now, 0);
+  return true;
+}
+
+/** Looks at a component's copy. Its message is always done with. */
+async function handleComponent(env: Env, body: Extract<Message, { kind: "component" }>, now: number): Promise<boolean> {
+  // A look at a copy that is still importing is a new message each time, because
+  // a message is only delivered again a few times.
+  const again = await advance(env, body.component, now);
+  if (again !== undefined) await env.SYNC.send(body, { delaySeconds: again });
+  return true;
+}
+
 /** Handles the messages of a batch, each by itself, so one that fails sends no other back. */
 export async function consume(batch: MessageBatch<Message>, env: Env): Promise<void> {
   for (const message of batch.messages) {
     const { body } = message;
     const now = Date.now();
     try {
-      if (body.kind === "node") {
-        const outcome = await syncNode(env, body.node, now);
-        if (outcome.ok) {
-          // The node holds more new records than one pass takes. The rest is read at once.
-          if (outcome.more) await schedule(env, [body.node], now, 0);
-          message.ack();
-        } else {
-          // A code from a closed list and a registered URL. Nothing a node sent is logged.
-          console.warn(JSON.stringify({ event: "sync-failed", node: body.node, reason: outcome.reason }));
-          message.retry({ delaySeconds: RETRY_SECONDS });
-        }
-      } else {
-        // A look at a copy that is still importing is a new message each time, because
-        // a message is only delivered again a few times.
-        const again = await advance(env, body.component, now);
-        if (again !== undefined) await env.SYNC.send(body, { delaySeconds: again });
-        message.ack();
-      }
+      const done = body.kind === "node" ? await handleNode(env, body.node, now) : await handleComponent(env, body, now);
+      if (done) message.ack();
+      else message.retry(RETRY);
     } catch (error) {
       console.warn(JSON.stringify({ event: "message-failed", kind: body.kind, error: error instanceof Error ? error.name : "unknown" }));
-      message.retry({ delaySeconds: RETRY_SECONDS });
+      message.retry(RETRY);
     }
   }
 }

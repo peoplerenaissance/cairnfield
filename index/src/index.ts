@@ -4,7 +4,7 @@
 // The index serves data and never instructions (R35). Every answer is JSON in a shape of
 // the protocol, with the schema version, and a refusal is a code from a closed list.
 
-import { INDEX_ROUTES, MAX_VIEW_TEAMS, REGISTRATION_KEY_HEADER, RESET_KEY_HEADER, isCommit, isNodeUrl } from "@cairnfield/protocol";
+import { INDEX_ROUTES, REGISTRATION_KEY_HEADER, RESET_KEY_HEADER, conforms, isCommit } from "@cairnfield/protocol";
 import type { Env } from "./env.ts";
 import { jsonOf, readUpTo } from "./fetch.ts";
 import { consume, notice } from "./queue.ts";
@@ -28,7 +28,7 @@ async function bodyOf(request: Request): Promise<unknown> {
 function teamsOf(url: URL): string[] | undefined | false {
   if (url.searchParams.size === 0) return undefined;
   const teams = url.searchParams.getAll("teams");
-  if (teams.length !== url.searchParams.size || teams.length > MAX_VIEW_TEAMS || !teams.every(isNodeUrl)) return false;
+  if (teams.length !== url.searchParams.size || conforms(INDEX_ROUTES.view.query.teams, teams)) return false;
   return teams;
 }
 
@@ -42,7 +42,7 @@ async function view(env: Env, url: URL, component: string): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request, env: Env, _context: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     if (request.method === "GET") {
@@ -63,7 +63,7 @@ export default {
     return refusal("not-found");
   },
 
-  async queue(batch: MessageBatch<Message>, env: Env, _context: ExecutionContext): Promise<void> {
+  async queue(batch: MessageBatch<Message>, env: Env): Promise<void> {
     await consume(batch, env);
   },
 } satisfies ExportedHandler<Env, Message>;

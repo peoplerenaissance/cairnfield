@@ -3,12 +3,11 @@
 
 import { ACCEPTED, COMPONENT_STATUS, INDEX_REFUSAL, NODE_REGISTERED, VIEW, conforms, recordId } from "@cairnfield/protocol";
 import { describe, expect, it } from "vitest";
-import { BRANCH, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_KEY, RESET_KEY, SKILL, START, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import { BRANCH, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SKILL, START, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
 import type { Answer } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
 
-const RESET = "x-cairnfield-reset-key";
 const MINUTE = 60_000;
 
 freshIndexForEachTest();
@@ -263,7 +262,7 @@ describe("a rebuild from the nodes (R12, KTD13)", () => {
     const before = await on.view(component);
     expect(before.claims.map((entry) => entry.state).sort()).toEqual(["closed", "live"]);
 
-    expect((await on.call("POST", "/reset", undefined, [RESET, RESET_KEY])).status).toBe(200);
+    expect((await on.call("POST", "/reset", undefined, [RESET_HEADER, RESET_KEY])).status).toBe(200);
     const emptied = await on.view(component);
     expect(emptied.findings).toEqual([]);
     expect(emptied.claims).toEqual([]);
@@ -306,6 +305,18 @@ describe("the view version (KTD11)", () => {
     await synced(on, NODE_A);
     expect((await on.view(component)).viewVersion).toBeGreaterThan(first.viewVersion);
   });
+
+  it("moves on when a node is registered, and stays the same when a registration is refused as already registered", async () => {
+    const on = bench();
+    const component = await on.component();
+    const before = (await on.view(component)).viewVersion;
+    await on.registerNode(NODE_A);
+    const added = (await on.view(component)).viewVersion;
+    expect(added).toBeGreaterThan(before);
+
+    expect((await on.registerNode(NODE_A)).body).toEqual({ version: "1", error: "already-registered" });
+    expect((await on.view(component)).viewVersion).toBe(added);
+  });
 });
 
 describe("every answer of the index (R13, R35)", () => {
@@ -324,7 +335,7 @@ describe("every answer of the index (R13, R35)", () => {
     const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];
     nodesBehindFetch(one, other);
     const commit = await on.artifacts.host(UPSTREAM, BRANCH, { [SKILL]: "# Summarize\n" });
-    const key = ["x-cairnfield-registration-key", REGISTRATION_KEY] as const;
+    const key = [REGISTRATION_HEADER, REGISTRATION_KEY] as const;
 
     // Each answer is held to its shape in the protocol, and no shape there has a field for text.
     const held = (answer: Answer, shape: Parameters<typeof conforms>[0]): void => {
@@ -358,7 +369,7 @@ describe("every answer of the index (R13, R35)", () => {
     held(await on.call("GET", `/components/${commit}/view?teams=${encodeURIComponent(NODE_A)}`), VIEW);
     held(await on.call("GET", `/components/${commit}/view?hint=1`), VIEW);
     held(await on.call("POST", "/reset"), ACCEPTED);
-    held(await on.call("POST", "/reset", undefined, [RESET, RESET_KEY]), ACCEPTED);
+    held(await on.call("POST", "/reset", undefined, [RESET_HEADER, RESET_KEY]), ACCEPTED);
     held(await on.call("GET", "/"), ACCEPTED);
   });
 });

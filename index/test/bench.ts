@@ -2,7 +2,7 @@
 // place of the Artifacts binding and the queue. The paths and the headers are written out
 // here as the protocol states them. Every host, team and key is invented.
 
-import { applyD1Migrations, createExecutionContext, reset, waitOnExecutionContext } from "cloudflare:test";
+import { applyD1Migrations, reset } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import type { View } from "@cairnfield/protocol";
 import { afterEach, beforeEach, vi } from "vitest";
@@ -22,6 +22,9 @@ export const BRANCH = "main";
 /** Not real keys. */
 export const REGISTRATION_KEY = "test-registration-key";
 export const RESET_KEY = "test-reset-key";
+/** The headers that carry the two keys. */
+export const REGISTRATION_HEADER = "x-cairnfield-registration-key";
+export const RESET_HEADER = "x-cairnfield-reset-key";
 
 /** When each test starts, by the index's clock. */
 export const START = Date.UTC(2026, 9, 9, 12, 0, 0);
@@ -139,9 +142,7 @@ export function bench(settings: Settings = {}): Bench {
     if (body !== undefined) headers.set("content-type", "application/json");
     if (key) headers.set(key[0], key[1]);
     const request = new Request(`${INDEX}${path}`, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    const context = createExecutionContext();
-    const response = await worker.fetch(request, bindings, context);
-    await waitOnExecutionContext(context);
+    const response = await worker.fetch(request, bindings);
     return { status: response.status, body: await response.json() };
   };
 
@@ -159,9 +160,7 @@ export function bench(settings: Settings = {}): Bench {
         },
       };
       const batch = { queue: "cairnfield-index-sync", messages: [message], ackAll: () => {}, retryAll: () => {} };
-      const context = createExecutionContext();
-      await worker.queue(batch as unknown as MessageBatch<Message>, bindings, context);
-      await waitOnExecutionContext(context);
+      await worker.queue(batch as unknown as MessageBatch<Message>, bindings);
       if (retried !== undefined) queue.waiting.push({ body: queued.body, delaySeconds: retried, attempts: queued.attempts + 1 });
     }
   };
@@ -171,8 +170,8 @@ export function bench(settings: Settings = {}): Bench {
     queue,
     env: bindings,
     call,
-    registerNode: (url) => call("POST", "/nodes", { url }, ["x-cairnfield-registration-key", REGISTRATION_KEY]),
-    registerComponent: (component) => call("POST", "/components", component, ["x-cairnfield-registration-key", REGISTRATION_KEY]),
+    registerNode: (url) => call("POST", "/nodes", { url }, [REGISTRATION_HEADER, REGISTRATION_KEY]),
+    registerComponent: (component) => call("POST", "/components", component, [REGISTRATION_HEADER, REGISTRATION_KEY]),
     notice: (node) => call("POST", "/notices", { node }),
     view: async (component, teams) => {
       const query = teams === undefined ? "" : `?${teams.map((team) => `teams=${encodeURIComponent(team)}`).join("&")}`;

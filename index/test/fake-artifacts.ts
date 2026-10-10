@@ -10,7 +10,7 @@
 // A blob is named by its Git hash, so the index can hold content to it. A tree and a
 // commit are named by a hash of their own: the index only reports what the binding gives.
 
-import { gitBlobHash } from "@cairnfield/protocol";
+import { gitBlobHash, sha256Hex } from "@cairnfield/protocol";
 import type { Repo, Store } from "../src/artifacts.ts";
 
 const DAY = 86_400;
@@ -30,9 +30,7 @@ type Objects = Map<string, Stored>;
 const encoder = new TextEncoder();
 
 async function hashOf(kind: "tree" | "commit", body: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(`${kind}\0${body}`));
-  const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  return hex.slice(0, 40);
+  return (await sha256Hex(encoder.encode(`${kind}\0${body}`))).slice(0, 40);
 }
 
 /** The Git hash of a file with this content. */

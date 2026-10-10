@@ -7,9 +7,9 @@
 // record is stored, because a record can cite one on a node the index reads later
 // (Appendix H). The view holds data and no prose, and rejected work is four values (KTD31).
 
-import { SCHEMA_VERSION, compare, matchGroups } from "@cairnfield/protocol";
-import type { AnyRecord, Claim, FileEntry, Recipe, Sourced, View } from "@cairnfield/protocol";
-import { componentOf } from "./components.ts";
+import { SCHEMA_VERSION, bySource, compare, matchGroups } from "@cairnfield/protocol";
+import type { AnyRecord, CLAIM_STATES, Claim, FileEntry, Recipe, Sourced, View } from "@cairnfield/protocol";
+import type { Component } from "./components.ts";
 import { claimTtlMs } from "./env.ts";
 import type { Env } from "./env.ts";
 import type { StoredRecord } from "./records.ts";
@@ -33,10 +33,6 @@ interface NodeRow {
   readonly absorbed_at: number | null;
 }
 
-function bySource(a: { readonly node: string; readonly id: string }, b: { readonly node: string; readonly id: string }): number {
-  return compare(a.id, b.id) || compare(a.node, b.node);
-}
-
 function byHash(a: { readonly node: string; readonly hash: string }, b: { readonly node: string; readonly hash: string }): number {
   return compare(a.hash, b.hash) || compare(a.node, b.node);
 }
@@ -53,22 +49,31 @@ function entriesOf(all: readonly Published[]): <R extends AnyRecord>(matched: re
   return <R extends AnyRecord>(matched: readonly Sourced<R>[]) => matched.flatMap((sourced) => (known.get(sourced) as Published<R> | undefined) ?? []);
 }
 
+/** Names a claim among the claims of every node. A record cites a claim of its own node. */
+const claimKey = (node: string, claim: string): string => `${node} ${claim}`;
+
+/** The state of a claim. One first seen in a rebuild counts as expired, whatever cites it (KTD13). */
+function claimState(row: Row, closed: boolean, pastItsTime: boolean): (typeof CLAIM_STATES)[number] {
+  if (row.rebuilt) return "expired";
+  if (closed) return "closed";
+  return pastItsTime ? "expired" : "live";
+}
+
 /**
  * The view of a registered component, or nothing for a commit that is not registered.
  * With `teams`, every record of a node that is not listed is dropped first, and what is
  * left is grouped and counted (KTD38).
  */
 export async function viewOf(env: Env, component: string, teams: readonly string[] | undefined, now: number): Promise<View | undefined> {
-  const held = await componentOf(env, component);
-  if (!held) return undefined;
   const db = env.DB;
-  const [registered, stored] = await Promise.all([
-    db.prepare("SELECT url, processed, noticed_at, absorbed_at FROM nodes ORDER BY url").all<NodeRow>(),
-    db
-      .prepare("SELECT node, path, type, state, reason, hash, head, body, cited, received_at, rebuilt FROM records WHERE component = ?")
-      .bind(component)
-      .all<Row>(),
-  ]);
+  // One batch, so the component, the nodes and the records are read as they stood together.
+  const [found, registered, stored] = (await db.batch([
+    db.prepare("SELECT state, view_version FROM components WHERE component = ?").bind(component),
+    db.prepare("SELECT url, processed, noticed_at, absorbed_at FROM nodes ORDER BY url"),
+    db.prepare("SELECT node, path, type, state, reason, hash, head, body, cited, received_at, rebuilt FROM records WHERE component = ?").bind(component),
+  ])) as [D1Result<Pick<Component, "state" | "view_version">>, D1Result<NodeRow>, D1Result<Row>];
+  const [held] = found.results;
+  if (!held) return undefined;
   const listed = teams === undefined ? undefined : new Set(teams);
   const counted = (node: string): boolean => listed === undefined || listed.has(node);
   const rows = stored.results.filter(({ node }) => counted(node));
@@ -87,7 +92,7 @@ export async function viewOf(env: Env, component: string, teams: readonly string
     if (row.state === "rejected" || row.body === null) continue;
     // The body is the index's own writing of a record that passed the structure check.
     const record = JSON.parse(row.body) as AnyRecord;
-    if ((record.type === "finding" || record.type === "patch") && record.claim !== undefined) closed.add(`${row.node} ${record.claim}`);
+    if ((record.type === "finding" || record.type === "patch") && record.claim !== undefined) closed.add(claimKey(row.node, record.claim));
     if (row.state !== "valid") continue;
     const entry: Published = { node: row.node, repo: TEAM_REPO, commit: row.head, path: row.path, id: row.hash, record };
     valid.push(entry);
@@ -121,14 +126,16 @@ export async function viewOf(env: Env, component: string, teams: readonly string
   const claims = valid.flatMap((entry) => {
     const row = rowOf.get(entry);
     if (!row || !isOfType(entry, "claim")) return [];
-    // A claim first seen in a rebuild counts as expired, whatever cites it (KTD13).
-    const state = row.rebuilt ? "expired" : closed.has(`${entry.node} ${entry.id}`) ? "closed" : pastItsTime(row) ? "expired" : "live";
+    const state = claimState(row, closed.has(claimKey(entry.node, entry.id)), pastItsTime(row));
     return [{ ...(entry satisfies Published<Claim>), state } as const];
   });
 
   const byTree = new Map<string, Published<Recipe>[]>();
   for (const entry of valid) {
-    if (isOfType(entry, "recipe")) byTree.set(entry.record.tree, [...(byTree.get(entry.record.tree) ?? []), entry]);
+    if (!isOfType(entry, "recipe")) continue;
+    const records = byTree.get(entry.record.tree);
+    if (records) records.push(entry);
+    else byTree.set(entry.record.tree, [entry]);
   }
   const recipes = [...byTree].sort(([a], [b]) => compare(a, b)).map(([tree, records]) => ({ tree, records, nodes: nodesOf(records) }));
 

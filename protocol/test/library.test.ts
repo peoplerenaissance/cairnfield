@@ -47,6 +47,7 @@ describe("the public entry point", () => {
       "parseRecordPath",
       "conforms",
       "matchGroups",
+      "bySource",
       "findingsMatch",
       "citedRanges",
       "patchConfirmations",

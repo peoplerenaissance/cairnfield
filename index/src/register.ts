@@ -9,7 +9,6 @@ import type { Component } from "./components.ts";
 import { allowedGitUrls, maxComponents, maxNodes } from "./env.ts";
 import type { Env } from "./env.ts";
 import { schedule } from "./queue.ts";
-import { bump } from "./records.ts";
 import { answer, refusal } from "./respond.ts";
 
 async function sha256(text: string): Promise<ArrayBuffer> {
@@ -32,13 +31,13 @@ export async function registerNode(env: Env, body: unknown, now: number): Promis
   if (conforms(REGISTER_NODE_REQUEST, body)) return refusal("bad-request");
   const { url } = body as Infer<typeof REGISTER_NODE_REQUEST>;
   const db = env.DB;
-  const [added] = await db.batch([
-    // The cap is checked in the statement that adds the node, so two calls at once cannot pass it.
-    db
-      .prepare("INSERT INTO nodes (url, registered_at) SELECT ?1, ?2 WHERE (SELECT COUNT(*) FROM nodes) < ?3 AND NOT EXISTS (SELECT 1 FROM nodes WHERE url = ?1)")
-      .bind(url, now, maxNodes(env)),
-    // Every view lists the registered nodes.
-    bump(db),
+  // The cap is checked in the statement that adds the node, so two calls at once cannot pass it.
+  const room = "(SELECT COUNT(*) FROM nodes) < ?2 AND NOT EXISTS (SELECT 1 FROM nodes WHERE url = ?1)";
+  const [, added] = await db.batch([
+    // Every view lists the registered nodes, so every version goes up. It runs first, under
+    // the condition of the statement after it, so it goes up only when a node is added.
+    db.prepare(`UPDATE components SET view_version = view_version + 1 WHERE ${room}`).bind(url, maxNodes(env)),
+    db.prepare(`INSERT INTO nodes (url, registered_at) SELECT ?1, ?3 WHERE ${room}`).bind(url, maxNodes(env), now),
   ]);
   if (added?.meta.changes === 1) return answer({ node: url });
   const held = await db.prepare("SELECT 1 FROM nodes WHERE url = ?").bind(url).first();

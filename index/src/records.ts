@@ -3,13 +3,13 @@
 // pending while its component's copy is not ready, and rejected with a reason from the
 // protocol's closed list. A rejected record keeps no content (KTD31).
 
-import { citedBlob, citedPaths, isFileMode, validateAgainstFiles } from "@cairnfield/protocol";
-import type { AnyRecord, CitedFile, RecordType, RejectionReason } from "@cairnfield/protocol";
+import { MAX_BLOB_BYTES, citedBlob, citedPaths, isFileMode, validateAgainstFiles } from "@cairnfield/protocol";
+import type { AnyRecord, COMPONENT_STATES, CitedFile, FileEntry, RecordType, RejectionReason } from "@cairnfield/protocol";
 import { copyOf } from "./artifacts.ts";
 import type { Repo } from "./artifacts.ts";
 import type { Env } from "./env.ts";
 
-export type ComponentState = "importing" | "ready" | "failed";
+export type ComponentState = (typeof COMPONENT_STATES)[number];
 export type RecordState = "valid" | "pending" | "rejected";
 
 /** How the index judged a record that passed the structure check. */
@@ -17,6 +17,14 @@ export type Judged =
   | { readonly state: "valid"; readonly cited?: string }
   | { readonly state: "pending" }
   | { readonly state: "rejected"; readonly reason: RejectionReason };
+
+/**
+ * The most records taken in one pass, whether a sync reads them from a node or a look
+ * checks the ones that waited for a copy. A pass is one invocation, which may make a set
+ * number of calls, and each record costs at most one fetch and three reads of the copy.
+ * What is left is taken in the passes after it.
+ */
+export const PASS_RECORDS = 120;
 
 /** One row of the records table. */
 export interface StoredRecord {
@@ -45,39 +53,59 @@ const EMPTY = new Uint8Array(0);
 
 /**
  * The index's own copy of one component, for the checks of one pass. The copy is opened
- * once, and only when a record cites a file.
+ * once, and only when a record cites a file. Records that cite one file share its row
+ * and its content.
  */
 export class Copy {
   readonly #env: Env;
   readonly #component: string;
   #repo: Promise<Repo> | undefined;
+  /** Each path asked for so far, with its row. A path the copy does not hold has none. The listing of a ready copy never changes. */
+  readonly #rows = new Map<string, FileEntry | undefined>();
+  /** The content of the blobs read so far, by hash. Only a blob within the size limit is kept, so what a pass holds is bounded. */
+  readonly #contents = new Map<string, Uint8Array>();
 
   constructor(env: Env, component: string) {
     this.#env = env;
     this.#component = component;
   }
 
-  /** The files a record cites, as the copy holds them. A path the copy does not hold is left out. */
-  async #files(paths: readonly string[]): Promise<{ readonly files: Map<string, CitedFile>; readonly listing: { path: string; mode: string; blob: string }[] }> {
-    const files = new Map<string, CitedFile>();
-    if (paths.length === 0) return { files, listing: [] };
-    const marks = paths.map(() => "?").join(", ");
-    const { results } = await this.#env.DB.prepare(`SELECT path, mode, blob FROM files WHERE component = ? AND path IN (${marks})`)
-      .bind(this.#component, ...paths)
-      .all<{ path: string; mode: string; blob: string }>();
-    for (const { path, mode, blob } of results) {
-      // Only a regular file can be cited, and the check refuses any other before it reads content.
-      files.set(path, { mode, content: isFileMode(mode) ? await this.#read(blob) : EMPTY });
+  /** The rows of the paths a record cites. A path the copy does not hold is left out. */
+  async #listing(paths: readonly string[]): Promise<FileEntry[]> {
+    const unasked = paths.filter((path) => !this.#rows.has(path));
+    if (unasked.length > 0) {
+      const marks = unasked.map(() => "?").join(", ");
+      const { results } = await this.#env.DB.prepare(`SELECT path, mode, blob FROM files WHERE component = ? AND path IN (${marks})`)
+        .bind(this.#component, ...unasked)
+        .all<FileEntry>();
+      for (const path of unasked) this.#rows.set(path, undefined);
+      for (const row of results) this.#rows.set(row.path, row);
     }
-    return { files, listing: results };
+    return paths.flatMap((path) => this.#rows.get(path) ?? []);
+  }
+
+  /** The files a record cites, as the copy holds them. A path the copy does not hold is left out. */
+  async #files(paths: readonly string[]): Promise<{ readonly files: Map<string, CitedFile>; readonly listing: FileEntry[] }> {
+    const listing = await this.#listing(paths);
+    // The blobs of one record are read together. Only a regular file can be cited, and
+    // the check refuses any other before it reads content.
+    const files = await Promise.all(
+      listing.map(async ({ path, mode, blob }): Promise<[string, CitedFile]> => [path, { mode, content: isFileMode(mode) ? await this.#read(blob) : EMPTY }]),
+    );
+    return { files: new Map(files), listing };
   }
 
   async #read(blob: string): Promise<Uint8Array> {
+    const held = this.#contents.get(blob);
+    if (held) return held;
     this.#repo ??= this.#env.ARTIFACTS.get(copyOf(this.#component));
     const content = await (await this.#repo).readBlob(blob);
     // The listing came from this copy, so a blob it names is there.
     if (!content) throw new Error("the copy does not hold a blob of its own listing");
-    return new Uint8Array(await content.arrayBuffer());
+    const bytes = new Uint8Array(await content.arrayBuffer());
+    // A longer blob is read again each time a record cites it.
+    if (bytes.length <= MAX_BLOB_BYTES) this.#contents.set(blob, bytes);
+    return bytes;
   }
 
   /**
@@ -98,16 +126,23 @@ export class Copy {
  * Judges a record that passed the structure check, by the state of its component's copy
  * (KTD12). A patch record waits as pending until its commit has been checked.
  */
-export async function judge(copy: Copy, component: ComponentState, record: AnyRecord): Promise<Judged> {
-  if (component === "failed") return { state: "rejected", reason: "unknown-component" };
-  if (component === "importing" || record.type === "patch") return { state: "pending" };
+export async function judge(copy: Copy, state: ComponentState, record: AnyRecord): Promise<Judged> {
+  if (state === "failed") return { state: "rejected", reason: "unknown-component" };
+  if (state === "importing" || record.type === "patch") return { state: "pending" };
   return copy.check(record);
+}
+
+/** The reason and the cited content to store for a judged record. Only a rejected record has a reason, and only a valid one cited content. */
+export function reasonAndCited(judged: Judged): Pick<StoredRecord, "reason" | "cited"> {
+  return {
+    reason: judged.state === "rejected" ? judged.reason : null,
+    cited: judged.state === "valid" ? (judged.cited ?? null) : null,
+  };
 }
 
 /** Moves a pending record to the state it was judged to have. A rejected record keeps no content. */
 export function settle(db: D1Database, node: string, path: string, judged: Judged): D1PreparedStatement {
-  const reason = judged.state === "rejected" ? judged.reason : null;
-  const cited = judged.state === "valid" ? (judged.cited ?? null) : null;
+  const { reason, cited } = reasonAndCited(judged);
   return db
     .prepare(
       "UPDATE records SET state = ?1, reason = ?2, cited = ?3, body = CASE WHEN ?1 = 'rejected' THEN NULL ELSE body END WHERE node = ?4 AND path = ?5 AND state = 'pending'",
