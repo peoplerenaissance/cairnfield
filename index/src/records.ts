@@ -62,7 +62,7 @@ const EMPTY = new Uint8Array(0);
  */
 const MAX_CITED_BYTES = 32 * 1024 * 1024;
 /** The reason for a record that cites a longer file, from the protocol's closed list. */
-const TOO_LARGE = "too-large" satisfies RejectionReason;
+export const TOO_LARGE = "too-large" satisfies RejectionReason;
 
 /**
  * The index's own copy of one component, for the checks of one pass. The copy is opened
@@ -81,6 +81,12 @@ export class Copy {
   constructor(env: Env, component: string) {
     this.#env = env;
     this.#component = component;
+  }
+
+  /** The whole listing of the copy: every path with its mode and blob, in the order of the paths. */
+  async listing(): Promise<FileEntry[]> {
+    const { results } = await this.#env.DB.prepare("SELECT path, mode, blob FROM files WHERE component = ? ORDER BY path").bind(this.#component).all<FileEntry>();
+    return results;
   }
 
   /** The rows of the paths a record cites. A path the copy does not hold is left out. */

@@ -24,3 +24,6 @@ CREATE TABLE patches (
 ) STRICT;
 
 CREATE INDEX patches_by_component ON patches (component);
+
+-- A look at a patch record reads the valid findings the record names, by their hash.
+CREATE INDEX findings_by_hash ON records (component, hash) WHERE type = 'finding' AND state = 'valid';

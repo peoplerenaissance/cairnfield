@@ -229,7 +229,8 @@ describe("the hand-made patch that the demo's index rejects (KTD26)", () => {
       found.push({ id: file.id, record: file.record });
     }
     // The folder is read in no set order, so each record is found by its type.
-    const [finding, patch] = [...found].sort((a, b) => (a.record.type < b.record.type ? -1 : 1));
+    const finding = found.find(({ record }) => record.type === "finding");
+    const patch = found.find(({ record }) => record.type === "patch");
     if (found.length !== 2 || finding?.record.type !== "finding" || patch?.record.type !== "patch") {
       throw new Error("the fixture holds one finding and one patch record");
     }

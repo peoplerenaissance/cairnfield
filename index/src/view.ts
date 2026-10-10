@@ -58,6 +58,9 @@ function entriesOf(all: readonly Published[]): <R extends AnyRecord>(matched: re
 /** Names a claim among the claims of every node. A record cites a claim of its own node. */
 const claimKey = (node: string, claim: string): string => `${node} ${claim}`;
 
+/** Names a record among the records of every node, by its path in the node's team repo. Neither part holds a space. */
+const recordKey = (node: string, path: string): string => `${node} ${path}`;
+
 type ViewPatch = View["patches"][number]["patches"][number];
 
 const byPatchId = (a: ViewPatch, b: ViewPatch): number => compare(a.patchId, b.patchId);
@@ -71,22 +74,29 @@ const byPatchId = (a: ViewPatch, b: ViewPatch): number => compare(a.patchId, b.p
  * content are one group.
  */
 function patchesOf(valid: readonly Published[], computed: readonly ComputedPatch[]): View["patches"] {
-  // A node and a record path name one record. Neither holds a space.
-  const computedFor = new Map(computed.map((row) => [`${row.node} ${row.path}`, row]));
+  const computedFor = new Map(computed.map((row) => [recordKey(row.node, row.path), row]));
   const findings = new Set(valid.filter((entry) => isOfType(entry, "finding")).map(({ id }) => id));
-  const identities = new Map<string, { readonly computed: ComputedPatch; readonly records: Published<Patch>[] }>();
+  const identities = new Map<string, { readonly row: ComputedPatch; readonly records: Published<Patch>[] }>();
+  // The patch re-checks of each patch ID.
+  const rechecksOf = new Map<string, Published<PatchRecheck>[]>();
   for (const entry of valid) {
+    if (isOfType(entry, "patch-re-check")) {
+      const held = rechecksOf.get(entry.record.patch);
+      if (held) held.push(entry);
+      else rechecksOf.set(entry.record.patch, [entry]);
+      continue;
+    }
     if (!isOfType(entry, "patch")) continue;
-    const row = computedFor.get(`${entry.node} ${entry.path}`);
+    const row = computedFor.get(recordKey(entry.node, entry.path));
     if (!row || !entry.record.findings.every((id) => findings.has(id))) continue;
     const held = identities.get(row.patch_id);
     if (held) held.records.push(entry);
-    else identities.set(row.patch_id, { computed: row, records: [entry] });
+    else identities.set(row.patch_id, { row, records: [entry] });
   }
-  const authors = [...identities].flatMap(([patchId, { records }]) => records.map(({ node }) => ({ node, patchId })));
-  const entries = [...identities].map(([patchId, { computed: row, records }]): ViewPatch => {
+  const entries = [...identities].map(([patchId, { row, records }]): ViewPatch => {
+    const rechecks = rechecksOf.get(patchId) ?? [];
     // The organizations behind a patch identity: its authors, and each node whose re-check says it resolves its finding.
-    const nodes = patchConfirmations(patchId, authors, valid);
+    const nodes = patchConfirmations(patchId, records.map(({ node }) => ({ node, patchId })), rechecks);
     return {
       patchId,
       kind: row.kind,
@@ -95,7 +105,7 @@ function patchesOf(valid: readonly Published[], computed: readonly ComputedPatch
       changes: JSON.parse(row.changes) as ViewPatch["changes"],
       paths: JSON.parse(row.paths) as ViewPatch["paths"],
       records,
-      rechecks: valid.filter((entry): entry is Published<PatchRecheck> => isOfType(entry, "patch-re-check") && entry.record.patch === patchId),
+      rechecks,
       nodes,
       confirmed: isConfirmed(nodes),
     };

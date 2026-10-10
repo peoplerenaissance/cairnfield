@@ -24,11 +24,11 @@ import {
   modesAreRegular,
   replacementsOf,
 } from "@cairnfield/protocol";
-import type { FileEntry, Finding, Patch, PatchFacts, PatchKind, RejectionReason } from "@cairnfield/protocol";
+import type { CitedRange, FileListing, Finding, Patch, PatchFacts, PatchKind, RejectionReason, Replacement } from "@cairnfield/protocol";
 import { MAX_BATCH_MESSAGES } from "./env.ts";
 import type { Env } from "./env.ts";
 import { readForkBlob, readPatchCommit } from "./fetch.ts";
-import { Copy, bump, recordOf, settle } from "./records.ts";
+import { Copy, TOO_LARGE, bump, recordOf, settle } from "./records.ts";
 import type { ComponentState } from "./records.ts";
 
 /** A patch record that cannot be checked yet is looked at again after this many seconds (KTD11). */
@@ -60,7 +60,10 @@ export async function lookAtPatches(env: Env, patches: readonly PatchName[]): Pr
   }
 }
 
-/** Queues a first look at every patch record of a component that still waits. */
+/**
+ * Queues a first look at every patch record of a component that still waits, all in one
+ * invocation. At the caps that is the registered nodes times 500 records, sent 100 to a batch.
+ */
 export async function lookAtWaitingPatches(env: Env, component: string): Promise<void> {
   const { results } = await env.DB.prepare("SELECT node, path FROM records WHERE component = ? AND state = 'pending' AND type = 'patch' ORDER BY node, path")
     .bind(component)
@@ -95,6 +98,19 @@ type Checked =
 const rejected = (reason: RejectionReason): Checked => ({ state: "rejected", reason });
 
 /**
+ * The replacements whose content the patch checks will read: those that change a content,
+ * and none for a commit that fails a check that reads no content. It follows the order
+ * of `checkPatch`, and `cli/src/assemble/verify.ts` does the same before it reads content.
+ */
+function contentToRead(base: FileListing, patched: FileListing, cited: readonly CitedRange[]): Replacement[] {
+  const paths = changedPaths(base, patched);
+  if (!modesAreRegular(paths) || !isInScope(paths, cited)) return [];
+  const replacements = replacementsOf(base, paths);
+  if (replacements === undefined || replacements.length > MAX_PATCH_REPLACEMENTS) return [];
+  return replacements.filter(({ oldBlob, newBlob }) => newBlob !== oldBlob);
+}
+
+/**
  * Checks the commit a patch record names against the index's own copy. Returns nothing
  * when the check cannot run yet: a finding is not valid here, or the node does not serve
  * the commit or one of its blobs.
@@ -107,8 +123,8 @@ async function check(env: Env, node: string, component: string, record: Patch): 
   // A patch is one commit on the pinned commit (KTD4). The node is trusted for the parent it reports.
   if (served.parent !== component) return rejected("wrong-parent");
 
-  const listed = await env.DB.prepare("SELECT path, mode, blob FROM files WHERE component = ? ORDER BY path").bind(component).all<FileEntry>();
-  const base = listed.results;
+  const copy = new Copy(env, component);
+  const base = await copy.listing();
   // The lines the patch may change are the lines its findings cite in the index's own copy.
   const cited = citedRanges(findings, base);
   const patched = applyChanges(base, served.changes);
@@ -116,16 +132,12 @@ async function check(env: Env, node: string, component: string, record: Patch): 
   // Only the content that the patch checks will read is fetched. The protocol runs the
   // checks that read no content first, so a commit that fails one of them costs no read
   // of the copy and no fetch from the node. A patch replaces at most three contents (KTD6).
-  const paths = changedPaths(base, patched);
-  const replacements = modesAreRegular(paths) && isInScope(paths, cited) ? replacementsOf(base, paths) : undefined;
-  const rewritten = replacements !== undefined && replacements.length <= MAX_PATCH_REPLACEMENTS ? replacements.filter(({ oldBlob, newBlob }) => newBlob !== oldBlob) : [];
-  const copy = new Copy(env, component);
   const before = new Map<string, Uint8Array>();
   const after = new Map<string, Uint8Array>();
-  for (const { oldBlob, newBlob, newMode } of rewritten) {
+  for (const { oldBlob, newBlob, newMode } of contentToRead(base, patched, cited)) {
     if (!before.has(oldBlob)) {
       const content = await copy.read(oldBlob);
-      if (content === "too-large") return rejected("too-large");
+      if (content === TOO_LARGE) return rejected(TOO_LARGE);
       before.set(oldBlob, content);
     }
     if (newMode === DELETED_MODE || after.has(newBlob)) continue;
@@ -174,10 +186,10 @@ export async function lookAtPatch(env: Env, name: PatchName): Promise<boolean> {
 
   const checked = await check(env, name.node, component, record);
   if (!checked) return true;
-  await db.batch([
-    ...(checked.state === "valid" ? [keep(db, name, component, checked.facts)] : []),
-    settle(db, name.node, name.path, checked.state === "valid" ? { state: "valid" } : checked),
-    bump(db, component),
-  ]);
+  const statements =
+    checked.state === "valid"
+      ? [keep(db, name, component, checked.facts), settle(db, name.node, name.path, { state: "valid" })]
+      : [settle(db, name.node, name.path, checked)];
+  await db.batch([...statements, bump(db, component)]);
   return false;
 }

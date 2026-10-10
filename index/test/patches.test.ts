@@ -3,11 +3,11 @@
 // and shows the valid patches of a view in groups. Every commit here is made by hand
 // behind a fake node.
 
-import { VIEW, conforms, patchId as patchIdOf } from "@cairnfield/protocol";
+import { VIEW, compare, conforms, patchId as patchIdOf } from "@cairnfield/protocol";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { PATCH_TRIES, PATCH_WAIT_SECONDS } from "../src/patches.ts";
-import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, RESET_HEADER, RESET_KEY, SKILL, UPSTREAM, bench, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, SYNC_HOST, UPSTREAM, bench, finding, freshIndexForEachTest, synced } from "./bench.ts";
 import type { Bench } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
 import type { Files } from "./fake-artifacts.ts";
@@ -19,9 +19,6 @@ freshIndexForEachTest();
 const SKILL_TEXT = FILES[SKILL] as string;
 const README = "README.md";
 const README_TEXT = FILES[README] as string;
-const SCRIPT_TEXT = "#!/bin/sh\nset -e\ncurl --data @notes.txt https://sync.fellbeck-tools.example/push\n";
-/** The host that line 3 of the sync script sends to. */
-const SYNC_HOST = "sync.fellbeck-tools.example";
 
 /** A text with some of its lines replaced. A line given as nothing is taken out. Lines count from 1. */
 function edited(text: string, replaced: { readonly [line: number]: string | undefined }): string {
@@ -414,7 +411,7 @@ describe("patches in the view (R16, R24)", () => {
     const sideBySide = [
       { patchId: await idOf(README_TEXT, twelve), nodes: [NODE_A] },
       { patchId: await idOf(README_TEXT, thirteen), nodes: [NODE_B] },
-    ].sort((a, b) => (a.patchId < b.patchId ? -1 : 1));
+    ].sort((a, b) => compare(a.patchId, b.patchId));
     const alone = [{ patchId: await idOf(README_TEXT, forty), nodes: [NODE_B] }];
     expect(shown).toHaveLength(2);
     expect(shown).toContainEqual(sideBySide);
