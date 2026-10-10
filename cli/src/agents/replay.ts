@@ -25,8 +25,14 @@ const RECORDING = field.shape({
 });
 export type Recording = Infer<typeof RECORDING>;
 
-/** A recording holds the edits of one patch, and a patch adds at most 8 KB. A larger file is no recording. */
-const MAX_RECORDING_BYTES = 64 * 1024;
+/**
+ * A larger file is no recording. Every recording a live run saves is under this size:
+ * its edits passed `draftPatch`, so as JSON they hold at most `MAX_EDITS_CHARS`
+ * characters. A character is at most 3 bytes, and the saved form adds at most 12 bytes of
+ * line break and indent to each of their lines, of which there are under a third as many
+ * as characters.
+ */
+const MAX_RECORDING_BYTES = 256 * 1024;
 
 /** Where the recording of one finding is kept. */
 export function recordingFile(home: Home, team: string, component: string, finding: string): string {

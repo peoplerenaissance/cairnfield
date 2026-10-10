@@ -17,6 +17,12 @@ import type { Home } from "../config.ts";
 const MAX_EDITS = 64;
 const MAX_EDIT_LINES = 256;
 const MAX_LINE_LENGTH = 64 * 1024;
+/**
+ * The most an answer's edits may hold, as JSON. A patch adds at most 8 KB, so edits past
+ * this repeat lines they do not change. A recording saves the edits, so this also bounds
+ * a recording (see `agents/replay.ts`).
+ */
+export const MAX_EDITS_CHARS = 32_000;
 
 /**
  * A file tool shows a line up to this many characters, and cuts a longer one short. An
@@ -131,6 +137,7 @@ export async function draftPatch(home: Home, listing: Listing, finding: Finding,
   if (conforms(ANSWER, answer)) return refused("bad-edits");
   const { edits } = answer as Infer<typeof ANSWER>;
   if (edits.length === 0) return refused("no-edits");
+  if (JSON.stringify(edits).length > MAX_EDITS_CHARS) return refused("edits-too-large");
   if (edits.some((edit) => edit.lines.some((line) => line.includes("\n")))) return refused("bad-edits");
 
   // Edits are kept by the content they change, so two paths with one content are one file here.

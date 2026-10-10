@@ -43,6 +43,7 @@ When an answer fails a check you are told once, as `refused:` and a code, and yo
 - `edits-overlap`: two edits share a line.
 - `no-change`: the edits leave the file as it was.
 - `line-cut`: an edit replaces a line that was shown cut.
+- `edits-too-large`: the edits repeat too much of the file. Name only the lines you change.
 - `bad-edits`: the answer has another form, or a line holds a line feed.
 
 When no change within these rules would resolve the finding, answer with no edits. That answer is final, and nothing is published.

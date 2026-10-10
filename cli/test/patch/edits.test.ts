@@ -167,6 +167,15 @@ describe("the edits of a patch", () => {
     expect(await draftPatch(home, listing, finding, { edits: [{ path: "min.json", start: 1, end: 1, lines: [] }] })).toMatchObject({ ok: true });
   });
 
+  it("are refused when they repeat far more of the file than they change", async () => {
+    const lines = Array.from({ length: 40 }, (_, at) => `${at}`.padEnd(1900, "x"));
+    const { home, listing, cites } = await tree([{ path: "data.txt", content: `${lines.join("\n")}\n` }]);
+    // One changed line in forty: a small patch, written as a very large answer.
+    const edits = [{ path: "data.txt", start: 1, end: 40, lines: ["changed", ...lines.slice(1)] }];
+
+    expect(await draftPatch(home, listing, cites("data.txt", 1, 1), { edits })).toEqual({ ok: false, reason: "edits-too-large" });
+  });
+
   it("keep a last line with no line feed as it was", async () => {
     const { home, listing, cites } = await tree([{ path: "hosts.txt", content: new TextEncoder().encode("one.example\n*") }]);
 

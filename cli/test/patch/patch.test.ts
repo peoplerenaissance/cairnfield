@@ -2,10 +2,11 @@
 // command turns it into a checked commit and a patch record, live or from a recording
 // (R15, R18, R20, R24). The model is a fake behind `fetch`, so no test reaches one.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordId } from "@cairnfield/protocol";
+import { readRecording, saveRecording } from "../../src/agents/replay.ts";
 import { EXIT } from "../../src/outcome.ts";
 import {
   ADMIN_KEY,
@@ -429,7 +430,10 @@ describe("patch", () => {
     ["another schema version", (good: object): object => ({ ...good, version: "2" })],
     [
       "edits of the right form that are larger than a recording can be",
-      (good: object): object => ({ ...good, edits: [{ path: "plugin.json", start: 12, end: 12, lines: ["x".repeat(60_000), "y".repeat(60_000)] }] }),
+      (good: object): object => ({
+        ...good,
+        edits: Array.from({ length: 5 }, (_, at) => ({ path: "plugin.json", start: at + 1, end: at + 1, lines: ["x".repeat(60_000)] })),
+      }),
     ],
   ])("refuses a recording that holds %s, before anything is published", async (_what, spoil) => {
     const first = await team();
@@ -439,6 +443,22 @@ describe("patch", () => {
     expect(await on.run("patch", first, "--finding", ANY_HOST, "--replay")).toEqual({ code: EXIT.failed, output: { error: "bad-recording" } });
     expect(on.requests).toHaveLength(requests);
     expect(recordsOf(on, "claim")).toEqual([]);
+  });
+
+  it.each([
+    ["very many empty lines", Array.from({ length: 39 }, (_, at) => ({ path: "plugin.json", start: at + 1, end: at + 1, lines: Array.from({ length: 250 }, () => "") }))],
+    ["one long line of wide characters", [{ path: "plugin.json", start: 12, end: 12, lines: ["\u20ac".repeat(31_900)] }]],
+  ])("keeps a recording under the size it reads back, for edits of the largest form with %s", async (_what, edits) => {
+    // The largest edits an answer may hold: just under 32,000 characters as JSON.
+    expect(JSON.stringify(edits).length).toBeGreaterThan(30_000);
+    expect(JSON.stringify(edits).length).toBeLessThanOrEqual(32_000);
+    const file = join(on.home, "recording.json");
+    const saved = { version: "1" as const, component: "2e".repeat(20), finding: "a".repeat(64), claim: 4_294_967_295, model: "claude-sonnet-5-5" as const, edits };
+
+    await saveRecording(file, saved);
+
+    expect(statSync(file).size).toBeLessThanOrEqual(256 * 1024);
+    expect(await readRecording(file, saved.component, saved.finding)).toEqual(saved);
   });
 
   it("refuses a recording whose edits leave the cited lines, and pushes nothing", async () => {
