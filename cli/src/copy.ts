@@ -5,22 +5,33 @@
 
 import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { exportTree, writeWhole } from "./checkout.ts";
+import { MAX_RECIPE_PATCHES, field } from "@cairnfield/protocol";
+import type { Infer } from "@cairnfield/protocol";
+import { exportTree, readWhole, writeWhole } from "./checkout.ts";
 import type { Home } from "./config.ts";
 import type { Scratch } from "./git.ts";
+import { EXIT, stop } from "./outcome.ts";
 
+const COPY = field.shape({
+  component: field.gitHash(),
+  patches: field.listOf(field.sha256(), MAX_RECIPE_PATCHES),
+  tree: field.gitHash(),
+  commit: field.gitHash(),
+});
 /** What a built copy is: the pinned commit, the patches in it by ID and in order, its file-tree hash and its commit. */
-export interface Copy {
-  readonly component: string;
-  readonly patches: readonly string[];
-  readonly tree: string;
-  readonly commit: string;
-}
+export type Copy = Infer<typeof COPY>;
 
 export const copyDir = (home: Home, component: string): string => join(home.copies, component);
 const copyFile = (home: Home, component: string): string => join(home.copies, `${component}.json`);
 /** Where a copy is exported before it counts as built. */
 const stagedDir = (home: Home, component: string): string => `${copyDir(home, component)}.staged`;
+
+/** Reads what the team built of a pinned commit. Returns nothing when it built no copy. */
+export async function readCopy(home: Home, component: string): Promise<Copy | undefined> {
+  const bad = (): never => stop(EXIT.failed, "bad-copy", { component });
+  const copy = await readWhole(copyFile(home, component), COPY, bad);
+  return copy && copy.component !== component ? bad() : copy;
+}
 
 /**
  * Takes away the copy of a pinned commit, kept, staged or cut short while it was being

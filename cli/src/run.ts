@@ -9,19 +9,25 @@
 //   cairnfield view <component>
 //   cairnfield patch <component> --finding <id> [--replay]
 //   cairnfield assemble <component>
+//   cairnfield decide <component> --verdict <verdict> [--tree <tree-hash>]
+//   cairnfield approvals
+//   cairnfield verify <git-url> <folder> --approvals <file>
 //
 // Each takes `--config <file>`. Without it the command reads `cairnfield.json` in the
-// working folder.
+// working folder. `verify` reads no config file, so it runs on a machine that has none.
 
 import { parseArgs } from "node:util";
 import type { ParseArgsConfig } from "node:util";
-import { isBranchName, isCommit, isHttpsUrl } from "@cairnfield/protocol";
+import { isBranchName, isCommit, isGitHash, isHttpsUrl } from "@cairnfield/protocol";
+import { approvals } from "./commands/approvals.ts";
 import { assemble } from "./commands/assemble.ts";
 import { claim } from "./commands/claim.ts";
+import { decide } from "./commands/decide.ts";
 import { patch } from "./commands/patch.ts";
 import { pin } from "./commands/pin.ts";
 import { publish } from "./commands/publish.ts";
 import { validate } from "./commands/validate.ts";
+import { verify } from "./commands/verify.ts";
 import { view } from "./commands/view.ts";
 import { loadHome } from "./config.ts";
 import type { Home } from "./config.ts";
@@ -32,14 +38,23 @@ import type { Outcome } from "./outcome.ts";
 type Options = { readonly [name: string]: string | undefined };
 type Flags = { readonly [name: string]: boolean | undefined };
 
-interface Command {
+interface Declared {
   /** The options the command takes beside `--config`. Each has a value. */
   readonly options: readonly string[];
   /** The options the command takes that have no value. */
   readonly flags?: readonly string[];
   /** How many arguments the command takes that are no option. */
   readonly arguments: number;
+}
+
+interface Command extends Declared {
   run(io: Io, home: Home, args: readonly string[], options: Options, flags: Flags): Promise<Outcome>;
+}
+
+/** A command that reads no config file and takes no `--config`, so it runs on a machine that has none. */
+interface Standalone extends Declared {
+  readonly standalone: true;
+  run(io: Io, args: readonly string[], options: Options): Promise<Outcome>;
 }
 
 const usage = (): never => stop(EXIT.usage, "usage");
@@ -76,13 +91,30 @@ const COMMANDS: { readonly [name: string]: Command } = {
     arguments: 1,
     run: (io, home, [component]) => (isCommit(component) ? assemble(io, home, component) : usage()),
   },
+  decide: {
+    options: ["verdict", "tree"],
+    arguments: 1,
+    run: (io, home, [component], { verdict, tree }) =>
+      isCommit(component) && (tree === undefined || isGitHash(tree)) ? decide(io, home, { component, verdict, tree }) : usage(),
+  },
+  approvals: { options: [], arguments: 0, run: (_io, home) => approvals(home) },
+};
+
+const STANDALONE: { readonly [name: string]: Standalone } = {
+  verify: {
+    standalone: true,
+    options: ["approvals"],
+    arguments: 2,
+    run: (io, [url, folder], { approvals: file }) => (isHttpsUrl(url) && folder !== undefined ? verify(io, { url, folder, approvals: file }) : usage()),
+  },
 };
 
 async function dispatch(io: Io, argv: readonly string[]): Promise<Outcome> {
   const [name = "", ...rest] = argv;
-  const command = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined;
+  const named = (commands: { readonly [name: string]: Command | Standalone }) => (Object.hasOwn(commands, name) ? commands[name] : undefined);
+  const command = named(COMMANDS) ?? named(STANDALONE);
   if (!command) return usage();
-  const options: NonNullable<ParseArgsConfig["options"]> = { config: { type: "string" } };
+  const options: NonNullable<ParseArgsConfig["options"]> = "standalone" in command ? {} : { config: { type: "string" } };
   for (const option of command.options) options[option] = { type: "string" };
   for (const flag of command.flags ?? []) options[flag] = { type: "boolean" };
   let parsed;
@@ -94,6 +126,7 @@ async function dispatch(io: Io, argv: readonly string[]): Promise<Outcome> {
   if (parsed.positionals.length !== command.arguments) return usage();
   // Each option was declared above with a value or without one, and is read as it was declared.
   const values = parsed.values as Options;
+  if ("standalone" in command) return command.run(io, parsed.positionals, values);
   return command.run(io, await loadHome(io, values["config"]), parsed.positionals, values, parsed.values as Flags);
 }
 

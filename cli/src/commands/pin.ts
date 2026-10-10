@@ -4,7 +4,8 @@
 // commit, and the copy is ready when the node says it holds that commit (KTD36). With an
 // index in the config, the command registers its node and the commit there (KTD12,
 // KTD40). A commit that is already pinned keeps its checkout, so a team that adds an
-// index later runs `pin` again and nothing else changes.
+// index later runs `pin` again and nothing else changes. A checkout whose listing cannot
+// be read is the one exception: `pin` makes it again.
 
 import { relative } from "node:path";
 import { INDEX_ROUTES, NODE_ROUTES } from "@cairnfield/protocol";
@@ -13,7 +14,7 @@ import { REGISTRATION_KEY, keyFrom } from "../config.ts";
 import type { Home } from "../config.ts";
 import { fetchCommit, withScratch } from "../git.ts";
 import type { Io } from "../io.ts";
-import { EXIT, done, stop } from "../outcome.ts";
+import { EXIT, Stop, done, stop } from "../outcome.ts";
 import type { Outcome } from "../outcome.ts";
 import { adminKey, callIndex, callNode, indexFailed, nodeFailed, repoAccess, untilReady } from "../services.ts";
 
@@ -43,6 +44,14 @@ export async function pin(io: Io, home: Home, component: Component): Promise<Out
   // Read before any call, so a missing key stops the command before the node imports anything.
   const registration = index === undefined ? undefined : { index, key: keyFrom(io, REGISTRATION_KEY) };
 
+  const { commit } = component;
+  // A listing that cannot be read as one is made again with its checkout: one that was
+  // damaged, or one written before a listing named its URL. Every other command stops at it.
+  let listing = await readListing(home, commit).catch((error: unknown) => (error instanceof Stop ? undefined : Promise.reject(error)));
+  // A commit is pinned from one URL, which names its component in the team's table. A second
+  // URL for the same commit would give one component two names, so it is refused before any call.
+  if (listing && listing.url !== component.url) return stop(EXIT.invalid, "pinned-from-another-url", { component: commit, url: listing.url });
+
   const copy = await untilReady(io, () => callNode(io, home, NODE_ROUTES.importCopy, { key, body: component }));
   if (!copy.ok) {
     // The node says this of a finished copy without the commit, and of a repo that is not there.
@@ -53,13 +62,11 @@ export async function pin(io: Io, home: Home, component: Component): Promise<Out
   }
   if (registration) await register(io, home, registration.index, registration.key, component);
 
-  const { commit } = component;
-  let listing = await readListing(home, commit);
   if (!listing) {
     const access = await repoAccess(io, home, { repo: "copy", component: commit, scope: "read" });
     listing = await withScratch(io, async (scratch) => {
       await fetchCommit(scratch, access, commit);
-      return exportCheckout(home, scratch, commit);
+      return exportCheckout(home, scratch, component);
     });
   }
   return done({

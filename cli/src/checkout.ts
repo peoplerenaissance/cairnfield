@@ -4,12 +4,14 @@
 // for it at the pinned commit, whatever the component's attribute files say.
 //
 // Beside the folder sits a listing of what the checkout holds, with each file's mode and
-// blob hash, and of what the pinned tree holds that the checkout leaves out.
+// blob hash, and of what the pinned tree holds that the checkout leaves out. It also
+// names the Git URL the commit was pinned from, which names the component across its
+// commits.
 
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { FILE_MODES, LINK_MODE, SUBMODULE_MODE, conforms, field, gitBlobHash, isFileMode, isPath } from "@cairnfield/protocol";
-import type { CitedFile, CitedFiles, Infer } from "@cairnfield/protocol";
+import type { CitedFile, CitedFiles, ContractKind, Infer } from "@cairnfield/protocol";
 import type { Home } from "./config.ts";
 import { listTree, readBlobs } from "./git.ts";
 import type { Scratch } from "./git.ts";
@@ -26,7 +28,7 @@ const MAX_SHOWN_PATH = 1024;
 const WRITES_AT_ONCE = 32;
 // First values for the size of a checkout: the largest file and the largest repo that
 // Artifacts says it holds. A component past either is not pinned.
-const MAX_FILE_BYTES = 32 * 1024 * 1024;
+export const MAX_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_CHECKOUT_BYTES = 1024 * 1024 * 1024;
 /** Files are read from Git up to this many bytes at a time, so a large component is never held in memory whole. */
 const READ_AT_ONCE_BYTES = 64 * 1024 * 1024;
@@ -35,6 +37,8 @@ const MAX_TREE_LISTING_BYTES = 64 * 1024 * 1024;
 
 const LISTING = field.shape({
   component: field.gitHash(),
+  /** The Git URL the node imported the commit from. */
+  url: field.url(),
   files: field.listOf(
     field.shape({ path: field.path(), mode: field.oneOf(FILE_MODES), blob: field.gitHash() }),
     MAX_ENTRIES,
@@ -50,26 +54,32 @@ export type Listing = Infer<typeof LISTING>;
 export const checkoutDir = (home: Home, component: string): string => join(home.checkouts, component);
 const listingFile = (home: Home, component: string): string => join(home.checkouts, `${component}.json`);
 
-/** Reads the listing of a pinned commit. Returns nothing when the commit is not pinned here. */
-export async function readListing(home: Home, component: string): Promise<Listing | undefined> {
+/**
+ * Reads a JSON file the command keeps and holds it to its shape. Returns nothing when
+ * there is no file. A file that cannot be read, or that has another form, is not the
+ * same as no file: `bad` ends the command for it.
+ */
+export async function readWhole<K extends ContractKind>(file: string, kind: K, bad: () => never): Promise<Infer<K> | undefined> {
   let text: string;
   try {
-    text = await readFile(listingFile(home, component), "utf8");
+    text = await readFile(file, "utf8");
   } catch (error) {
-    // No listing means the commit is not pinned here. A listing that cannot be read does not.
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    return stop(EXIT.failed, "bad-checkout", { component });
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : bad();
   }
-  let listing: unknown;
+  let value: unknown;
   try {
-    listing = JSON.parse(text);
+    value = JSON.parse(text);
   } catch {
-    listing = undefined;
+    value = undefined;
   }
-  if (conforms(LISTING, listing) || (listing as Listing).component !== component) {
-    return stop(EXIT.failed, "bad-checkout", { component });
-  }
-  return listing as Listing;
+  return conforms(kind, value) ? bad() : (value as Infer<K>);
+}
+
+/** Reads the listing of a pinned commit. Returns nothing when the commit is not pinned here. */
+export async function readListing(home: Home, component: string): Promise<Listing | undefined> {
+  const bad = (): never => stop(EXIT.failed, "bad-checkout", { component });
+  const listing = await readWhole(listingFile(home, component), LISTING, bad);
+  return listing && listing.component !== component ? bad() : listing;
 }
 
 /**
@@ -110,11 +120,14 @@ export function decoded(path: Uint8Array): string | undefined {
   }
 }
 
+/** What an exported folder holds, and what of its commit's tree it leaves out. */
+export type Exported = Pick<Listing, "files" | "leftOut">;
+
 /**
  * Exports a commit that the scratch repo holds to a folder, in place of what the folder
  * held. Returns what the folder holds now, and what of the commit's tree it leaves out.
  */
-export async function exportTree(scratch: Scratch, commit: string, dir: string): Promise<Listing> {
+export async function exportTree(scratch: Scratch, commit: string, dir: string): Promise<Exported> {
   const regular: Listing["files"][number][] = [];
   const leftOut: Listing["leftOut"][number][] = [];
   const sizeOf = new Map<string, number>();
@@ -184,7 +197,7 @@ export async function exportTree(scratch: Scratch, commit: string, dir: string):
   await write(batch, batched);
   await rm(dir, { recursive: true, force: true });
   await rename(partial, dir);
-  return { component: commit, files, leftOut };
+  return { files, leftOut };
 }
 
 /** Writes a file whole under another name first, so a run that is cut short leaves no file. */
@@ -195,11 +208,13 @@ export async function writeWhole(file: string, value: object): Promise<void> {
 }
 
 /**
- * Exports the checkout of a commit that the scratch repo holds, and writes its listing.
- * The listing is written last, so a checkout that was cut short is made again.
+ * Exports the checkout of a commit that the scratch repo holds, and writes its listing
+ * with the Git URL the commit was pinned from. The listing is written last, so a
+ * checkout that was cut short is made again.
  */
-export async function exportCheckout(home: Home, scratch: Scratch, commit: string): Promise<Listing> {
-  const listing = await exportTree(scratch, commit, checkoutDir(home, commit));
+export async function exportCheckout(home: Home, scratch: Scratch, pinned: { readonly url: string; readonly commit: string }): Promise<Listing> {
+  const { url, commit } = pinned;
+  const listing: Listing = { component: commit, url, ...(await exportTree(scratch, commit, checkoutDir(home, commit))) };
   await writeWhole(listingFile(home, commit), listing);
   return listing;
 }

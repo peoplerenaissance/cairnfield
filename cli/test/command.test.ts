@@ -72,6 +72,12 @@ describe("the arguments", () => {
     ["an argument too many", ["validate", "now"]],
     ["an option of another command", ["validate", "--commit", "1f".repeat(20)]],
     ["a view of something that is no commit", ["view", "main"]],
+    ["a copy of something that is no commit", ["assemble", "main"]],
+    ["a verdict for something that is no commit", ["decide", "main", "--verdict", "approved"]],
+    ["a verdict on a tree that is no hash", ["decide", "1f".repeat(20), "--verdict", "approved", "--tree", "main"]],
+    ["a check of a component that is named by no URL", ["verify", "fellbeck-sync", ".", "--approvals", "approvals.json"]],
+    ["a check with no folder", ["verify", "https://git.fellbeck-tools.example/plugin.git", "--approvals", "approvals.json"]],
+    ["a check with a config file, which it does not read", ["verify", "https://git.fellbeck-tools.example/plugin.git", ".", "--config", "cairnfield.json"]],
   ])("are refused for %s", async (_why, argv) => {
     expect(await on.run(...argv)).toEqual({ code: EXIT.usage, output: { error: "usage" } });
   });

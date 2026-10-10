@@ -120,6 +120,8 @@ export function isFileMode(mode: string): mode is FileMode {
 export const LINK_MODE = "120000";
 /** The mode of a submodule entry. */
 export const SUBMODULE_MODE = "160000";
+/** The mode Git writes for a folder in a tree. A file listing holds no folder. */
+export const TREE_MODE = "40000";
 
 /** Every mode a file listing can hold: regular file, executable, symbolic link, submodule entry. */
 export const ENTRY_MODES = [...FILE_MODES, LINK_MODE, SUBMODULE_MODE] as const;
