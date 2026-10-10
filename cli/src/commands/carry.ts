@@ -15,12 +15,18 @@
 // The output holds one entry for each finding and each patch record of the older
 // commit, carried or not, with a reason from a closed list:
 //
-//   content-unchanged        carried: the content is where it was
-//   content-moved            carried: a finding whose content is at another path now
+//   content-unchanged        carried: the content is where it was. A patch still changes every path it changed
+//   content-moved            carried: a finding whose content is at another path now, or a patch that no
+//                            longer changes a path it changed
 //   content-changed          not carried: the newer commit does not hold the content
 //   second-location-changed  not carried: nor does it hold the content of a finding's second location
 //   finding-not-carried      not carried: a patch that cites a finding that did not carry
 //   refused                  not carried: a check refused it, and `check` holds that check's code
+//
+// A carried finding's entry holds the path it cites now. A carried patch's entry holds
+// `paths`: every path its commit changes at the newer commit, sorted. A patch goes to
+// every path that holds a content it replaces, so a newer commit with one more copy
+// gives one more path there, and the reason stays `content-unchanged`.
 //
 // It also names, by patch ID, each patch of another team in the copy the team last built
 // at the older commit: the copy of the newer commit will not hold it. It ends with the
@@ -106,7 +112,7 @@ export async function carry(io: Io, home: Home, request: CarryRequest): Promise<
         const record: Patch = { ...decided.record, commit };
         const as = await addRecord(home, record);
         written.push(recordPath(record, as));
-        patches.push({ patch: candidate.record, patchId: decided.patchId, carried: true, reason: "content-unchanged", as, commit });
+        patches.push({ patch: candidate.record, patchId: decided.patchId, carried: true, reason: decided.reason, as, commit, paths: decided.paths });
       }
     });
   }

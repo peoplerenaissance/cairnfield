@@ -2,13 +2,14 @@
 // KTD39). A finding is tied to the content it cites, so it carries when the newer commit
 // still holds that content, at the same path or at another.
 
+import { existsSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
-import { pinnedWith } from "../assemble/team.ts";
-import { bench, finding, holdRecords } from "../support.ts";
+import { NARROWED, bothRules, pinnedWith } from "../assemble/team.ts";
+import { NODE, bench, finding, holdRecords } from "../support.ts";
 import type { Bench } from "../support.ts";
-import { carry, findingsSaid, recordOf, recordsAt, release, tree } from "./release.ts";
+import { carry, findingsSaid, patchCiting, patchesSaid, recordOf, recordsAt, release, tree } from "./release.ts";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -109,5 +110,27 @@ describe("carry, for a finding", () => {
       ].sort((a, b) => (a.finding < b.finding ? -1 : 1)),
     );
     expect(recordsAt(on, newer)).toEqual([`records/${newer}/finding/${as}.json`]);
+  });
+
+  it("reports a finding the node lists and does not serve as refused, and carries no patch that cites it", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    const made = await patchCiting(on, older, [finding(older, { location: { path: "config/rules.txt", start: 3, end: 3 } })], bothRules(NARROWED));
+    const [id = ""] = made.findings;
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+    // The listing names the file, and the node answers for it as for a file it does not hold.
+    const unserved = `records/${older}/finding/${id}.json`;
+    on.respond = (seen) => {
+      const { origin, pathname, searchParams } = new URL(seen.url);
+      return origin === NODE && pathname === "/file" && searchParams.get("path") === unserved ? Response.json({ error: "not-found" }, { status: 404 }) : undefined;
+    };
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(findingsSaid(outcome)).toEqual([{ finding: id, carried: false, reason: "refused", check: "unresolved-reference" }]);
+    // The patch is read as assembly reads one, and the node serves that read no finding either.
+    expect(patchesSaid(outcome)).toMatchObject([{ patch: made.id, carried: false }]);
+    expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
+    expect(recordsAt(on, newer)).toEqual([]);
   });
 });

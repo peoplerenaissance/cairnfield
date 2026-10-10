@@ -7,6 +7,10 @@
 // the carried findings. The patch ID covers the replacements and nothing else, so it
 // comes out the same.
 //
+// A patch is placed by content, so it may change other paths than it did. It moved when
+// it no longer changes a path it changed at the older commit. One more copy to rewrite
+// is one more path, and no move.
+//
 // A patch is read as assembly reads one (see `assemble/verify.ts`): its record from the
 // team's own repo and its commit from the team's own fork, checked again as a patch on
 // the older commit. So what is carried is what the commit does, not what a record says.
@@ -27,17 +31,23 @@ type NotCarried =
   /** A check refused the patch, at the older commit or on the newer one. `check` is that check's code. A patch refused at the older commit has no patch ID. */
   | { readonly patchId?: string; readonly carried: false; readonly reason: "refused"; readonly check: string };
 
+/** Why a patch carried: it still changes every path it changed at the older commit, or it no longer changes one of them. */
+type CarriedReason = "content-unchanged" | "content-moved";
+
 /** What became of one patch record of the team's at the older commit. A reason is a code from a closed list. */
 export type PatchEntry = { readonly patch: string } & (
-  /** Built again on the newer commit as `commit`, and announced there by the record `as`. */
-  | { readonly patchId: string; readonly carried: true; readonly reason: "content-unchanged"; readonly as: string; readonly commit: string }
+  /** Built again on the newer commit as `commit`, and announced there by the record `as`. `paths` holds every path that commit changes, sorted. */
+  | { readonly patchId: string; readonly carried: true; readonly reason: CarriedReason; readonly as: string; readonly commit: string; readonly paths: readonly string[] }
   | NotCarried
 );
 
 /** A patch that carries, before it is a commit on the newer commit. */
 export interface Carrying {
   readonly patchId: string;
-  /** Every path of the newer commit that the patch changes, with its new mode and blob, or the deletion marker. */
+  readonly reason: CarriedReason;
+  /** Every path of the newer commit that the patch changes, sorted. */
+  readonly paths: readonly string[];
+  /** Each of those paths with its new mode and blob, or the deletion marker. */
   readonly changes: readonly FileEntry[];
   /** The content of each new blob, by its hash. */
   readonly blobs: ReadonlyMap<string, Uint8Array>;
@@ -83,6 +93,9 @@ export async function carryPatch(run: Assembly, newer: Listing, findings: Readon
   // The same replacements give the same patch ID (KTD4). Any other ID is not this patch.
   if (checked.patchId !== patchId) return stop(EXIT.failed, "carry-failed");
 
+  // The patch moved when it no longer changes a path it changed at the older commit.
+  const lands = new Set(checked.paths);
+  const reason = facts.paths.every((path) => lands.has(path)) ? "content-unchanged" : "content-moved";
   const record = { ...announced, component: newer.component, findings: [...new Set(cited.map(({ id }) => id))].sort(compare) };
-  return { carried: true, patchId, changes, blobs: after, record };
+  return { carried: true, patchId, reason, paths: checked.paths, changes, blobs: after, record };
 }

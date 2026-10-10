@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEAM_BRANCH, recordId } from "@cairnfield/protocol";
 import { EXIT } from "../../src/outcome.ts";
 import { NARROWED, bothRules, otherTeam, ownPatch, patchBy, pinnedWith, refsOf, rules, serveView } from "../assemble/team.ts";
-import { OTHER_NODE, OUTBOX, PLUGIN_URL, bench, finding, git, published, putFile } from "../support.ts";
+import { NODE, OTHER_NODE, OUTBOX, PLUGIN_URL, bench, finding, git, holdRecords, published, putFile, putRecord } from "../support.ts";
 import type { Bench } from "../support.ts";
 import { carry, findingsSaid, patchRefs, patchesSaid, recordsAt, release, tree } from "./release.ts";
 
@@ -102,6 +102,67 @@ describe("carry", () => {
     expect(outcome.output["published"]).toEqual(recordsAt(on, newer));
     expect(published(on)).not.toContain(path);
     expect(waiting()).toContain(path);
+  });
+
+  it("publishes nothing when nothing carried, and leaves a record that waits in the outbox where it is", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    // The team's one finding cites the notes, which the newer commit changes.
+    const [id = ""] = await holdRecords(on, [finding(older, { location: { path: "notes.md", start: 3, end: 3 } })]);
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+    // A finding a person wrote for the older commit and has not published yet. A published record cannot be taken back (KTD1).
+    const path = await putRecord(on, finding(older, { location: { path: "notes.md", start: 1, end: 1 } }));
+    const before = published(on);
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome).toMatchObject({ code: EXIT.ok, output: { published: [] } });
+    expect(findingsSaid(outcome)).toEqual([{ finding: id, carried: false, reason: "content-changed" }]);
+    expect(published(on)).toEqual(before);
+    expect(waiting()).toEqual([path]);
+  });
+
+  it("still says what carried when publishing stops, keeps the carried records in the outbox, and publishes them on the next run", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    const mine = await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+    // Only `publish` asks the node for the team repo, so the run stops there, with the patch commit in the fork.
+    on.respond = (seen) => {
+      if (seen.url === `${NODE}/admin/team-repo`) throw new TypeError("fetch failed");
+      return undefined;
+    };
+
+    const stopped = await carry(on, older, newer);
+
+    // The exit code and the error are those of `publish`.
+    expect(stopped).toMatchObject({ code: EXIT.node, output: { older, newer, error: "node-unreachable", leftBehind: [], paths: { added: 0, changed: 1, removed: 0 } } });
+    const own = await recordId(finding(newer, { location: { path: "config/rules.txt", start: 3, end: 3 } }));
+    expect(findingsSaid(stopped)).toMatchObject([{ carried: true, as: own }]);
+    expect(patchesSaid(stopped)).toMatchObject([{ patch: mine.id, patchId: mine.patchId, carried: true }]);
+    const records = [`records/${newer}/finding/${own}.json`, `records/${newer}/patch/${patchesSaid(stopped)[0]?.as}.json`];
+    expect(recordsAt(on, newer)).toEqual([]);
+    expect(waiting()).toEqual(records);
+
+    on.respond = undefined;
+    const again = await carry(on, older, newer);
+
+    expect(again).toMatchObject({ code: EXIT.ok, output: { published: records } });
+    expect(findingsSaid(again)).toEqual(findingsSaid(stopped));
+    expect(patchesSaid(again)).toEqual(patchesSaid(stopped));
+    expect(recordsAt(on, newer)).toEqual(records);
+  });
+
+  it("stops with the node's failure when the node does not list the team's records, and writes no record and no commit", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    await ownPatch(on, older, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES }));
+    const before = published(on);
+    // A team repo that is not there yet leaves nothing to carry. Any other answer is the node's failure.
+    on.respond = (seen) => (seen.url === `${NODE}/records` ? Response.json({ error: "not-ready" }, { status: 409 }) : undefined);
+
+    expect(await carry(on, older, newer)).toEqual({ code: EXIT.node, output: { error: "node-refused", reason: "not-ready" } });
+    expect(published(on)).toEqual(before);
+    expect(existsSync(on.repo(`fork-${newer}`))).toBe(false);
+    expect(existsSync(join(on.home, OUTBOX, "records", newer))).toBe(false);
   });
 
   it("refuses an older commit that is not pinned here, before any call", async () => {

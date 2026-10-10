@@ -71,7 +71,8 @@ async function entries(outbox: string): Promise<{ readonly path: string; readonl
  * a node or an index.
  */
 export async function checkOutbox(home: Home, only?: readonly string[]): Promise<OutboxCheck> {
-  const named = only && new Set(only);
+  // Only no list at all means the whole outbox. An empty list names no file, so `publish` then publishes none.
+  const named = only === undefined ? undefined : new Set(only);
   const records: Checked[] = [];
   const rejected: Refused[] = [];
   // The reader of each component's checkout, or nothing for a component that is not pinned here.

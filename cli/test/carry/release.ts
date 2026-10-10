@@ -58,6 +58,7 @@ export interface Said {
   readonly reason: string;
   readonly as?: string;
   readonly path?: string;
+  readonly paths?: readonly string[];
   readonly commit?: string;
   readonly check?: string;
 }

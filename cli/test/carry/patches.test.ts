@@ -23,7 +23,10 @@ afterEach(() => {
   on.dispose();
 });
 
+const NOTES = "# Notes\n\nNothing here.\n";
 const OTHER_NOTES = "# Notes\n\nSomething new.\n";
+/** The notes with the third line rewritten: what a patch of the notes puts in their place. */
+const KEPT_NOTES = "# Notes\n\nNothing to keep.\n";
 /** The finding that `ownPatch` writes for one line of the rules file, as it is written for another commit. */
 const ruleFinding = (component: string, line: number): object => finding(component, { location: { path: "config/rules.txt", start: line, end: line } });
 
@@ -41,7 +44,7 @@ describe("carry, for a patch", () => {
     expect(outcome.code).toBe(EXIT.ok);
     const [said, ...rest] = patchesSaid(outcome);
     expect(rest).toEqual([]);
-    expect(said).toMatchObject({ patch: made.id, patchId: made.patchId, carried: true, reason: "content-unchanged" });
+    expect(said).toMatchObject({ patch: made.id, patchId: made.patchId, carried: true, reason: "content-unchanged", paths: ["config/rules.txt", "docs/rules.txt"] });
     const commit = said?.commit ?? "";
     const fork = on.repo(`fork-${newer}`);
     // The commit sits on the newer commit, on the ref of its patch ID, and is another commit than the older one.
@@ -120,12 +123,66 @@ describe("carry, for a patch", () => {
 
     expect(outcome.code).toBe(EXIT.ok);
     const [said] = patchesSaid(outcome);
-    expect(said).toMatchObject({ patch: made.id, patchId: made.patchId, carried: true });
+    // The patch still changes both paths it changed, so one more copy does not make it a moved patch.
+    const paths = ["config/rules.txt", "docs/rules.txt", "extra/rules.txt"];
+    expect(said).toMatchObject({ patch: made.id, patchId: made.patchId, carried: true, reason: "content-unchanged", paths });
     const commit = said?.commit ?? "";
     const fork = on.repo(`fork-${newer}`);
-    expect(git(fork, ["diff", "--name-only", newer, commit])).toBe("config/rules.txt\ndocs/rules.txt\nextra/rules.txt");
-    for (const path of ["config/rules.txt", "docs/rules.txt", "extra/rules.txt"]) expect(fileAt(fork, commit, path)).toBe(NARROWED);
+    expect(git(fork, ["diff", "--name-only", newer, commit])).toBe(paths.join("\n"));
+    for (const path of paths) expect(fileAt(fork, commit, path)).toBe(NARROWED);
     expect(await patchIdOf(fork, newer, commit)).toBe(made.patchId);
+  });
+
+  it("reports a carried patch whose replaced content sits at another path now as moved, with the path its commit changes there", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    const made = await ownPatch(on, older, { cites: [[3, 3]], path: "notes.md", changes: [{ path: "notes.md", content: KEPT_NOTES }] });
+    // The newer commit puts other content at the path the patch changed, and holds the old content at another.
+    const newer = release(on, older, tree({ "notes.md": OTHER_NOTES, "archive/notes.md": NOTES }));
+
+    const outcome = await carry(on, older, newer);
+
+    expect(outcome.code).toBe(EXIT.ok);
+    const cited = await recordId(finding(older, { location: { path: "notes.md", start: 3, end: 3 } }));
+    const citedAt = await recordId(finding(newer, { location: { path: "archive/notes.md", start: 3, end: 3 } }));
+    expect(findingsSaid(outcome)).toEqual([{ finding: cited, carried: true, reason: "content-moved", as: citedAt, path: "archive/notes.md" }]);
+    const [said, ...rest] = patchesSaid(outcome);
+    expect(rest).toEqual([]);
+    expect(said).toMatchObject({ patch: made.id, patchId: made.patchId, carried: true, reason: "content-moved", paths: ["archive/notes.md"] });
+    const commit = said?.commit ?? "";
+    const fork = on.repo(`fork-${newer}`);
+    expect(git(fork, ["diff", "--name-only", newer, commit])).toBe("archive/notes.md");
+    expect(fileAt(fork, commit, "archive/notes.md")).toBe(KEPT_NOTES);
+    expect(fileAt(fork, commit, "notes.md")).toBe(OTHER_NOTES);
+    expect(await patchIdOf(fork, newer, commit)).toBe(made.patchId);
+    expect(recordOf(on, newer, "patch", said?.as ?? "")).toMatchObject({ commit, findings: [citedAt] });
+  });
+
+  it("cites a finding once in the carried patch record when two findings the patch cites carry to one record", async () => {
+    const older = await pinnedWith(on, { patchLevel: 1 });
+    // One content at two paths, with one finding at each. The newer commit holds the content at one path alone.
+    const onDocs = finding(older, { location: { path: "docs/rules.txt", start: 3, end: 3 } });
+    const made = await patchCiting(on, older, [ruleFinding(older, 3), onDocs], bothRules(NARROWED));
+    const newer = release(on, older, tree({ "docs/rules.txt": undefined }));
+
+    const outcome = await carry(on, older, newer);
+
+    const cited = await recordId(ruleFinding(newer, 3));
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(findingsSaid(outcome)).toEqual(
+      [
+        { finding: made.findings[0], carried: true, reason: "content-unchanged", as: cited, path: "config/rules.txt" },
+        { finding: made.findings[1], carried: true, reason: "content-moved", as: cited, path: "config/rules.txt" },
+      ].sort((a, b) => ((a.finding ?? "") < (b.finding ?? "") ? -1 : 1)),
+    );
+    const [said, ...rest] = patchesSaid(outcome);
+    expect(rest).toEqual([]);
+    // The patch no longer changes the path the newer commit took out.
+    expect(said).toMatchObject({ patch: made.id, patchId: made.patchId, carried: true, reason: "content-moved", paths: ["config/rules.txt"] });
+    expect(recordOf(on, newer, "patch", said?.as ?? "")).toMatchObject({ commit: said?.commit, findings: [cited] });
+    // The one finding record and the patch record are published, each once.
+    const records = [`records/${newer}/finding/${cited}.json`, `records/${newer}/patch/${said?.as}.json`];
+    expect(outcome.output["published"]).toEqual(records);
+    expect(recordsAt(on, newer)).toEqual(records);
   });
 
   it("runs the patch checks on the newer commit, and reports a patch they refuse there with the check's code", async () => {
