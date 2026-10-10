@@ -151,6 +151,23 @@ describe("claims in the view (R15, KTD15)", () => {
     expect((await on.view(component)).claims[0]?.state).toBe("expired");
   });
 
+  it("counts a claim's time from when its file arrived, and not from when the sync that read it started", async () => {
+    const on = bench({ CLAIM_TTL_SECONDS: "120" });
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    await node.publish(claim(component, 1));
+    // A slow node: the file arrives three minutes after the sync started, which is longer than a claim lives.
+    node.onFile = async () => clockAt(START + 3 * MINUTE);
+    await synced(on, NODE_A);
+    expect((await on.view(component)).claims[0]?.state).toBe("live");
+    clockAt(START + 5 * MINUTE - 1);
+    expect((await on.view(component)).claims[0]?.state).toBe("live");
+    clockAt(START + 5 * MINUTE);
+    expect((await on.view(component)).claims[0]?.state).toBe("expired");
+  });
+
   it("closes a claim only for a record of the node that made it", async () => {
     const on = bench();
     const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];
@@ -346,7 +363,7 @@ describe("a rebuild from the nodes (R12, KTD13)", () => {
       node.onListing = undefined;
       expect((await on.call("POST", "/reset", undefined, [RESET_HEADER, RESET_KEY])).status).toBe(200);
     };
-    expect(await syncNode(on.env, NODE_A, START)).toMatchObject({ ok: true, stored: 1 });
+    expect(await syncNode(on.env, NODE_A)).toMatchObject({ ok: true, stored: 1 });
     // The sync that the reset queued ends the rebuild.
     await on.drain();
     expect((await on.view(component)).claims).toMatchObject([{ id: open, state: "expired" }]);

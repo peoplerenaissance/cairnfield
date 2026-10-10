@@ -74,7 +74,7 @@ export async function notice(env: Env, body: unknown, now: number): Promise<Resp
 
 /** Syncs a node. Returns whether its message is done with: a sync that failed is tried again. */
 async function handleNode(env: Env, node: string, now: number): Promise<boolean> {
-  const outcome = await syncNode(env, node, now);
+  const outcome = await syncNode(env, node);
   if (!outcome.ok) {
     // A code from a closed list and a registered URL. Nothing a node sent is logged.
     console.warn(JSON.stringify({ event: "sync-failed", node, reason: outcome.reason }));
