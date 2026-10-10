@@ -138,9 +138,9 @@ export async function assemble(io: Io, home: Home, component: string): Promise<O
     // publishes nothing. It counts as built only when what the lens asked for was done, so
     // a run that could not publish leaves none behind. A notice the index did not take is
     // no failure of the copy: its recipe is published all the same.
-    await stageCopy(home, scratch, copy);
     let published: Outcome;
     try {
+      await stageCopy(home, scratch, copy);
       published = lens.publishRecipes ? await publishCopy(io, home, scratch, key, copy) : done({});
     } catch (error) {
       await dropCopy(home, component);

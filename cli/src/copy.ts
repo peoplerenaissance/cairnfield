@@ -33,11 +33,15 @@ export async function readCopy(home: Home, component: string): Promise<Copy | un
   return copy && copy.component !== component ? bad() : copy;
 }
 
-/** Takes away the copy of a pinned commit, staged or kept, so a run that builds none leaves none behind. */
+/**
+ * Takes away the copy of a pinned commit, kept, staged or cut short while it was being
+ * exported, so a run that builds none leaves none behind.
+ */
 export async function dropCopy(home: Home, component: string): Promise<void> {
   await rm(copyFile(home, component), { force: true });
-  await rm(copyDir(home, component), { recursive: true, force: true });
-  await rm(stagedDir(home, component), { recursive: true, force: true });
+  for (const dir of [copyDir(home, component), stagedDir(home, component), `${stagedDir(home, component)}.partial`]) {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 /**
