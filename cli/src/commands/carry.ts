@@ -1,0 +1,191 @@
+// `carry`: moves the team's own findings and patches to a newer commit of a component,
+// and says what needs a fresh look (R37, KTD39).
+//
+// The command pins the newer commit from the Git URL the older one was pinned from. It
+// reads the team's findings and patch records at the older commit from the team's own
+// repo, and each patch commit from the team's own fork. It asks no index, and it carries
+// nothing of another team (R38).
+//
+// What carries is written again for the newer commit: a finding as a new record, and a
+// patch as a new commit on the newer commit, with the patch ID it had (KTD4), and a new
+// patch record that cites the carried findings. The records go to the outbox and out
+// through `publish`, so they pass the validation every record passes (KTD20). A second
+// run builds the same commits and the same records, and so writes nothing new (KTD17).
+//
+// The output holds one entry for each finding and each patch record of the older
+// commit, carried or not, with a reason from a closed list:
+//
+//   content-unchanged        carried: the content is where it was. A patch still changes every path it changed
+//   content-moved            carried: a finding whose content is at another path now, or a patch that no
+//                            longer changes a path it changed
+//   content-changed          not carried: the newer commit does not hold the content
+//   second-location-changed  not carried: nor does it hold the content of a finding's second location
+//   finding-not-carried      not carried: a patch that cites a finding that did not carry
+//   refused                  not carried: a check refused it, and `check` holds that check's code
+//
+// `refused` says something of the record or its commit: what a check found there, or what
+// the node answered when asked for it, as for a record it lists and answers not-found
+// for, or a fork it does not have. A read of the team's own node that fails says nothing
+// of either: the node cannot be reached, or it answers for a record it lists with a
+// failure that is not not-found. Such a read ends the command with the failure's own
+// outcome and exit code, and is never an entry, so a caller that reads only the exit code
+// does not go on to build a copy without the finding or the patch. What carried before it
+// waits in the outbox, and a run whose reads succeed finishes.
+//
+// A fetch of a patch commit from the team's own fork that fails is still an entry,
+// `refused` with `git-failed`, and the run goes on. That is how a fetch failure is
+// reported today: Git gives one failure for a fetch that failed and for a commit the fork
+// does not hold.
+//
+// A carried finding's entry holds the path it cites now. A carried patch's entry holds
+// `paths`: every path its commit changes at the newer commit, sorted. A patch goes to
+// every path that holds a content it replaces, so a newer commit with one more copy
+// gives one more path there, and the reason stays `content-unchanged`.
+//
+// It also names, by patch ID, each patch of another team in the copy the team last built
+// at the older commit: the copy of the newer commit will not hold it. A patch of that copy
+// is the team's own when an entry of this run names it, or when the team's fork of the
+// older commit holds its ref, `patch/<older-commit>/<patch-id>` (KTD4). A patch that was
+// refused before its patch ID was known has no ID in its entry, so the fork tells it from
+// another team's, and whose a patch is does not depend on what this run's checks made of it.
+// The fork is asked for its refs only when the copy holds a patch that no entry names. A
+// fork that cannot be asked ends the command, and no patch is then named as left behind.
+//
+// It ends with the counts of paths the newer commit added, changed and removed. `carry`
+// reviews none of them. The counts hold the files of each checkout and the entries it
+// leaves out: a link, a submodule entry, a path it refuses. A path that moved between the
+// two, or that is left out for another reason than it was, counts as changed. A path that
+// both checkouts leave out for the same reason is not counted as changed: a listing keeps
+// no hash for it, so the two cannot be compared.
+
+import { compare, recordPath } from "@cairnfield/protocol";
+import type { Patch } from "@cairnfield/protocol";
+import { ownCandidates } from "../assemble/select.ts";
+import type { Assembly } from "../assemble/verify.ts";
+import { carryFindings } from "../carry/findings.ts";
+import type { CarriedFindings } from "../carry/findings.ts";
+import { carryPatch } from "../carry/patches.ts";
+import type { PatchEntry } from "../carry/patches.ts";
+import { citedFileReader, readListing } from "../checkout.ts";
+import type { Listing } from "../checkout.ts";
+import type { Home } from "../config.ts";
+import { readCopy } from "../copy.ts";
+import { fetchCommit, withScratch } from "../git.ts";
+import type { Access } from "../git.ts";
+import type { Io } from "../io.ts";
+import { addRecord } from "../outbox.ts";
+import { EXIT, done, outcomeOf, stop } from "../outcome.ts";
+import type { Outcome } from "../outcome.ts";
+import { commitPatch, pushPatch, pushedPatches } from "../patch/commit.ts";
+import { adminKey, forkAccess, nodeFailed, nodeListing, repoAccess, writableFork } from "../services.ts";
+import { pin } from "./pin.ts";
+import { publish } from "./publish.ts";
+
+export interface CarryRequest {
+  readonly older: string;
+  readonly newer: string;
+  /** The branch that holds the newer commit. The node imports a branch by its name (KTD36). */
+  readonly branch: string;
+}
+
+/** A ref of the scratch repo for the older commit. A fetch names what the repo's refs hold, so the fork sends only what a patch adds. */
+const OLDER_REF = "refs/cairnfield/older";
+
+/**
+ * The IDs of the patches the team pushed on a commit: its own fork of the commit holds
+ * one ref for each (KTD4). A team with no fork of the commit pushed none. Any other
+ * answer of the node is the node's failure, and ends the command.
+ */
+async function pushedBy(io: Io, node: string, component: string): Promise<ReadonlySet<string>> {
+  const fork = await forkAccess(io, node, component);
+  if (!fork.ok) return fork.error === "refused" && fork.reason === "not-found" ? new Set() : nodeFailed(fork);
+  return withScratch(io, (scratch) => pushedPatches(scratch, fork.body, component));
+}
+
+/**
+ * What a commit's tree holds at each path, as its listing knows it: a file's mode and
+ * blob, or the reason the checkout leaves the entry out.
+ */
+function entriesOf(listing: Listing): Map<string, string> {
+  return new Map([
+    ...listing.files.map(({ path, mode, blob }): [string, string] => [path, `${mode} ${blob}`]),
+    ...listing.leftOut.map(({ path, reason }): [string, string] => [path, reason]),
+  ]);
+}
+
+export async function carry(io: Io, home: Home, request: CarryRequest): Promise<Outcome> {
+  const older = await readListing(home, request.older);
+  if (!older) return stop(EXIT.invalid, "unknown-component", { component: request.older });
+  const built = await readCopy(home, older.component);
+  const key = adminKey(io);
+  const { node } = home.config;
+
+  // A component is named by the Git URL it was pinned from, so the newer commit is pinned from the older one's.
+  await pin(io, home, { url: older.url, branch: request.branch, commit: request.newer });
+  const newer = await readListing(home, request.newer);
+  if (!newer) return stop(EXIT.failed, "bad-checkout", { component: request.newer });
+
+  // A team that has published no record yet has no team repo, and so nothing to carry.
+  const held = await nodeListing(io, node);
+  if (!held.ok && !(held.error === "refused" && held.reason === "not-found")) return nodeFailed(held);
+  const files = citedFileReader(home, older);
+  const findings: CarriedFindings = held.ok ? await carryFindings(io, node, held.body, older, newer, files) : { entries: [], carried: new Map() };
+  // The path in the outbox of each record this run wrote.
+  const written: string[] = [];
+  for (const { record } of findings.carried.values()) written.push(recordPath(record, await addRecord(home, record)));
+
+  const candidates = held.ok ? ownCandidates(node, older.component, held.body).sort((a, b) => compare(a.record, b.record)) : [];
+  const patches: PatchEntry[] = [];
+  if (candidates.length > 0) {
+    // The older commit comes from the team's own copy of the component.
+    const copy = await repoAccess(io, home, { repo: "copy", component: older.component, scope: "read" });
+    await withScratch(io, async (scratch) => {
+      await fetchCommit(scratch, copy, older.component);
+      await scratch.git("update-ref", ["update-ref", OLDER_REF, older.component]);
+      // Every candidate is the team's own, so a read of the node that fails ends the command: it says nothing of the patch.
+      const run: Assembly = { io, node, listing: older, scratch, files, counted: [node], listings: new Map([[node, Promise.resolve(held)]]), failedReadEnds: true };
+      // The fork of the newer commit is made when the first patch carries, and the newer commit is fetched from it.
+      let fork: Access | undefined;
+      for (const candidate of candidates) {
+        const decided = await carryPatch(run, newer, findings.carried, candidate);
+        if (!decided.carried) {
+          patches.push({ patch: candidate.record, ...decided });
+          continue;
+        }
+        if (!fork) {
+          fork = await writableFork(io, home, key, newer.component);
+          await fetchCommit(scratch, fork, newer.component);
+        }
+        const commit = await commitPatch(scratch, newer.component, decided);
+        await pushPatch(scratch, fork, newer.component, decided.patchId, commit);
+        // The fork holds the commit before the record that announces it is published.
+        const record: Patch = { ...decided.record, commit };
+        const as = await addRecord(home, record);
+        written.push(recordPath(record, as));
+        patches.push({ patch: candidate.record, patchId: decided.patchId, carried: true, reason: decided.reason, as, commit, paths: decided.paths });
+      }
+    });
+  }
+
+  // A patch in the older copy that is none of the team's own came from a team its lens names.
+  // An entry names its patch only when no check refused it before its patch ID was known, so a patch
+  // that no entry names is the team's own when the team's fork of the older commit holds its ref (KTD4).
+  const named = new Set(patches.flatMap(({ patchId }) => patchId ?? []));
+  const unnamed = (built?.patches ?? []).filter((patchId) => !named.has(patchId));
+  // The fork is asked only when there is a patch to tell apart, so a run whose entries name every patch of the copy makes no call for it.
+  const pushed = unnamed.length > 0 ? await pushedBy(io, node, older.component) : new Set<string>();
+  const leftBehind = unnamed.filter((patchId) => !pushed.has(patchId));
+  // The counts say how much of the release was not reviewed, so they hold what a checkout leaves out too.
+  const before = entriesOf(older);
+  const after = entriesOf(newer);
+  const paths = {
+    added: [...after.keys()].filter((path) => !before.has(path)).length,
+    // A path left out of both commits for the same reason is not counted: a listing keeps no hash for it, so the two cannot be compared.
+    changed: [...before].filter(([path, entry]) => after.has(path) && after.get(path) !== entry).length,
+    removed: [...before.keys()].filter((path) => !after.has(path)).length,
+  };
+
+  // When publishing stops, the output still says what carried, and the records wait in the outbox.
+  const published = await outcomeOf(() => publish(io, home, written));
+  return done({ older: older.component, newer: newer.component, findings: findings.entries, patches, ...published.output, leftBehind, paths }, published.code);
+}

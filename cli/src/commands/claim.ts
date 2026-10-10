@@ -60,6 +60,6 @@ export async function claim(io: Io, home: Home, request: ClaimRequest): Promise<
   const id = await addRecord(home, record);
   // When publishing stops, the claim waits in the outbox, and the output still names it
   // and its number, so the operator can publish it and no second claim is drawn.
-  const { code, output } = await outcomeOf(() => publish(io, home, recordPath(record, id)));
+  const { code, output } = await outcomeOf(() => publish(io, home, [recordPath(record, id)]));
   return done({ claim: id, number, ...output }, code);
 }

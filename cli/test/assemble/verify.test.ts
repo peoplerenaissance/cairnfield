@@ -191,6 +191,24 @@ describe("a candidate from a named team", () => {
     expectRefused(await on.run("assemble", component), made, "unresolved-reference");
   });
 
+  // A failed read of another team's node must not end the build, so it reads as a record that is not there.
+  it.each([
+    ["the patch record", "patch"],
+    ["a finding record the patch names", "finding"],
+  ] as const)("is refused when its node lists %s and answers for it with a failure", async (_what, type) => {
+    const made = await theirs({ cites: [[3, 3]], changes: bothRules(NARROWED) });
+    serveView(on, component, [made]);
+    const id = type === "patch" ? made.id : ((made.record as { readonly findings: readonly string[] }).findings[0] ?? "");
+    const listed = `records/${component}/${type}/${id}.json`;
+    on.respond = (seen) => {
+      const { origin, pathname, searchParams } = new URL(seen.url);
+      return origin === OTHER_NODE && pathname === "/file" && searchParams.get("path") === listed ? new Response("unavailable", { status: 503 }) : undefined;
+    };
+
+    expectRefused(await on.run("assemble", component), made, "unresolved-reference");
+    expect(on.requests.some((seen) => seen.url.startsWith(`${OTHER_NODE}/file`) && seen.url.includes(id))).toBe(true);
+  });
+
   it("is refused before Git runs when its fork remote is not an Artifacts remote", async () => {
     const made = await theirs({ cites: [[3, 3]], changes: bothRules(NARROWED) });
     serveView(on, component, [made]);

@@ -81,7 +81,7 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
   // The finding is read from the outbox, which mirrors the team repo, and is validated as any record there is.
   const unknown = (): never => stop(EXIT.invalid, "unknown-finding", { finding: id });
   const path = recordPath({ component, type: "finding" }, id);
-  const waiting = await checkOutbox(home, path);
+  const waiting = await checkOutbox(home, [path]);
   if (waiting.rejected.length > 0) return verdict(waiting);
   const finding = waiting.records[0]?.record;
   if (finding?.type !== "finding") return unknown();
@@ -143,7 +143,7 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
     // The fork holds the commit before the record that announces it is published.
     const record: Patch = { version: SCHEMA_VERSION, type: "patch", component, commit, findings: [id], claim: made.claim, model };
     const announced = await addRecord(home, record);
-    const published = await outcomeOf(() => publish(io, home, recordPath(record, announced)));
+    const published = await outcomeOf(() => publish(io, home, [recordPath(record, announced)]));
     return done({ patch: announced, commit, patchId, kind, size, paths, recording, ...published.output }, published.code);
   });
   return done({ ...made, ...output }, code);

@@ -11,6 +11,7 @@
 //   cairnfield assemble <component>
 //   cairnfield decide <component> --verdict <verdict> [--tree <tree-hash>]
 //   cairnfield approvals
+//   cairnfield carry <older-commit> <newer-commit> --branch <branch>
 //   cairnfield verify <git-url> <folder> --approvals <file>
 //
 // Each takes `--config <file>`. Without it the command reads `cairnfield.json` in the
@@ -21,6 +22,7 @@ import type { ParseArgsConfig } from "node:util";
 import { isBranchName, isCommit, isGitHash, isHttpsUrl } from "@cairnfield/protocol";
 import { approvals } from "./commands/approvals.ts";
 import { assemble } from "./commands/assemble.ts";
+import { carry } from "./commands/carry.ts";
 import { claim } from "./commands/claim.ts";
 import { decide } from "./commands/decide.ts";
 import { patch } from "./commands/patch.ts";
@@ -98,6 +100,13 @@ const COMMANDS: { readonly [name: string]: Command } = {
       isCommit(component) && (tree === undefined || isGitHash(tree)) ? decide(io, home, { component, verdict, tree }) : usage(),
   },
   approvals: { options: [], arguments: 0, run: (_io, home) => approvals(home) },
+  carry: {
+    options: ["branch"],
+    arguments: 2,
+    // Two commits of one component: a commit is not carried to itself.
+    run: (io, home, [older, newer], { branch }) =>
+      isCommit(older) && isCommit(newer) && older !== newer && isBranchName(branch) ? carry(io, home, { older, newer, branch }) : usage(),
+  },
 };
 
 const STANDALONE: { readonly [name: string]: Standalone } = {

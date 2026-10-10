@@ -371,6 +371,22 @@ export async function fetchCommit(scratch: Scratch, access: Access, commit: stri
   if ((await fetchRef(scratch, access, commit, bound)) !== commit) stop(EXIT.git, "git-failed", { step: "fetch" });
 }
 
+/**
+ * The names of a remote's refs that start with a prefix. Nothing is fetched. Git matches
+ * a pattern against the end of a ref's name, so it also lists a longer name that only
+ * ends as one of them does, and each name is held to the prefix here. A name comes from
+ * the remote, so the caller checks its form before it uses one (KTD33).
+ */
+export async function listRefs(scratch: Scratch, access: Access, prefix: string): Promise<string[]> {
+  const listed = await scratch.git("ls-remote", ["ls-remote", "--refs", access.remote, `${prefix}*`], { access });
+  // `<hash>`, a tab, the ref's name.
+  return said(listed).split("\n").flatMap((line) => {
+    const tab = line.indexOf("\t");
+    const name = line.slice(tab + 1);
+    return tab > 0 && name.startsWith(prefix) ? [name] : [];
+  });
+}
+
 /** A commit's own lines are read up to this size. Its message may be as long as its author made it. */
 const MAX_COMMIT_BYTES = 64 * 1024;
 
