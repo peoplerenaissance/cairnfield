@@ -4,7 +4,7 @@ import type { FileListing } from "../src/files.ts";
 import { gitBlobHash } from "../src/hash.ts";
 import { MAX_BLOB_BYTES, MAX_PATCH_ADDED_BYTES } from "../src/limits.ts";
 import { countLines } from "../src/lines.ts";
-import { applyChanges, checkPatch, patchId } from "../src/patch-checks.ts";
+import { applyChanges, checkPatch, patchId, planPatch } from "../src/patch-checks.ts";
 import type { CitedRange, PatchVerdict } from "../src/patch-checks.ts";
 import { fileSet, lines, seeded, utf8 } from "./fixtures.ts";
 import type { Tree } from "./fixtures.ts";
@@ -546,6 +546,69 @@ describe("completeness (R24)", () => {
 
   it("fails a patch that changes nothing", async () => {
     expect(reasonOf(await check(base, { ...base }, ["scripts/export.sh"]))).toBe("patch-incomplete");
+  });
+});
+
+describe("the checks that read no content", () => {
+  const skill = "skills/summarize/SKILL.md";
+
+  /** Runs `planPatch` and `checkPatch` on one input. `cited` lists the paths whose every line the findings cite. */
+  async function both(
+    base: Tree,
+    patched: Tree,
+    cited: readonly string[],
+  ): Promise<{ readonly plan: ReturnType<typeof planPatch>; readonly verdict: PatchVerdict }> {
+    const baseSet = await fileSet(base);
+    const patchedSet = await fileSet(patched);
+    const ranges: CitedRange[] = baseSet.files
+      .filter((file) => cited.includes(file.path))
+      .map(({ blob }) => ({ blob, start: 1, end: countLines(baseSet.content.get(blob) ?? new Uint8Array(0)) }));
+    return {
+      plan: planPatch(baseSet.files, patchedSet.files, ranges),
+      verdict: await checkPatch({ base: baseSet, patched: patchedSet, cited: ranges }),
+    };
+  }
+
+  it("gives the reason checkPatch gives for a bad mode", async () => {
+    const { plan, verdict } = await both(BASE, { ...BASE, [skill]: { text: "../../outside", mode: "120000" } }, [skill]);
+    expect(plan).toEqual({ ok: false, reason: "bad-mode" });
+    expect(verdict).toEqual(plan);
+  });
+
+  it("gives the reason checkPatch gives for a changed file that no finding cites", async () => {
+    const patched = { ...BASE, [skill]: SKILL_FIXED, "README.md": `${README}Install with care.\n` };
+    const { plan, verdict } = await both(BASE, patched, [skill]);
+    expect(plan).toEqual({ ok: false, reason: "patch-out-of-scope" });
+    expect(verdict).toEqual(plan);
+  });
+
+  it("gives the reason checkPatch gives for a patch that rewrites one of two copies", async () => {
+    const base: Tree = { "scripts/export.sh": lines(12), "vendor/export.sh": lines(12) };
+    const { plan, verdict } = await both(base, { ...base, "scripts/export.sh": lines(11) }, ["scripts/export.sh"]);
+    expect(plan).toEqual({ ok: false, reason: "patch-incomplete" });
+    expect(verdict).toEqual(plan);
+  });
+
+  it("gives the reason checkPatch gives for a patch with 4 replacements", async () => {
+    const base: Tree = { "a.md": "a\nx\n", "b.md": "b\nx\n", "c.md": "c\nx\n", "d.md": "d\nx\n" };
+    const four: Tree = { "a.md": "a\n", "b.md": "b\n", "c.md": "c\n", "d.md": "d\n" };
+    const { plan, verdict } = await both(base, four, ["a.md", "b.md", "c.md", "d.md"]);
+    expect(plan).toEqual({ ok: false, reason: "patch-too-large" });
+    expect(verdict).toEqual(plan);
+  });
+
+  it("gives the path changes and the replacements of a patch that passes", async () => {
+    const { plan, verdict } = await both(BASE, { ...BASE, [skill]: SKILL_FIXED }, [skill]);
+    const old = { blob: await blobOf(SKILL), mode: "100644" };
+    const now = { blob: await blobOf(SKILL_FIXED), mode: "100644" };
+    expect(plan).toEqual({
+      ok: true,
+      changes: [{ path: skill, old, new: now }],
+      replacements: [{ oldBlob: old.blob, oldMode: old.mode, newBlob: now.blob, newMode: now.mode }],
+    });
+    if (!plan.ok || !verdict.ok) throw new Error("the patch was rejected");
+    expect(verdict.replacements).toEqual(plan.replacements);
+    expect(verdict.paths).toEqual(plan.changes.map((change) => change.path));
   });
 });
 

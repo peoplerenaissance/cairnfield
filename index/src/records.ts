@@ -61,13 +61,15 @@ const EMPTY = new Uint8Array(0);
  * the command holds, so the longest a finding can cite.
  */
 const MAX_CITED_BYTES = 32 * 1024 * 1024;
-/** The reason for a record that cites a longer file, from the protocol's closed list. */
-const TOO_LARGE = "too-large" satisfies RejectionReason;
+/** The reason for a record that cites a longer file, and for a patch that replaces a longer content, from the protocol's closed list. */
+export const TOO_LARGE = "too-large" satisfies RejectionReason;
 
 /**
- * The index's own copy of one component, for the checks of one pass. The copy is opened
- * once, and only when a record cites a file. Records that cite one file share its row
- * and its content.
+ * The index's own copy of one component, for the checks of one pass or of one look at a
+ * patch record. A record check asks for the rows and the content of the paths a record
+ * cites, and records that cite one file share its row and its content. A patch check
+ * asks for the whole listing and for the content a patch replaces. The copy is opened
+ * once, and only when content is read.
  */
 export class Copy {
   readonly #env: Env;
@@ -83,8 +85,14 @@ export class Copy {
     this.#component = component;
   }
 
+  /** The whole listing of the copy: every path with its mode and blob, in the order of the paths. */
+  async listing(): Promise<FileEntry[]> {
+    const { results } = await this.#env.DB.prepare("SELECT path, mode, blob FROM files WHERE component = ? ORDER BY path").bind(this.#component).all<FileEntry>();
+    return results;
+  }
+
   /** The rows of the paths a record cites. A path the copy does not hold is left out. */
-  async #listing(paths: readonly string[]): Promise<FileEntry[]> {
+  async #rowsOf(paths: readonly string[]): Promise<FileEntry[]> {
     const unasked = paths.filter((path) => !this.#rows.has(path));
     if (unasked.length > 0) {
       const marks = unasked.map(() => "?").join(", ");
@@ -102,21 +110,25 @@ export class Copy {
    * longer than the index reads. A path the copy does not hold is left out.
    */
   async #files(paths: readonly string[]): Promise<{ readonly files: Map<string, CitedFile>; readonly listing: FileEntry[] } | typeof TOO_LARGE> {
-    const listing = await this.#listing(paths);
+    const listing = await this.#rowsOf(paths);
     const files = new Map<string, CitedFile>();
     // The blobs of one record are read one after another, so the copy hands over one long
     // blob at a time. Only a regular file can be cited, and the check refuses any other
     // before it reads content.
     for (const { path, mode, blob } of listing) {
-      const content = isFileMode(mode) ? await this.#read(blob) : EMPTY;
+      const content = isFileMode(mode) ? await this.read(blob) : EMPTY;
       if (content === TOO_LARGE) return TOO_LARGE;
       files.set(path, { mode, content });
     }
     return { files, listing };
   }
 
-  /** The content of a blob of the copy, or `too-large` for one that is longer than the index reads. Any other failed read throws. */
-  async #read(blob: string): Promise<Uint8Array | typeof TOO_LARGE> {
+  /**
+   * The content of a blob that the copy's listing names, or `too-large` for one that is
+   * longer than the index reads. Any other failed read throws. A patch check reads the
+   * content a patch replaces here, and from nowhere else (KTD7).
+   */
+  async read(blob: string): Promise<Uint8Array | typeof TOO_LARGE> {
     const held = this.#contents.get(blob);
     if (held) return held;
     this.#repo ??= this.#env.ARTIFACTS.get(copyOf(this.#component));
@@ -158,7 +170,8 @@ export class Copy {
 
 /**
  * Judges a record that passed the structure check, by the state of its component's copy
- * (KTD12). A patch record waits as pending until its commit has been checked.
+ * (KTD12). A patch record waits as pending until its commit has been checked (see
+ * `patches.ts`).
  */
 export async function judge(copy: Copy, state: ComponentState, record: AnyRecord): Promise<Judged> {
   if (state === "failed") return { state: "rejected", reason: "unknown-component" };

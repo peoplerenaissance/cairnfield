@@ -364,10 +364,33 @@ export async function measurePatch(
 }
 
 /**
+ * Runs the checks that read no content, in a fixed order, and returns the first failure,
+ * or the path changes and the replacements. The order is file mode, scope by file,
+ * completeness, then number of replacements. `checkPatch` runs it first. A caller that
+ * must fetch content runs it too, to learn which content `checkPatch` will read, so the
+ * two never differ on that.
+ */
+export function planPatch(
+  base: FileListing,
+  patched: FileListing,
+  cited: readonly CitedRange[],
+):
+  | { readonly ok: true; readonly changes: readonly PathChange[]; readonly replacements: readonly Replacement[] }
+  | { readonly ok: false; readonly reason: RejectionReason } {
+  const changes = changedPaths(base, patched);
+  if (!modesAreRegular(changes)) return refuse("bad-mode");
+  if (!isInScope(changes, cited)) return refuse("patch-out-of-scope");
+  const replacements = replacementsOf(base, changes);
+  if (replacements === undefined) return refuse("patch-incomplete");
+  if (replacements.length > MAX_PATCH_REPLACEMENTS) return refuse("patch-too-large");
+  return { ok: true, changes, replacements };
+}
+
+/**
  * Runs every patch check in a fixed order and returns the first failure, or the computed
  * facts. The order is file mode, scope by file, completeness, number of replacements,
- * served content, size, then scope by line. `cited` holds the lines that the patch's
- * findings cite.
+ * served content, size, then scope by line. The first four read no content, and are
+ * `planPatch`. `cited` holds the lines that the patch's findings cite.
  */
 export async function checkPatch(input: {
   readonly base: FileSet;
@@ -375,12 +398,9 @@ export async function checkPatch(input: {
   readonly cited: readonly CitedRange[];
 }): Promise<PatchVerdict> {
   const { base, patched, cited } = input;
-  const changes = changedPaths(base.files, patched.files);
-  if (!modesAreRegular(changes)) return refuse("bad-mode");
-  if (!isInScope(changes, cited)) return refuse("patch-out-of-scope");
-  const replacements = replacementsOf(base.files, changes);
-  if (replacements === undefined) return refuse("patch-incomplete");
-  if (replacements.length > MAX_PATCH_REPLACEMENTS) return refuse("patch-too-large");
+  const plan = planPatch(base.files, patched.files, cited);
+  if (!plan.ok) return plan;
+  const { changes, replacements } = plan;
   const measured = await measurePatch(base, patched, replacements);
   if (!measured.ok) return measured;
   // The contents were read and checked against their hashes when the patch was measured.

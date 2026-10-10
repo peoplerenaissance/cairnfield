@@ -1,17 +1,22 @@
 // The view of one component commit (R10, R13), built when it is read: findings in match
-// groups with their confirmations, claims with their state, recipes, pending and rejected
-// work, the component's import state and each node's last processed commit.
+// groups with their confirmations, patches side by side with theirs, claims with their
+// state, recipes, pending and rejected work, the component's import state and each
+// node's last processed commit.
 //
 // Nothing here is declared by an author. Groups and counts come from the protocol's own
-// match rule over the valid records (KTD5). A reference is resolved here and not when a
-// record is stored, because a record can cite one on a node the index reads later
-// (Appendix H). The view holds data and no prose, and rejected work is four values (KTD31).
+// rules over the valid records, and a patch's ID, kind, size and changed lines from the
+// check of its commit (KTD5). A reference is resolved here and not when a record is
+// stored, because a record can cite one on a node the index reads later (Appendix H).
+// The findings a patch record names are resolved a first time when its commit is
+// checked, which needs the lines they cite, and again here.
+// The view holds data and no prose, and rejected work is four values (KTD31).
 
-import { SCHEMA_VERSION, bySource, compare, matchGroups } from "@cairnfield/protocol";
-import type { AnyRecord, CLAIM_STATES, Claim, FileEntry, Recipe, Sourced, View } from "@cairnfield/protocol";
+import { SCHEMA_VERSION, bySource, compare, isConfirmed, matchGroups, patchConfirmations, patchGroups } from "@cairnfield/protocol";
+import type { AnyRecord, CLAIM_STATES, Claim, FileEntry, Patch, PatchRecheck, Recipe, Sourced, View } from "@cairnfield/protocol";
 import type { Component } from "./components.ts";
 import { claimTtlMs } from "./env.ts";
 import type { Env } from "./env.ts";
+import type { ComputedPatch } from "./patches.ts";
 import { recordOf } from "./records.ts";
 import type { StoredRecord } from "./records.ts";
 
@@ -53,6 +58,64 @@ function entriesOf(all: readonly Published[]): <R extends AnyRecord>(matched: re
 /** Names a claim among the claims of every node. A record cites a claim of its own node. */
 const claimKey = (node: string, claim: string): string => `${node} ${claim}`;
 
+/** Names a record among the records of every node, by its path in the node's team repo. Neither part holds a space. */
+const recordKey = (node: string, path: string): string => `${node} ${path}`;
+
+type ViewPatch = View["patches"][number]["patches"][number];
+
+const byPatchId = (a: ViewPatch, b: ViewPatch): number => compare(a.patchId, b.patchId);
+
+/**
+ * The patches of a view (R16, R24). A patch record is shown once its commit passed the
+ * patch checks, and only while every finding it names is a valid finding of this view
+ * (KTD5): a view narrowed to some nodes may not hold a finding that another node
+ * published. Patch records with one patch ID are one entry that lists its records and
+ * its organizations, and the entries whose changed lines overlap or adjoin in one file
+ * content are one group.
+ */
+function patchesOf(valid: readonly Published[], computed: readonly ComputedPatch[]): View["patches"] {
+  const computedFor = new Map(computed.map((row) => [recordKey(row.node, row.path), row]));
+  const findings = new Set(valid.filter((entry) => isOfType(entry, "finding")).map(({ id }) => id));
+  const identities = new Map<string, { readonly row: ComputedPatch; readonly records: Published<Patch>[] }>();
+  // The patch re-checks of each patch ID.
+  const rechecksOf = new Map<string, Published<PatchRecheck>[]>();
+  for (const entry of valid) {
+    if (isOfType(entry, "patch-re-check")) {
+      const held = rechecksOf.get(entry.record.patch);
+      if (held) held.push(entry);
+      else rechecksOf.set(entry.record.patch, [entry]);
+      continue;
+    }
+    if (!isOfType(entry, "patch")) continue;
+    const row = computedFor.get(recordKey(entry.node, entry.path));
+    if (!row || !entry.record.findings.every((id) => findings.has(id))) continue;
+    const held = identities.get(row.patch_id);
+    if (held) held.records.push(entry);
+    else identities.set(row.patch_id, { row, records: [entry] });
+  }
+  const entries = [...identities].map(([patchId, { row, records }]): ViewPatch => {
+    const rechecks = rechecksOf.get(patchId) ?? [];
+    // The organizations behind a patch identity: its authors, and each node whose re-check says it resolves its finding.
+    const nodes = patchConfirmations(patchId, records.map(({ node }) => ({ node, patchId })), rechecks);
+    return {
+      patchId,
+      kind: row.kind,
+      size: row.size,
+      // Identical patches replace the same contents the same way, so what was computed for one holds for all.
+      changes: JSON.parse(row.changes) as ViewPatch["changes"],
+      paths: JSON.parse(row.paths) as ViewPatch["paths"],
+      records,
+      rechecks,
+      nodes,
+      confirmed: isConfirmed(nodes),
+    };
+  });
+  // In a fixed order, so an unchanged view reads the same on the next poll.
+  return patchGroups(entries)
+    .map((group) => ({ patches: group.sort(byPatchId) }))
+    .sort((a, b) => compare(a.patches[0]?.patchId ?? "", b.patches[0]?.patchId ?? ""));
+}
+
 /** The state of a claim. One first seen in a rebuild counts as expired, whatever cites it (KTD13). */
 function claimState(row: Row, closed: boolean, pastItsTime: boolean): (typeof CLAIM_STATES)[number] {
   if (row.rebuilt) return "expired";
@@ -69,19 +132,24 @@ export async function viewOf(env: Env, component: string, teams: readonly string
   const db = env.DB;
   // A claim that the index received by this time has passed its time (KTD15).
   const lastToPass = now - claimTtlMs(env);
-  // One batch, so the component, the nodes and the records are read as they stood together.
-  const [found, registered, stored, passed] = (await db.batch([
+  // The listed nodes go in as one value, so a long list meets no limit on the values of a statement.
+  const only = teams === undefined ? null : JSON.stringify(teams);
+  // One batch, so the component, the nodes, the records and what was computed for the patch records are read as they stood together.
+  const [found, registered, stored, computed, passed] = (await db.batch([
     db.prepare("SELECT state, view_version FROM components WHERE component = ?").bind(component),
     db.prepare("SELECT url, processed, noticed_at, absorbed_at FROM nodes ORDER BY url"),
-    // The listed nodes go in as one value, so a long list meets no limit on the values of a statement.
     db
       .prepare(
         "SELECT node, path, type, state, reason, hash, head, body, cited, received_at, rebuilt FROM records WHERE component = ?1 AND (?2 IS NULL OR node IN (SELECT value FROM json_each(?2)))",
       )
-      .bind(component, teams === undefined ? null : JSON.stringify(teams)),
+      .bind(component, only),
+    // What was computed for a patch record is read for the listed nodes only, like the record itself.
+    db
+      .prepare("SELECT node, path, patch_id, kind, size, changes, paths FROM patches WHERE component = ?1 AND (?2 IS NULL OR node IN (SELECT value FROM json_each(?2)))")
+      .bind(component, only),
     // Counted over every node, listed or not.
     db.prepare("SELECT COUNT(*) AS claims FROM records WHERE component = ?1 AND type = 'claim' AND state = 'valid' AND received_at <= ?2").bind(component, lastToPass),
-  ])) as [D1Result<Pick<Component, "state" | "view_version">>, D1Result<NodeRow>, D1Result<Row>, D1Result<{ claims: number }>];
+  ])) as [D1Result<Pick<Component, "state" | "view_version">>, D1Result<NodeRow>, D1Result<Row>, D1Result<ComputedPatch>, D1Result<{ claims: number }>];
   const [held] = found.results;
   if (!held) return undefined;
   const listed = teams === undefined ? undefined : new Set(teams);
@@ -164,8 +232,7 @@ export async function viewOf(env: Env, component: string, teams: readonly string
     claims,
     findings,
     hosts: [...hosts].map(([host, count]) => ({ host, count })).sort((a, b) => compare(a.host, b.host)),
-    // Patch intake is not built yet: a patch record waits as pending until its commit is checked.
-    patches: [],
+    patches: patchesOf(valid, computed.results),
     recipes,
     pending: rows.filter(({ state }) => state === "pending").map(({ node, hash, type }) => ({ node, hash, type })).sort(byHash),
     rejected: rows.flatMap(({ node, hash, type, state, reason }) => (state === "rejected" && reason !== null ? [{ node, hash, type, reason }] : [])).sort(byHash),

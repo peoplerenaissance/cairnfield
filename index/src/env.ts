@@ -7,7 +7,7 @@ export interface Env {
   /** The index's own Artifacts namespace, which holds its component copies (R9, KTD12). */
   readonly ARTIFACTS: Store;
   readonly DB: D1Database;
-  /** The queue that carries push notices and the checks on a copy that is importing (KTD11). */
+  /** The queue that carries push notices, the checks on a copy that is importing and the looks at a patch record's commit (KTD11). */
   readonly SYNC: Pick<Queue<Message>, "send" | "sendBatch">;
   /** The Git URLs this index may import, with a space between two (KTD30). */
   readonly GIT_URLS: string;
@@ -21,6 +21,9 @@ export interface Env {
   /** Set by the developer as a secret. An index with none refuses every reset (KTD30). */
   readonly RESET_KEY?: string;
 }
+
+/** One call to the queue takes at most this many messages. */
+export const MAX_BATCH_MESSAGES = 100;
 
 // `wrangler types` writes the bindings of the Wrangler config as `Cloudflare.Env`. They
 // must fit the interface above, or this line fails the type check.

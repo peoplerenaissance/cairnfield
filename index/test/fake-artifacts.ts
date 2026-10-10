@@ -209,9 +209,10 @@ export class FakeArtifacts implements Store {
 
   /**
    * A push to a public repo on another host: one commit on a branch that holds exactly
-   * these files, on top of the branch's last commit. Returns the commit.
+   * these files, on top of the branch's last commit. Returns the commit. `commit` names
+   * it, for files that are a real commit elsewhere, such as the demo plugin's.
    */
-  async host(url: string, branch: string, files: Files): Promise<string> {
+  async host(url: string, branch: string, files: Files, commit?: string): Promise<string> {
     const upstream = this.#upstreams.get(url) ?? new Upstream();
     this.#upstreams.set(url, upstream);
     const treeHash = await writeTree(upstream.objects, files);
@@ -219,7 +220,7 @@ export class FakeArtifacts implements Store {
     const parents = before === undefined ? [] : [before];
     const at = 1_760_000_000 + this.#serial++;
     const person = { name: "A test", email: "test@fellbeck-tools.example" };
-    const hash = await hashOf("commit", JSON.stringify({ treeHash, parents, at }));
+    const hash = commit ?? (await hashOf("commit", JSON.stringify({ treeHash, parents, at })));
     const meta = { hash, treeHash, message: "push", author: person, committer: person, parents };
     upstream.objects.set(hash, { kind: "commit", meta: { ...meta, authoredAt: at, committedAt: at } });
     upstream.branches.set(branch, hash);

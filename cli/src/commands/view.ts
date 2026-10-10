@@ -10,7 +10,7 @@
 // content a path holds. This command shows work. Assembly fetches a patch from its node
 // and checks it there (KTD23).
 
-import { hunksTouch, isConfirmed, matchGroups, patchConfirmations } from "@cairnfield/protocol";
+import { isConfirmed, matchGroups, patchConfirmations, patchGroups } from "@cairnfield/protocol";
 import type { Sourced, View } from "@cairnfield/protocol";
 import type { Home } from "../config.ts";
 import type { Io } from "../io.ts";
@@ -20,7 +20,6 @@ import type { Outcome } from "../outcome.ts";
 import { indexView } from "../services.ts";
 
 type FindingGroup = View["findings"][number];
-type Patch = View["patches"][number]["patches"][number];
 
 const nodesOf = (sourced: readonly { readonly node: string }[]): string[] => [...new Set(sourced.map(({ node }) => node))].sort();
 
@@ -53,25 +52,6 @@ function regroup(group: FindingGroup): FindingGroup[] {
   }));
 }
 
-/** Whether two patches change lines of one content that overlap or adjoin (R16). */
-function patchesTouch(a: Patch, b: Patch): boolean {
-  return a.changes.some((change) =>
-    b.changes.some(
-      (other) => change.blob === other.blob && change.hunks.some((hunk) => other.hunks.some((against) => hunksTouch(hunk, against))),
-    ),
-  );
-}
-
-/** Puts patches that touch in one group, directly or through another patch. */
-function sideBySide(patches: readonly Patch[]): Patch[][] {
-  let groups: Patch[][] = [];
-  for (const patch of patches) {
-    const joined = groups.filter((group) => group.some((member) => patchesTouch(member, patch)));
-    groups = [...groups.filter((group) => !joined.includes(group)), [...joined.flat(), patch]];
-  }
-  return groups;
-}
-
 /** Drops everything that comes from a node outside `counted`, then groups and counts again. */
 export function throughLens(view: View, counted: ReadonlySet<string>): View {
   const kept = <T extends { readonly node: string }>(all: readonly T[]): T[] => all.filter(({ node }) => counted.has(node));
@@ -90,15 +70,19 @@ export function throughLens(view: View, counted: ReadonlySet<string>): View {
     if (group.host !== undefined) hosts.set(group.host, (hosts.get(group.host) ?? 0) + group.findings.length);
   }
 
+  // A patch record shows only while every finding it names is a finding of this view,
+  // which is the index's rule for a view it narrows itself (KTD5).
+  const named = new Set(findings.flatMap((group) => group.findings.map(({ id }) => id)));
   const patches = view.patches.flatMap((group) => {
     const left = group.patches.flatMap((patch) => {
-      const records = kept(patch.records);
+      const records = kept(patch.records).filter(({ record }) => record.findings.every((id) => named.has(id)));
       if (records.length === 0) return [];
       const rechecks = kept(patch.rechecks);
       const nodes = patchConfirmations(patch.patchId, records.map(({ node }) => ({ node, patchId: patch.patchId })), rechecks);
       return [{ ...patch, records, rechecks, nodes, confirmed: isConfirmed(nodes) }];
     });
-    return sideBySide(left).map((together) => ({ patches: together }));
+    // Patches whose changed lines overlap or adjoin sit side by side (R16).
+    return patchGroups(left).map((together) => ({ patches: together }));
   });
 
   const recipes = view.recipes.flatMap((recipe) => {

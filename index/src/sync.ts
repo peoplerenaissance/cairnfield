@@ -6,12 +6,19 @@
 // A record is immutable and named by the hash of its content, so a file is read once.
 // The index neither fetches nor stores a record of a component that is not registered,
 // so a later sync reads it once the component is (KTD12).
+//
+// A patch record is stored as pending, and a look at its commit is queued (see `patches.ts`).
+// A patch record that still waits is looked at once more when a sync stores a finding it
+// names as valid, and at the syncs of its node, which each take a pass of the node's
+// waiting patch records in turn.
 
 import { MAX_LISTING_ENTRIES, MAX_RECORDS_PER_COMPONENT, canonicalJson, compare, parseRecordPath, sha256Hex, validateRecordFile } from "@cairnfield/protocol";
 import type { RecordType } from "@cairnfield/protocol";
 import type { Env } from "./env.ts";
 import { readListing, readRecordFile } from "./fetch.ts";
 import type { ReadFailure } from "./fetch.ts";
+import { goOnAfter, lookAtPatches, lookOnceAtPatches, patchesWaitingFor, waitingPatchesOf } from "./patches.ts";
+import type { PatchName } from "./patches.ts";
 import { Copy, PASS_RECORDS, bump, judge, reasonAndCited } from "./records.ts";
 import type { ComponentState, StoredRecord } from "./records.ts";
 
@@ -51,11 +58,13 @@ async function examine(copy: Copy, state: ComponentState, path: string, bytes: U
  * importing. The copy may have become ready, or failed, after the pass read the
  * component's state, and then nothing else would look at the record again. Every sync
  * asks, not only the one that stored the record: that one may have ended before its look
- * was queued. A patch record is not asked for: it waits for its commit.
+ * was queued. A patch record is asked for only when its component failed, and the look
+ * rejects it with the rest (KTD12). On a ready copy it waits for its commit, and the
+ * syncs of its node queue a look at it by itself (see `waitingPatchesOf`).
  */
 async function lookAtSettled(env: Env, node: string): Promise<void> {
   const settled = await env.DB.prepare(
-    "SELECT component FROM components WHERE state != 'importing' AND component IN (SELECT component FROM records WHERE node = ? AND state = 'pending' AND type != 'patch')",
+    "SELECT DISTINCT components.component FROM components JOIN records ON records.component = components.component WHERE records.node = ? AND records.state = 'pending' AND components.state != 'importing' AND (records.type != 'patch' OR components.state = 'failed')",
   )
     .bind(node)
     .all<{ component: string }>();
@@ -86,6 +95,9 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   if (head === undefined) {
     await finished(held.processed).run();
     await lookAtSettled(env, node);
+    const waiting = await waitingPatchesOf(env, node);
+    await lookOnceAtPatches(env, waiting);
+    await goOnAfter(env, node, waiting);
     return { ok: true, stored: 0, more: false };
   }
 
@@ -125,6 +137,21 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   const touched = new Set<string>();
   /** The view of each component that the pass stored a record for has changed. */
   const bumps = (): D1PreparedStatement[] => [...touched].map((component) => bump(db, component));
+  /**
+   * The patch records the pass stores as pending. A look at each one's commit is queued
+   * once they are written, whatever the state of its component was when the pass began:
+   * the look reads the state as it is by then.
+   */
+  const patches: PatchName[] = [];
+  /** The findings the pass stores as valid, by component. */
+  const valid = new Map<string, string[]>();
+  /**
+   * Queues one look at each patch record that waited for a finding the pass stored as
+   * valid, whichever node published it, and at each record in `waiting`. A record the
+   * pass stored gets none: its first look is queued.
+   */
+  const lookAgain = async (waiting: readonly PatchName[] = []): Promise<void> =>
+    lookOnceAtPatches(env, [...waiting, ...(await patchesWaitingFor(env, valid))], patches);
   let failure: ReadFailure | undefined;
   const pass = unseen.slice(0, PASS_RECORDS);
   for (let at = 0; at < pass.length && failure === undefined; at += FETCH_AHEAD) {
@@ -153,6 +180,8 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
         // The copy could not be read. What the pass judged before this record is written
         // first, so the sync that is tried next starts after it. The head is not processed.
         if (statements.length > 0) await db.batch([...statements, ...bumps()]);
+        await lookAtPatches(env, patches);
+        await lookAgain();
         throw error;
       }
       const { state, reason, hash, body, cited } = examined;
@@ -170,6 +199,12 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
           .bind(node, path, component, type, state, reason, hash, head, body, cited, receivedAt),
       );
       touched.add(component);
+      if (type === "patch" && state === "pending") patches.push({ node, path });
+      if (type === "finding" && state === "valid") {
+        const found = valid.get(component);
+        if (found) found.push(hash);
+        else valid.set(component, [hash]);
+      }
     }
   }
   const stored = statements.length;
@@ -183,6 +218,10 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   else statements.push(...bumps());
   if (statements.length > 0) await db.batch(statements);
 
+  await lookAtPatches(env, patches);
   await lookAtSettled(env, node);
+  const waiting = await waitingPatchesOf(env, node);
+  await lookAgain(waiting);
+  await goOnAfter(env, node, waiting);
   return failure === undefined ? { ok: true, head, stored, more: !complete } : { ok: false, reason: failure };
 }

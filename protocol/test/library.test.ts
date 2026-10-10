@@ -54,6 +54,7 @@ describe("the public entry point", () => {
       "diffLines",
       "hunksTouch",
       "checkPatch",
+      "planPatch",
       "linesAreInScope",
       "patchId",
       "applyChanges",

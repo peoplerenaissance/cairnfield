@@ -4,19 +4,27 @@
 // node's head after every notice it stands for has arrived, so a notice that arrives
 // after a sync has read the head queues another.
 //
-// The same queue carries the looks at a component whose copy is still importing.
+// The same queue carries the looks at a component whose copy is still importing, and the
+// looks at a patch record whose commit is to be checked.
 
 import { NOTICE, conforms } from "@cairnfield/protocol";
 import type { Infer } from "@cairnfield/protocol";
 import { advance } from "./components.ts";
+import { MAX_BATCH_MESSAGES } from "./env.ts";
 import type { Env } from "./env.ts";
+import { PATCH_TRIES, PATCH_WAIT_SECONDS, lookAtPatch } from "./patches.ts";
 import { answer, refusal } from "./respond.ts";
 import { syncNode } from "./sync.ts";
 
-/** What the queue carries: a node to sync, or a component whose copy to look at again. */
+/**
+ * What the queue carries: a node to sync, a component whose copy to look at again, or a
+ * patch record whose commit to check. `tries` counts the looks of the set number that
+ * came before this one. A single look is sent as the last of them.
+ */
 export type Message =
   | { readonly kind: "node"; readonly node: string }
-  | { readonly kind: "component"; readonly component: string };
+  | { readonly kind: "component"; readonly component: string }
+  | { readonly kind: "patch"; readonly node: string; readonly path: string; readonly tries: number };
 
 /** Notices for one node within this many seconds cause one sync (KTD11). */
 const COALESCE_SECONDS = 5;
@@ -25,8 +33,6 @@ const LOST_AFTER_MS = 60_000;
 /** A sync that failed, or a message whose handling threw, is tried again after this many seconds. */
 const RETRY_SECONDS = 30;
 const RETRY: QueueRetryOptions = { delaySeconds: RETRY_SECONDS };
-/** One call to the queue takes at most this many messages. */
-const MAX_BATCH_MESSAGES = 100;
 
 /**
  * Queues a sync of each of these nodes after `delaySeconds`, unless one is queued for it
@@ -94,13 +100,33 @@ async function handleComponent(env: Env, body: Extract<Message, { kind: "compone
   return true;
 }
 
+/**
+ * Looks at a patch record's commit. Its message is always done with: a record that must
+ * be looked at again gets a new message after a while, a set number of times (KTD11).
+ * After the last look it stays pending. A later sync of its node, or a finding it names
+ * that becomes valid, queues a single look at it (see `lookOnceAtPatches`).
+ */
+async function handlePatch(env: Env, body: Extract<Message, { kind: "patch" }>): Promise<boolean> {
+  const again = await lookAtPatch(env, body);
+  const tries = body.tries + 1;
+  if (again && tries < PATCH_TRIES) await env.SYNC.send({ ...body, tries }, { delaySeconds: PATCH_WAIT_SECONDS });
+  return true;
+}
+
+/** Handles one message. Returns whether it is done with. */
+function handle(env: Env, body: Message, now: number): Promise<boolean> {
+  if (body.kind === "node") return handleNode(env, body.node, now);
+  if (body.kind === "component") return handleComponent(env, body, now);
+  return handlePatch(env, body);
+}
+
 /** Handles the messages of a batch, each by itself, so one that fails sends no other back. */
 export async function consume(batch: MessageBatch<Message>, env: Env): Promise<void> {
   for (const message of batch.messages) {
     const { body } = message;
     const now = Date.now();
     try {
-      const done = body.kind === "node" ? await handleNode(env, body.node, now) : await handleComponent(env, body, now);
+      const done = await handle(env, body, now);
       if (done) message.ack();
       else message.retry(RETRY);
     } catch (error) {

@@ -100,7 +100,8 @@ export async function registerComponent(env: Env, body: unknown, now: number): P
 
 /**
  * Drops every record and has every node read again (R12). A claim first seen in that
- * rebuild counts as expired (KTD13). Nodes and components stay registered.
+ * rebuild counts as expired (KTD13), and every patch commit is checked again. Nodes and
+ * components stay registered.
  */
 export async function reset(env: Env, now: number): Promise<Response> {
   const db = env.DB;
@@ -112,6 +113,8 @@ export async function reset(env: Env, now: number): Promise<Response> {
       "UPDATE components SET view_version = view_version + 1 + (SELECT COUNT(*) FROM records WHERE records.component = components.component AND records.type = 'claim')",
     ),
     db.prepare("DELETE FROM records"),
+    // What the index computed for a patch record goes with the record.
+    db.prepare("DELETE FROM patches"),
     // A sync that runs now started before the reset, so it reports nothing as processed.
     db.prepare("UPDATE nodes SET processed = NULL, rebuilding = 1, queued_at = NULL, syncs = syncs + 1"),
   ]);

@@ -10,6 +10,7 @@ import type { FileEntry } from "@cairnfield/protocol";
 import { codeOf, copyOf, open } from "./artifacts.ts";
 import type { Repo } from "./artifacts.ts";
 import type { Env } from "./env.ts";
+import { lookAtWaitingPatches, lookOnceAtPatches, patchesWaitingFor } from "./patches.ts";
 import { Copy, PASS_RECORDS, bump, recordOf, settle } from "./records.ts";
 import type { ComponentState, Judged } from "./records.ts";
 
@@ -199,40 +200,55 @@ async function lookAtCopy(env: Env, held: Component, now: number): Promise<"read
 /**
  * Checks records that waited for the copy, a pass at a time. A patch record is not one
  * of them: it waits for its commit. Returns whether more records wait.
+ *
+ * A pass that is not the last one queues one look at each waiting patch record that
+ * names a finding it settled as valid. After the last pass the caller queues a look at
+ * every waiting patch record, those among them.
  */
 async function checkWaiting(env: Env, component: string): Promise<boolean> {
   const { results } = await env.DB.prepare(
-    "SELECT node, path, body FROM records WHERE component = ? AND state = 'pending' AND type != 'patch' ORDER BY node, path LIMIT ?",
+    "SELECT node, path, hash, body FROM records WHERE component = ? AND state = 'pending' AND type != 'patch' ORDER BY node, path LIMIT ?",
   )
     .bind(component, PASS_RECORDS + 1)
-    .all<{ node: string; path: string; body: string }>();
+    .all<{ node: string; path: string; hash: string; body: string }>();
   const pass = results.slice(0, PASS_RECORDS);
   if (pass.length === 0) return false;
+  const more = results.length > PASS_RECORDS;
   const copy = new Copy(env, component);
   const statements: D1PreparedStatement[] = [];
-  const write = async (): Promise<void> => {
+  /** The findings the pass judged as valid. */
+  const valid: string[] = [];
+  /** Settles what the pass judged. With `lookAgain`, also queues the looks at the patch records that waited for it. */
+  const write = async (lookAgain: boolean): Promise<void> => {
     if (statements.length > 0) await env.DB.batch([...statements, bump(env.DB, component)]);
+    if (lookAgain) await lookOnceAtPatches(env, await patchesWaitingFor(env, new Map([[component, valid]])));
   };
-  for (const { node, path, body } of pass) {
+  for (const { node, path, hash, body } of pass) {
+    const record = recordOf(body);
     let judged: Judged;
     try {
-      judged = await copy.check(recordOf(body));
+      judged = await copy.check(record);
     } catch (error) {
       // The copy could not be read. The records judged before this one are settled first,
       // so the look that is tried next starts after them.
-      await write();
+      await write(true);
       throw error;
     }
     statements.push(settle(env.DB, node, path, judged));
+    if (record.type === "finding" && judged.state === "valid") valid.push(hash);
   }
-  await write();
-  return results.length > PASS_RECORDS;
+  await write(more);
+  return more;
 }
 
 /**
  * Moves a component along: starts its import, waits for its copy, stores the listing,
  * then checks the records that waited. Returns the seconds after which to look again,
  * or nothing when there is no more to do.
+ *
+ * A patch record waits for its commit and not only for the copy. Once no other record
+ * waits for the copy, a look at each waiting patch record is queued, so the findings a
+ * patch names are checked before the patch is.
  */
 export async function advance(env: Env, component: string, now: number): Promise<number | undefined> {
   const held = await componentOf(env, component);
@@ -246,5 +262,7 @@ export async function advance(env: Env, component: string, now: number): Promise
     const looked = await lookAtCopy(env, held, now);
     if (looked !== "ready") return looked === "waiting" ? POLL_SECONDS : undefined;
   }
-  return (await checkWaiting(env, component)) ? 0 : undefined;
+  if (await checkWaiting(env, component)) return 0;
+  await lookAtWaitingPatches(env, component);
+  return undefined;
 }
