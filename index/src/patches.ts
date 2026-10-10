@@ -29,7 +29,7 @@ import type { CitedRange, FileListing, Finding, Patch, PatchFacts, PatchKind, Re
 import { MAX_BATCH_MESSAGES } from "./env.ts";
 import type { Env } from "./env.ts";
 import { readForkBlob, readPatchCommit } from "./fetch.ts";
-import { Copy, TOO_LARGE, bump, recordOf, settle } from "./records.ts";
+import { Copy, PASS_RECORDS, TOO_LARGE, bump, recordOf, settle } from "./records.ts";
 import type { ComponentState } from "./records.ts";
 
 /** A patch record that cannot be checked yet is looked at again after this many seconds (KTD11). */
@@ -89,13 +89,15 @@ export function lookOnceAtPatches(env: Env, patches: readonly PatchName[], first
  * The patch records of a node that still wait, on a component whose copy is ready. Each
  * sync of the node looks at them once more: the look that the storing sync queued may
  * have been lost, and the fork may hold the commit only after the tries were spent. That
- * costs one read of the node for each such record at each sync of the node.
+ * costs one read of the node for each such record at each sync of the node. A notice
+ * takes no key and causes a sync, so one sync looks at no more records than a pass
+ * reads, the oldest first.
  */
 export async function waitingPatchesOf(env: Env, node: string): Promise<PatchName[]> {
   const { results } = await env.DB.prepare(
-    "SELECT records.node, records.path FROM records JOIN components ON components.component = records.component WHERE records.node = ? AND records.type = 'patch' AND records.state = 'pending' AND components.state = 'ready' ORDER BY records.path",
+    "SELECT records.node, records.path FROM records JOIN components ON components.component = records.component WHERE records.node = ?1 AND records.type = 'patch' AND records.state = 'pending' AND components.state = 'ready' ORDER BY records.received_at, records.path LIMIT ?2",
   )
-    .bind(node)
+    .bind(node, PASS_RECORDS)
     .all<PatchName>();
   return results;
 }

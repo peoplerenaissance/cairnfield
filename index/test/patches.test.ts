@@ -8,7 +8,9 @@ import type { View } from "@cairnfield/protocol";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { PATCH_TRIES, PATCH_WAIT_SECONDS } from "../src/patches.ts";
-import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, SYNC_HOST, UPSTREAM, bench, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import { PASS_RECORDS } from "../src/records.ts";
+import { syncNode } from "../src/sync.ts";
+import { BRANCH, FILES, NODE_A, NODE_B, NODE_C, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, finding, freshIndexForEachTest, synced } from "./bench.ts";
 import type { Bench } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
 import type { Files } from "./fake-artifacts.ts";
@@ -232,6 +234,31 @@ describe("a patch record and its commit (KTD7, KTD11)", () => {
 });
 
 describe("a patch record that still waits when its tries are spent or its look was lost (KTD11)", () => {
+  it("looks again at no more waiting patch records in one sync than a pass reads", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    // What earlier syncs left: 125 patch records of the node that still wait, oldest first.
+    await env.DB.prepare(
+      `WITH RECURSIVE n (i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 124)
+       INSERT INTO records (node, path, component, type, state, hash, head, body, received_at)
+       SELECT ?1, 'records/' || ?2 || '/patch/' || printf('%064x', i) || '.json', ?2, 'patch', 'pending', printf('%064x', i), ?3, '{}', ?4 + i FROM n`,
+    )
+      .bind(NODE_A, component, "0a".repeat(20), START)
+      .run();
+
+    expect(await syncNode(on.env, NODE_A)).toMatchObject({ ok: true, stored: 0 });
+
+    // A notice takes no key, so one sync of a node asks it for a bounded number of commits.
+    const looks = on.queue.waiting.filter(({ body }) => body.kind === "patch");
+    expect(looks).toHaveLength(PASS_RECORDS);
+    expect(looks.every(({ body }) => body.kind === "patch" && body.tries === PATCH_TRIES - 1)).toBe(true);
+    // The oldest are looked at first.
+    expect(looks[0]?.body).toMatchObject({ path: `records/${component}/patch/${"0".repeat(64)}.json` });
+  });
+
   it("queues the look at a patch record that a sync stored before a read of the copy failed for a later component", async () => {
     const on = bench();
     const node = new FakeNode(NODE_A);
