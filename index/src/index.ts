@@ -1,10 +1,13 @@
-// The index Worker (R9 to R13): it registers nodes and components, takes push notices,
-// reads the nodes over HTTP and serves one validated view per component commit.
+// The index Worker (R9 to R14): it registers nodes and components, takes push notices,
+// reads the nodes over HTTP and serves one validated view per component commit, with a
+// page that draws that view for a person.
 //
-// The index serves data and never instructions (R35). Every answer is JSON in a shape of
-// the protocol, with the schema version, and a refusal is a code from a closed list.
+// The index serves data and never instructions (R35). Every answer but the page and its
+// files is JSON in a shape of the protocol, with the schema version, and a refusal is a
+// code from a closed list. The page reads the view and nothing else (KTD14).
 
 import { INDEX_ROUTES, REGISTRATION_KEY_HEADER, RESET_KEY_HEADER, conforms, isCommit } from "@cairnfield/protocol";
+import { PAGE, PAGE_FILE, pageFile } from "./assets.ts";
 import type { Env } from "./env.ts";
 import { jsonOf, readUpTo } from "./fetch.ts";
 import { consume, notice } from "./queue.ts";
@@ -17,6 +20,8 @@ import { viewOf } from "./view.ts";
 const MAX_REQUEST_BYTES = 8 * 1024;
 
 const VIEW_PATH = /^\/components\/([^/]+)\/view$/;
+/** The page of a component commit. It reads the view of that commit, so the two share the start of their path. */
+const PAGE_PATH = /^\/components\/([^/]+)$/;
 
 /** The JSON body of a request, or nothing for a body that is too long or is not JSON. */
 async function bodyOf(request: Request): Promise<unknown> {
@@ -47,7 +52,11 @@ export default {
     const path = url.pathname;
     if (request.method === "GET") {
       const viewed = VIEW_PATH.exec(path);
-      return viewed ? view(env, url, viewed[1] ?? "") : refusal("not-found");
+      if (viewed) return view(env, url, viewed[1] ?? "");
+      // The page is the same for a commit nobody registered: it reads the view, and says what the view says.
+      const paged = PAGE_PATH.exec(path);
+      if (paged) return isCommit(paged[1]) ? pageFile(env, request, PAGE) : refusal("not-found");
+      return PAGE_FILE.test(path) ? pageFile(env, request, path) : refusal("not-found");
     }
     if (request.method !== "POST") return refusal("not-found");
     if (path === INDEX_ROUTES.notice.path) return notice(env, await bodyOf(request), Date.now());

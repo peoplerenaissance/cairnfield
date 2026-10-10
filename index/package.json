@@ -3,14 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Index Worker: builds one validated view per component commit.",
+  "description": "Index Worker: builds one validated view per component commit, and serves a page that draws it.",
   "scripts": {
     "test": "vitest run",
     "types": "wrangler types --strict-vars=false",
-    "typecheck": "npm run types && tsc -p tsconfig.json",
-    "check": "wrangler deploy --dry-run",
+    "typecheck": "npm run types && tsc -p tsconfig.json && tsc -p src/page/tsconfig.json --noEmit",
+    "build": "rm -rf dist && tsc -p src/page/tsconfig.json && cp src/page/page.html src/page/styles.css dist/page/ && ls dist/page/page.html dist/page/styles.css dist/page/poll.js dist/page/render.js",
+    "check": "npm run build && wrangler deploy --dry-run",
     "migrate": "wrangler d1 migrations apply cairnfield-index --remote",
-    "deploy": "wrangler deploy --var \"GIT_URLS:${GIT_URLS:?set GIT_URLS to the Git URLs this index may import, with a space between two}\" ${CLAIM_TTL_SECONDS:+--var CLAIM_TTL_SECONDS:$CLAIM_TTL_SECONDS}"
+    "deploy": "npm run build && wrangler deploy --var \"GIT_URLS:${GIT_URLS:?set GIT_URLS to the Git URLs this index may import, with a space between two}\" ${CLAIM_TTL_SECONDS:+--var CLAIM_TTL_SECONDS:$CLAIM_TTL_SECONDS}"
   },
   "dependencies": {
     "@cairnfield/protocol": "*"
