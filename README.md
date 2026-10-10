@@ -18,9 +18,10 @@ The site describes the launch. This table describes today.
 | Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its two commits are public at https://github.com/peoplerenaissance/fellbeck-sync, so a node can import them. |
 | Team node | built and deployed | The Worker in `node/`: the node contract, the admin routes and the push Workflow. Two demo nodes run on Cloudflare. Each has imported the demo plugin and made its fork, and Artifacts refused a push made with a node's public read token. One of them holds a patch commit and passes the contract check in `scripts/check-node-contract.ts`. |
 | Index | planned |  |
-| The command | built in part | `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim`, `view`, `patch` and `assemble`. A team working alone needs a node and no index. |
+| The command | built in part | `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim`, `view`, `patch`, `assemble`, `decide`, `approvals` and `verify`. A team working alone needs a node and no index. |
 | Patch agent | built and run live | `cairnfield patch` writes a patch for one of a team's own findings as a checked commit and a patch record, from a live model call or from a recording. The tests use a fake model. A live run on a deployed node patched the demo plugin's any-host rule, and its recording is in `fixtures/recordings/`. A replay gave the same commit and the same records. Live runs on both injection fixtures changed only the cited line. |
 | Patched copies | built and run live | `cairnfield assemble` builds a team's copy from the patches its lens lets in. It fetches each patch from the fork of the team that wrote it and checks it again. The copy is one commit, and any team with the same pinned commit and the same patches gets the same file-tree hash. The command prints the full diff of the copy. A lens that publishes recipes has it push the copy to the team's fork and publish a recipe record. On a deployed node with no index, one demo team built its copy of the demo plugin twice with one file-tree hash and published its recipe. Taking another team's patch is tested against a stand-in for the index, which is not built yet. A merged patch is not built. |
+| Verdicts and checking an installed copy | built, not yet run live | `cairnfield decide` writes down the verdict a person gave for a commit, with the file-tree hash of the copy the team built. `approvals` prints the team's table, one entry for each component. `verify` works out the file-tree hash of a folder and compares it with the approved entry in the approvals file it is given. It runs no Git and reads no config file, so it runs on any machine with Node. The table is a local file and is never published. |
 | Public page, demo script and scale run | planned |  |
 | One-click deploy button for the team node | waiting on the platform | To be switched on once Cloudflare's button supports Artifacts, Workflows and push triggers. A setup script deploys the node until then. |
 | Carry-forward to new versions, domain verification, sealed findings | not in the prototype | Described in the repository. |
@@ -57,12 +58,12 @@ A third idea needs no build step.
 | --- | --- |
 | `protocol/` | The protocol library: every record, limit and check, as pure functions with no platform dependency. |
 | `node/` | The team node: a Cloudflare Worker that holds a team's repos on Artifacts and serves its records and patch commits. |
-| `cli/` | The `cairnfield` command: it pins a component, validates the outbox of record files, publishes it to the team's node, writes patches with a bundled agent and builds the team's patched copy. |
+| `cli/` | The `cairnfield` command: it pins a component, validates the outbox of record files, publishes it to the team's node, writes patches with a bundled agent, builds the team's patched copy, keeps the team's verdicts and checks an installed copy. |
 | `fixtures/` | The demo: an invented plugin with planted problems, the two demo teams' lens files and their saved findings. Also two small components with planted instructions, for checking the patch agent, and the recording of its live patch. Not for installing. |
 | `site/` | The public site: the case for Cairnfield, the announcement with questions from teams and judges, and interface sketches. A Cloudflare Worker serving static files. |
 | `AGENTS.md` | Instructions and rules for coding agents working in this repo. |
 
-The rest of the product code arrives unit by unit from the plan, in `index/`, `cli/` and `sim/`. `cli/` holds the first seven commands, and the other two hold placeholders. The protocol, the threat model and the platform notes will be in `reference/`.
+The rest of the product code arrives unit by unit from the plan, in `index/`, `cli/` and `sim/`. `cli/` holds the first ten commands, and the other two hold placeholders. The protocol, the threat model and the platform notes will be in `reference/`.
 
 ## Running the command
 
@@ -83,6 +84,24 @@ npx cairnfield publish
 ```
 
 `pin` has the node import the component and writes a plain checkout of that commit under `.cairnfield/checkouts/`. Record files go in `.cairnfield/outbox/`, at `records/<commit>/<type>/<id>.json`. `validate` checks them against the checkout and needs no key. `publish` validates and then pushes them to the team's repo on the node. Each command prints one line of JSON and returns an exit code, which `cli/src/outcome.ts` lists.
+
+A team with a lens file builds its copy and records what it decided:
+
+```
+npx cairnfield assemble <full-commit-hash>
+npx cairnfield decide <git-url> --commit <full-commit-hash> --verdict approved-with-required-mitigations
+npx cairnfield approvals
+```
+
+`assemble` prints the diff of the copy against the original and writes the copy under `.cairnfield/copies/`. A person reads the diff and gives the verdict: `approved`, `approved-with-required-mitigations` or `not-approved`. `decide` writes it to `.cairnfield/decisions.json` with the copy's file-tree hash. That file is the team's table of what it may install. It is never published, and the team shares it by its own means.
+
+An engineer who holds a copy of that file checks an installed copy against it, on any machine:
+
+```
+npx cairnfield verify <git-url> <folder> --approvals <file>
+```
+
+`verify` passes only when the folder's file-tree hash is the one the team approved. It reads the folder and the file and nothing else.
 
 ## Running the site locally
 
