@@ -27,7 +27,7 @@ if (fixture === undefined) {
 const log: string[] = [];
 const io = {
   ...processIo(),
-  warn: (text: string) => {
+  warn: async (text: string) => {
     log.push(text.trim());
   },
 };

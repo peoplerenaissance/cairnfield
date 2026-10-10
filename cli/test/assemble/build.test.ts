@@ -326,6 +326,29 @@ describe("the diff assemble prints", () => {
     expect(printed(on)).toBe(text([...each("config/rules.txt"), ...each("docs/rules.txt")]));
   });
 
+  it("makes no line while standard error still takes the one before", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 });
+    await ownPatch(on, component, { cites: [[3, 3]], changes: bothRules(NARROWED) });
+    // A standard error that takes each line a little later, as a pipe that is full does.
+    const taken: string[] = [];
+    let taking = 0;
+    let most = 0;
+    vi.spyOn(on.io, "warn").mockImplementation(async (line) => {
+      taking += 1;
+      most = Math.max(most, taking);
+      await new Promise((resolve) => setImmediate(resolve));
+      taken.push(line);
+      taking -= 1;
+    });
+
+    const outcome = await on.run("assemble", component);
+
+    const each = (path: string): string[] => [`--- a/${path}`, `+++ b/${path}`, "@@ -3,1 +3,1 @@", "-allow fetch *", "+allow fetch notes.fellbeck.example"];
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(taken.join("")).toBe(text([...each("config/rules.txt"), ...each("docs/rules.txt")]));
+    expect(most).toBe(1);
+  });
+
   it("shows a terminal escape sequence and a right-to-left override as visible escapes", async () => {
     const component = await pinnedWith(on, { patchLevel: 1 });
     // The line clears the screen, and reads on a terminal as if it allowed less than it does.

@@ -135,7 +135,7 @@ export async function run(io: Io, argv: readonly string[]): Promise<Outcome> {
   try {
     return await outcomeOf(() => dispatch(io, argv));
   } catch (error) {
-    io.warn(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+    await io.warn(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
     return failure(EXIT.failed, "failed");
   }
 }

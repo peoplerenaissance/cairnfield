@@ -230,28 +230,31 @@ const MAX_COPY_LINES = MAX_RECIPE_PATCHES * MAX_PATCH_LINES;
  * The diff of the copy against the pinned commit, as text for the operator: each changed
  * path with every line the copy removes and adds there, and nothing else. `contentOf`
  * gives the content of a blob of either side. Each line goes to `write` as it is made,
- * so a removed line of any length, in however many copies, is never held more than once.
+ * and the next is made once `write` is done with it, so a removed line of any length, in
+ * however many copies, is never held more than once.
  */
-export function renderDiff(
+export async function renderDiff(
   files: FileListing,
   changes: readonly FileEntry[],
   contentOf: (blob: string) => Uint8Array | undefined,
-  write: (text: string) => void,
-): void {
+  write: (text: string) => Promise<void>,
+): Promise<void> {
   const pinned = new Map(files.map((file) => [file.path, file]));
-  const put = (...lines: readonly string[]): void => lines.forEach((line) => write(`${line}\n`));
-  const print = (sign: string, lines: readonly Uint8Array[], start: number, count: number): void => {
+  const put = async (...lines: readonly string[]): Promise<void> => {
+    for (const line of lines) await write(`${line}\n`);
+  };
+  const print = async (sign: string, lines: readonly Uint8Array[], start: number, count: number): Promise<void> => {
     for (const line of lines.slice(start - 1, start - 1 + count)) {
-      put(`${sign}${shown(line)}`);
-      if (line[line.length - 1] !== LINE_FEED) put("\\ No newline at end of file");
+      await put(`${sign}${shown(line)}`);
+      if (line[line.length - 1] !== LINE_FEED) await put("\\ No newline at end of file");
     }
   };
   for (const { path, mode, blob } of changes) {
     const old = pinned.get(path);
     if (!old) return stop(EXIT.failed, "assembly-failed");
     const deleted = mode === DELETED_MODE;
-    put(`--- a/${path}`, deleted ? "+++ /dev/null" : `+++ b/${path}`);
-    if (!deleted && mode !== old.mode) put(`old mode ${old.mode}`, `new mode ${mode}`);
+    await put(`--- a/${path}`, deleted ? "+++ /dev/null" : `+++ b/${path}`);
+    if (!deleted && mode !== old.mode) await put(`old mode ${old.mode}`, `new mode ${mode}`);
     if (blob === old.blob) continue;
     const before = contentOf(old.blob);
     const after = deleted ? new Uint8Array(0) : contentOf(blob);
@@ -260,9 +263,9 @@ export function renderDiff(
     const removed = splitLines(before);
     const added = splitLines(after);
     for (const hunk of diff.hunks) {
-      put(`@@ -${hunk.oldStart},${hunk.removed} +${hunk.newStart},${hunk.added} @@`);
-      print("-", removed, hunk.oldStart, hunk.removed);
-      print("+", added, hunk.newStart, hunk.added);
+      await put(`@@ -${hunk.oldStart},${hunk.removed} +${hunk.newStart},${hunk.added} @@`);
+      await print("-", removed, hunk.oldStart, hunk.removed);
+      await print("+", added, hunk.newStart, hunk.added);
     }
   }
 }

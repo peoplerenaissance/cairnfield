@@ -2,6 +2,7 @@
 // fake index and local repos behind these, and the commands run unchanged.
 
 import { randomInt } from "node:crypto";
+import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
 import { runGit } from "./git.ts";
 import type { GitRunner } from "./git.ts";
@@ -18,8 +19,11 @@ export interface Io {
   readonly sleep: (ms: number) => Promise<void>;
   /** A whole number from 0 to one below `bound`. */
   readonly random: (bound: number) => number;
-  /** Writes to standard error. Standard output holds the command's JSON and nothing else. */
-  readonly warn: (text: string) => void;
+  /**
+   * Writes to standard error, and is done once standard error has room for more. Standard
+   * output holds the command's JSON and nothing else.
+   */
+  readonly warn: (text: string) => Promise<void>;
 }
 
 /** The command's own process: its environment, its working folder, the network and Git. */
@@ -34,8 +38,10 @@ export function processIo(): Io {
       await sleep(ms);
     },
     random: (bound) => randomInt(bound),
-    warn: (text) => {
-      process.stderr.write(text);
+    warn: async (text) => {
+      // A write to a terminal or a file is over when it returns. A write to a pipe is not:
+      // Node holds what the pipe has not taken yet. So the command waits here for the pipe.
+      if (!process.stderr.write(text)) await once(process.stderr, "drain");
     },
   };
 }
