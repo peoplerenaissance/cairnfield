@@ -39,8 +39,10 @@ if (place !== undefined && view !== null) {
     } catch {
       // No answer, an answer that is no JSON, or a view that could not be drawn: the last view stays.
       show(draw(place, held, { kind: "failed" }, Date.now()));
+    } finally {
+      // The next read is set whatever came of this one, so the page never stops reading without a word.
+      setTimeout(() => void poll(), POLL_MS);
     }
-    setTimeout(() => void poll(), POLL_MS);
   };
 
   void poll();

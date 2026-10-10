@@ -68,6 +68,10 @@ const byId = (root: Drawing | undefined, id: string): Drawing | undefined => ele
 /** The status labels on an element, each as a reader reads it. */
 const tagsOf = (root: Drawing | undefined): string[] => withClass(root, "tag").map(textOf);
 
+/** The counts at the head of a page, each as its number and the word for what it counts. */
+const countsOf = (root: Drawing | undefined): string[][] =>
+  withClass(root, "counts").flatMap((list) => list.children.filter(isElement)).map((count) => [textOf(theOne(withTag(count, "dd"), "")), textOf(theOne(withTag(count, "dt"), ""))]);
+
 /** The one element under a root that a test names, by what it reads. */
 function theOne(found: readonly Drawing[], holding: string): Drawing {
   const [only, ...more] = found.filter((element) => textOf(element).includes(holding));
@@ -121,6 +125,12 @@ describe("a version with little to show (R14)", () => {
     expect(textOf(drawn.body)).not.toMatch(/clean/i);
     expect(textOf(drawn.status)).not.toMatch(/clean/i);
     expect(env.PAGE_FILES["page.html"]).not.toMatch(/clean/i);
+    // The index holds its copy and checked against it, so the head counts all three, each of them nought here.
+    expect(countsOf(drawn.body)).toEqual([
+      ["0", "organizations"],
+      ["0", "findings"],
+      ["0", "patches"],
+    ]);
   });
 
   it("gives a copy that is still importing and an import that failed each a label of its own, and never 'No findings published'", async () => {
@@ -148,6 +158,12 @@ describe("a version with little to show (R14)", () => {
     // Neither says anything about findings, patches or recipes: the index checked nothing against a copy.
     for (const page of [importing, failed]) {
       for (const section of ["claims", "findings", "patches", "recipes"]) expect(byId(page, section)).toBeUndefined();
+      // The head keeps the Git URL, the commit and the organizations. It counts no findings and no patches: a nought there would read as an all-clear.
+      const [head] = withTag(page, "header");
+      expect(textOf(theOne(withTag(head, "h1"), UPSTREAM))).toBe(UPSTREAM);
+      expect(textOf(head)).toContain(commit);
+      expect(countsOf(head)).toEqual([["0", "organizations"]]);
+      expect(textOf(head)).not.toMatch(/finding|patch/i);
     }
   });
 
@@ -206,8 +222,7 @@ describe("the sections of a page (R14)", () => {
     const [head] = withTag(await pageOf(on, component), "header");
     expect(textOf(theOne(withTag(head, "h1"), UPSTREAM))).toBe(UPSTREAM);
     expect(textOf(head)).toContain(component);
-    const counts = withTag(head, "dl").flatMap((list) => list.children.filter(isElement)).map((count) => [textOf(theOne(withTag(count, "dd"), "")), textOf(theOne(withTag(count, "dt"), ""))]);
-    expect(counts).toEqual([
+    expect(countsOf(head)).toEqual([
       ["2", "organizations"],
       ["2", "findings"],
       ["1", "patch"],
@@ -547,6 +562,45 @@ describe("a page narrowed by a teams query (KTD38)", () => {
     expect(placeAt(`/components/${component}?${both}&shown=all#patches`).viewPath).toBe(`/components/${component}/view?${both}`);
   });
 
+  it("gives teams that the index does not take a label of their own, and never says that the read failed", async () => {
+    const on = bench();
+    const component = await on.component();
+    // A team in a spelling the index does not accept: the endpoint refuses the query the page passes on.
+    const address = `/components/${component}?teams=${encodeURIComponent(`${NODE_A}/`)}`;
+    const place = placeAt(address);
+    expect(await on.call("GET", place.viewPath)).toEqual({ status: 400, body: { version: "1", error: "bad-request" } });
+
+    const refused = await read(on, address, NOTHING_READ, START);
+    // The page is one section: the label, and the commit the address names.
+    expect(withTag(refused.body, "section").map((section) => section.attributes["id"])).toEqual(["state"]);
+    expect(textOf(theOne(withTag(refused.body, "h2"), ""))).toBe("The index does not take the teams in this address");
+    expect(textOf(byId(refused.body, "state"))).toContain(component);
+    expect(textOf(refused.body)).not.toContain("No reviews published for this version");
+    expect(byId(refused.body, "narrowed")).toBeUndefined();
+    // The index was read and it answered, so the status line gives the time and says nothing of a failure.
+    expect(textOf(refused.status)).toContain("12:00:00 UTC");
+    expect(textOf(refused.status)).not.toMatch(/failed|could not be read/i);
+
+    // It is drawn once, as a view is.
+    const again = await read(on, address, refused.held, START + 2000);
+    expect(again.body).toBeUndefined();
+    expect(textOf(again.status)).toContain("12:00:02 UTC");
+    expect(textOf(again.status)).not.toMatch(/failed|could not be read/i);
+
+    // A read that gives a view draws the view in its place.
+    const taken = draw(place, again.held, readOf(await on.view(component)), START + 4000);
+    expect(textOf(byId(taken.body, "findings"))).toContain("No findings published");
+    expect(textOf(taken.body)).not.toContain("The index does not take the teams in this address");
+    expect(byId(taken.body, "state")).toBeUndefined();
+    expect(textOf(taken.status)).toContain("12:00:04 UTC");
+  });
+
+  it("reads a refusal with any other code as a failed read", () => {
+    expect(readOf({ version: "1", error: "bad-request" })).toEqual({ kind: "refused" });
+    expect(readOf({ version: "1", error: "not-found" })).toEqual({ kind: "unknown" });
+    for (const error of ["unauthorized", "not-allowed", "limit-reached", "already-registered"]) expect([error, readOf({ version: "1", error })]).toEqual([error, { kind: "failed" }]);
+  });
+
   it("stands at the address of a component and at no other", () => {
     expect(placeOf("/components/not-a-commit", "")).toBeUndefined();
     expect(placeOf(`/components/${"1F".repeat(20)}`, "")).toBeUndefined();
@@ -590,10 +644,8 @@ describe("reading the view again (KTD11, KTD14)", () => {
     const first = await read(on, address, NOTHING_READ, START);
     expect(textOf(first.status)).not.toMatch(/failed/i);
 
-    // The index answers with a refusal that is no view.
-    const refused = await on.call("GET", `/components/${component}/view?shown=all`);
-    expect(refused.status).toBe(400);
-    const failed = draw(placeAt(address), first.held, readOf(refused.body), START + 2000);
+    // The index answers with a refusal that says nothing of this version and nothing of the teams in the address.
+    const failed = draw(placeAt(address), first.held, readOf({ version: "1", error: "unauthorized" }), START + 2000);
     // Nothing is drawn over the view on screen.
     expect(failed.body).toBeUndefined();
     expect(failed.held.last).toEqual(first.held.last);
@@ -693,6 +745,20 @@ describe("a value from a record or a registration (KTD14, KTD33)", () => {
       for (const link of withTag(page, "a")) expect(textOf(link)).not.toContain(spelling);
     }
   });
+
+  // A tripwire for the rule that a value is set as text. No test runs the page's scripts
+  // in a browser, and `build()` in `poll.ts` is the one place where a value of a view
+  // becomes part of the document. So this reads the source of each script, and fails on
+  // the name of anything that parses a text as markup.
+  it("is set by scripts that name nothing that parses a text as markup", () => {
+    const parsers = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "DOMParser", "createContextualFragment", "setHTML"];
+    // Every script of the page is read: the one the page loads and the one that script imports.
+    expect(Object.keys(env.PAGE_SCRIPTS).sort()).toEqual(["poll.ts", "render.ts"]);
+    for (const [name, source] of Object.entries(env.PAGE_SCRIPTS)) {
+      expect([name, source === ""]).toEqual([name, false]);
+      expect([name, parsers.filter((parser) => source.includes(parser))]).toEqual([name, []]);
+    }
+  });
 });
 
 describe("the page's address on the index (KTD14)", () => {
@@ -728,6 +794,8 @@ describe("the page's address on the index (KTD14)", () => {
     expect(html).toContain('id="status"');
     expect(html).not.toMatch(/<script(?![^>]*\ssrc=)/i);
     expect(html).not.toMatch(/<style|\sstyle\s*=|\son[a-z]+\s*=/i);
+    // Its one script is a module: `poll.js` imports `render.js`, and only a module imports.
+    expect(html.match(/<script\b[^>]*>/gi)).toEqual(['<script type="module" src="/page/poll.js">']);
     // What it loads are files the index serves itself.
     const loaded = [...html.matchAll(/\s(?:src|href)="([^"]*)"/g)].map(([, path = ""]) => path).sort();
     expect(loaded).toEqual(["/page/poll.js", "/page/styles.css"]);

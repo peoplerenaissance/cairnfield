@@ -31,13 +31,13 @@ export interface Place {
   readonly narrowed: boolean;
 }
 
-/** What one read of the endpoint gave: a view, word that the commit is not registered, or neither. */
-export type Read = { readonly kind: "view"; readonly view: View } | { readonly kind: "unknown" } | { readonly kind: "failed" };
+/** What one read of the endpoint gave: a view, word that the commit is not registered, word that the index does not take the teams of the address, or none of them. */
+export type Read = { readonly kind: "view"; readonly view: View } | { readonly kind: "unknown" } | { readonly kind: "refused" } | { readonly kind: "failed" };
 
 /** What the page holds between two reads. */
 export interface Held {
-  /** The version of the view the last read that worked gave, or `unknown` for a commit that is not registered, and when. Nothing before the first one. */
-  readonly last?: { readonly version: number | "unknown"; readonly at: number };
+  /** The version of the view the last read that worked gave, `unknown` for a commit that is not registered or `refused` for teams the index does not take, and when. Nothing before the first one. */
+  readonly last?: { readonly version: number | "unknown" | "refused"; readonly at: number };
   /** Whether the read after it failed. */
   readonly failed: boolean;
 }
@@ -107,10 +107,18 @@ export function placeOf(pathname: string, search: string): Place | undefined {
   return { component, narrowed: teams.length > 0, viewPath: `/components/${component}/view${query === "" ? "" : `?${query}`}` };
 }
 
-/** What a body of the endpoint says. A refusal is a code of the protocol, and `not-found` names a commit that is not registered. */
+/**
+ * What a body of the endpoint says. A refusal is a code of the protocol. `not-found`
+ * names a commit that is not registered. `bad-request` names a query the endpoint does
+ * not take, and the page passes on only the teams of its address (KTD38). A refusal with
+ * any other code says nothing the page can show.
+ */
 export function readOf(body: unknown): Read {
   if (typeof body !== "object" || body === null) return { kind: "failed" };
-  if ("error" in body) return body.error === "not-found" ? { kind: "unknown" } : { kind: "failed" };
+  if ("error" in body) {
+    if (body.error === "not-found") return { kind: "unknown" };
+    return body.error === "bad-request" ? { kind: "refused" } : { kind: "failed" };
+  }
   return "viewVersion" in body ? { kind: "view", view: body as View } : { kind: "failed" };
 }
 
@@ -198,17 +206,13 @@ const row = (reading: Reading, { node, type, hash }: { readonly node: string; re
 function header(view: View): Drawing {
   const patches = view.patches.reduce((count, group) => count + group.patches.length, 0);
   const count = ([number, word]: [string, string]): Drawing => el("div", {}, el("dt", {}, word), el("dd", {}, number));
+  // Until the index holds its own copy it has checked nothing against it. A count of findings or of patches would be nought then, and would read as an all-clear (R14).
+  const checked = view.state === "ready" ? [count(counted(view.findings.length, "finding", "findings")), count(counted(patches, "patch", "patches"))] : undefined;
   return el(
     "header",
     { class: "head" },
     el("div", {}, el("p", { class: "label" }, "Component"), el("h1", {}, address(view.gitUrl)), el("p", { class: "commit" }, "commit ", code(view.component))),
-    el(
-      "dl",
-      { class: "counts" },
-      count(counted(view.organizations, "organization", "organizations")),
-      count(counted(view.findings.length, "finding", "findings")),
-      count(counted(patches, "patch", "patches")),
-    ),
+    el("dl", { class: "counts" }, count(counted(view.organizations, "organization", "organizations")), checked),
   );
 }
 
@@ -416,9 +420,12 @@ function viewed(place: Place, view: View): Drawing {
   return el("div", { class: "view" }, narrowed, header(view), work);
 }
 
-/** The page of a commit that is not registered, in the origin's words. The commit is the one the address names. */
-function unregistered(place: Place): Drawing {
-  return el("div", { class: "view" }, el("section", { id: "state" }, el("h2", {}, "No reviews published for this version"), el("p", { class: "commit" }, "commit ", code(place.component))));
+/** The label of an address the index serves no view for: a commit that is not registered, in the origin's words (R14), and teams the index does not take (KTD38). */
+const NO_VIEW = { unknown: "No reviews published for this version", refused: "The index does not take the teams in this address" } as const;
+
+/** The page of an address the index serves no view for: its label, and the commit the address names. */
+function unviewed(place: Place, kind: keyof typeof NO_VIEW): Drawing {
+  return el("div", { class: "view" }, el("section", { id: "state" }, el("h2", {}, NO_VIEW[kind]), el("p", { class: "commit" }, "commit ", code(place.component))));
 }
 
 /** A time of the page's own clock, in UTC, so it reads the same wherever the page is open. */
@@ -437,15 +444,16 @@ function status(held: Held): Drawing {
  * What the page shows after one read. A read that failed leaves what is on screen and
  * says when that was read. A view is drawn again only when its version changed (KTD11):
  * the version moves with every change the view can show, a claim that passes its time
- * included.
+ * included. An answer that is no view is a state of its own, drawn once: a commit that
+ * is not registered, and teams the index does not take.
  */
 export function draw(place: Place, held: Held, read: Read, now: number): Drawn {
   if (read.kind === "failed") {
     const after: Held = { ...held, failed: true };
     return { held: after, status: status(after) };
   }
-  const version = read.kind === "view" ? read.view.viewVersion : "unknown";
+  const version = read.kind === "view" ? read.view.viewVersion : read.kind;
   const after: Held = { last: { version, at: now }, failed: false };
   if (held.last !== undefined && held.last.version === version) return { held: after, status: status(after) };
-  return { held: after, status: status(after), body: read.kind === "view" ? viewed(place, read.view) : unregistered(place) };
+  return { held: after, status: status(after), body: read.kind === "view" ? viewed(place, read.view) : unviewed(place, read.kind) };
 }

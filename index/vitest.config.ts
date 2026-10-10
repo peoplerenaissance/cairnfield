@@ -24,7 +24,8 @@ const PAGE = fileURLToPath(new URL("./src/page/", import.meta.url));
 /**
  * The files of the page, by the names `npm run build` gives them. A stylesheet and the
  * page itself are copied as they are, so a test gets their text. A script is built from
- * its TypeScript file, which no test runs in a browser, so only its name is handed over.
+ * its TypeScript file, which no test runs in a browser, so only its name is handed over
+ * here.
  */
 function pageFiles(): { [name: string]: string } {
   const files: { [name: string]: string } = {};
@@ -33,6 +34,15 @@ function pageFiles(): { [name: string]: string } {
     else if (name.endsWith(".ts")) files[`${name.slice(0, -".ts".length)}.js`] = "";
   }
   return files;
+}
+
+/** The source of each script of the page, by its file name in `src/page/`. No test runs a script in a browser, and one test reads what each is written with. */
+function pageScripts(): { [name: string]: string } {
+  const scripts: { [name: string]: string } = {};
+  for (const name of readdirSync(PAGE)) {
+    if (name.endsWith(".ts")) scripts[name] = readFileSync(join(PAGE, name), "utf8");
+  }
+  return scripts;
 }
 
 // The package's own config: without this file `npm test` here would pick up the
@@ -59,6 +69,7 @@ export default defineConfig({
           // are data to every test (KTD26).
           FIXTURES: fixtures("demo-plugin/first", "out-of-scope", "outboxes"),
           PAGE_FILES: pageFiles(),
+          PAGE_SCRIPTS: pageScripts(),
         },
       },
     })),
