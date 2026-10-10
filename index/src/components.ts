@@ -10,6 +10,7 @@ import type { FileEntry } from "@cairnfield/protocol";
 import { codeOf, copyOf, open } from "./artifacts.ts";
 import type { Repo } from "./artifacts.ts";
 import type { Env } from "./env.ts";
+import { lookAtWaitingPatches } from "./patches.ts";
 import { Copy, PASS_RECORDS, bump, recordOf, settle } from "./records.ts";
 import type { ComponentState, Judged } from "./records.ts";
 
@@ -205,6 +206,10 @@ async function checkWaiting(env: Env, component: string): Promise<boolean> {
  * Moves a component along: starts its import, waits for its copy, stores the listing,
  * then checks the records that waited. Returns the seconds after which to look again,
  * or nothing when there is no more to do.
+ *
+ * A patch record waits for its commit and not only for the copy. Once no other record
+ * waits for the copy, a look at each waiting patch record is queued, so the findings a
+ * patch names are checked before the patch is.
  */
 export async function advance(env: Env, component: string, now: number): Promise<number | undefined> {
   const held = await componentOf(env, component);
@@ -218,5 +223,7 @@ export async function advance(env: Env, component: string, now: number): Promise
     const looked = await lookAtCopy(env, held, now);
     if (looked !== "ready") return looked === "waiting" ? POLL_SECONDS : undefined;
   }
-  return (await checkWaiting(env, component)) ? 0 : undefined;
+  if (await checkWaiting(env, component)) return 0;
+  await lookAtWaitingPatches(env, component);
+  return undefined;
 }

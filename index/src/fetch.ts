@@ -2,11 +2,14 @@
 // one node, runs under a deadline, follows no redirect and stops at a size limit (KTD6).
 // What comes back is hostile until it has been checked.
 
-import { MAX_LISTING_ENTRIES, MAX_RECORD_BYTES, NODE_REFUSAL, NODE_ROUTES, conforms, isGitHash } from "@cairnfield/protocol";
+import { MAX_BLOB_BYTES, MAX_LISTING_ENTRIES, MAX_RECORD_BYTES, NODE_PATCH, NODE_REFUSAL, NODE_ROUTES, conforms, isGitHash } from "@cairnfield/protocol";
+import type { NodePatch } from "@cairnfield/protocol";
 
 const DEADLINE_MS = 10_000;
 /** A node's listing is read up to this size: the most entries it may hold, with room for each. */
 const MAX_LISTING_BYTES = MAX_LISTING_ENTRIES * 512;
+/** A patch commit's changed paths are read up to the same size: a node lists as many paths at most. */
+const MAX_PATCH_BYTES = MAX_LISTING_BYTES;
 
 /** Why a read from a node gave nothing the index can use. A code, never a sentence. */
 export const READ_FAILURES = ["unreachable", "redirected", "too-large", "bad-answer"] as const;
@@ -116,4 +119,33 @@ export async function readRecordFile(node: string, commit: string, path: string)
   // The listing named the file at this commit, so a node that does not serve it gave a bad answer.
   if (answer.status !== 200) return failed("bad-answer");
   return { ok: true, bytes: answer.bytes };
+}
+
+/**
+ * Reads a patch commit's parent and changed paths from the node whose fork holds it
+ * (KTD7). Returns nothing when the node does not serve the commit: its fork does not
+ * hold it yet, the node cannot be reached, or the answer is not in the contract's shape
+ * for the commit that was asked for. Every hash, mode and path of what comes back is in
+ * the shape the contract gives it, and nothing else of it is checked here.
+ */
+export async function readPatchCommit(node: string, component: string, commit: string): Promise<NodePatch | undefined> {
+  const query = new URLSearchParams({ component, commit });
+  const answer = await read(`${node}/${NODE_ROUTES.patch.path}?${query}`, MAX_PATCH_BYTES);
+  if (!answer.ok || answer.status !== 200 || answer.bytes.length > MAX_PATCH_BYTES) return undefined;
+  const body = jsonOf(answer.bytes);
+  if (conforms(NODE_PATCH, body)) return undefined;
+  const served = body as NodePatch;
+  return served.commit === commit ? served : undefined;
+}
+
+/**
+ * Reads one blob of a node's fork of a component. Of a blob longer than a served blob
+ * may be (KTD6), only the start is held: one byte more than the limit, which is enough
+ * for the patch checks to refuse it. The caller holds the content to the blob's hash.
+ * Returns nothing when the node does not serve the blob.
+ */
+export async function readForkBlob(node: string, component: string, blob: string): Promise<Uint8Array | undefined> {
+  const query = new URLSearchParams({ component, blob });
+  const answer = await read(`${node}/${NODE_ROUTES.blob.path}?${query}`, MAX_BLOB_BYTES);
+  return answer.ok && answer.status === 200 ? answer.bytes : undefined;
 }

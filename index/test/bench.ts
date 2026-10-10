@@ -94,8 +94,8 @@ export interface Bench {
   deliver(): Promise<void>;
   /** Delivers messages until none waits, those that the delivered ones queue included. */
   drain(): Promise<void>;
-  /** Hosts the small component, registers it and lets its import finish. Returns its commit. */
-  component(files?: Files): Promise<string>;
+  /** Hosts the small component, registers it and lets its import finish. Returns its commit, which is `commit` when one is given. */
+  component(files?: Files, commit?: string): Promise<string>;
 }
 
 /** Moves the index's clock. */
@@ -186,8 +186,8 @@ export function bench(settings: Settings = {}): Bench {
         await deliver();
       }
     },
-    component: async (files = FILES) => {
-      const commit = await artifacts.host(UPSTREAM, BRANCH, files);
+    component: async (files = FILES, named) => {
+      const commit = await artifacts.host(UPSTREAM, BRANCH, files, named);
       const { status } = await made.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
       if (status !== 200) throw new Error(`the component was not registered: ${status}`);
       // The first delivery starts the import, and the next one finds the copy ready.

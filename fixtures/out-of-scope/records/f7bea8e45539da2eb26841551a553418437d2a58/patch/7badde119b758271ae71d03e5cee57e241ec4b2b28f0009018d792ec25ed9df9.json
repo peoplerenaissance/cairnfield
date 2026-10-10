@@ -1,0 +1,10 @@
+{
+  "version": "1",
+  "type": "patch",
+  "component": "f7bea8e45539da2eb26841551a553418437d2a58",
+  "commit": "c91f7b8f7d49c9ad2e7a3fa10d78a676b0addafd",
+  "findings": [
+    "d92a3a8c418cca67b7efbc2ee4bd96e3e0674cb8aae2b547cab56fa961a39e6b"
+  ],
+  "model": "none"
+}

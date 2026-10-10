@@ -14,6 +14,7 @@ export * from "./validate.ts";
 export * from "./match.ts";
 export * from "./diff.ts";
 export * from "./patch-checks.ts";
+export * from "./patch-groups.ts";
 export * from "./criteria.ts";
 export * from "./contracts.ts";
 export * from "./json-schema.ts";

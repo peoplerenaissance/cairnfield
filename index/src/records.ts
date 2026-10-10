@@ -108,15 +108,19 @@ export class Copy {
     // blob at a time. Only a regular file can be cited, and the check refuses any other
     // before it reads content.
     for (const { path, mode, blob } of listing) {
-      const content = isFileMode(mode) ? await this.#read(blob) : EMPTY;
+      const content = isFileMode(mode) ? await this.read(blob) : EMPTY;
       if (content === TOO_LARGE) return TOO_LARGE;
       files.set(path, { mode, content });
     }
     return { files, listing };
   }
 
-  /** The content of a blob of the copy, or `too-large` for one that is longer than the index reads. Any other failed read throws. */
-  async #read(blob: string): Promise<Uint8Array | typeof TOO_LARGE> {
+  /**
+   * The content of a blob that the copy's listing names, or `too-large` for one that is
+   * longer than the index reads. Any other failed read throws. A patch check reads the
+   * content a patch replaces here, and from nowhere else (KTD7).
+   */
+  async read(blob: string): Promise<Uint8Array | typeof TOO_LARGE> {
     const held = this.#contents.get(blob);
     if (held) return held;
     this.#repo ??= this.#env.ARTIFACTS.get(copyOf(this.#component));
@@ -158,7 +162,8 @@ export class Copy {
 
 /**
  * Judges a record that passed the structure check, by the state of its component's copy
- * (KTD12). A patch record waits as pending until its commit has been checked.
+ * (KTD12). A patch record waits as pending until its commit has been checked (see
+ * `patches.ts`).
  */
 export async function judge(copy: Copy, state: ComponentState, record: AnyRecord): Promise<Judged> {
   if (state === "failed") return { state: "rejected", reason: "unknown-component" };

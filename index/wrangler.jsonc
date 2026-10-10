@@ -12,12 +12,14 @@
   // The index's own component copies. Records are checked against these, never against
   // a node's copy (R9, KTD12).
   "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-index" }],
-  // Nodes, components, each copy's file listing and the records (KTD11). No database ID
-  // is written here: Wrangler finds the database by its name.
+  // Nodes, components, each copy's file listing, the records and what the index computed
+  // for each valid patch record (KTD11). No database ID is written here: Wrangler finds
+  // the database by its name.
   "d1_databases": [{ "binding": "DB", "database_name": "cairnfield-index", "migrations_dir": "migrations" }],
-  // Push notices and the checks on a copy that is still importing go through one queue
-  // (KTD11). A batch holds one message, so one node's failure never sends another node's
-  // message back. A failed sync is tried again five times, each a while after the last.
+  // Push notices, the checks on a copy that is still importing and the looks at a patch
+  // record's commit go through one queue (KTD11). A batch holds one message, so one
+  // node's failure never sends another node's message back. A failed sync is tried again
+  // five times, each a while after the last.
   "queues": {
     "producers": [{ "binding": "SYNC", "queue": "cairnfield-index-sync" }],
     "consumers": [{ "queue": "cairnfield-index-sync", "max_batch_size": 1, "max_retries": 5 }]

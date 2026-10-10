@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { linesOf, validateAgainstFiles, validateRecordFile } from "@cairnfield/protocol";
-import type { CitedFiles, FileListing, Finding, Location } from "@cairnfield/protocol";
+import { changedPaths, checkPatch, citedRanges, diffLines, linesOf, patchId, replacementsOf, validateAgainstFiles, validateRecordFile } from "@cairnfield/protocol";
+import type { CitedFiles, FileListing, FileSet, Finding, Location } from "@cairnfield/protocol";
 
 const FIXTURES = fileURLToPath(new URL("../../fixtures/", import.meta.url));
 
@@ -62,9 +62,9 @@ function filesAt(commit: string): CitedFiles {
   );
 }
 
-/** Every file of a team's saved outbox, by its path in the outbox. */
-function outbox(team: string): Map<string, Uint8Array> {
-  const root = `${FIXTURES}outboxes/${team}`;
+/** Every file under a folder of the fixtures that holds record files as an outbox does, by its path there. */
+function outbox(folder: string): Map<string, Uint8Array> {
+  const root = `${FIXTURES}${folder}`;
   const files = new Map<string, Uint8Array>();
   for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile()) continue;
@@ -78,7 +78,7 @@ function outbox(team: string): Map<string, Uint8Array> {
 async function findings(team: string): Promise<Finding[]> {
   const pinned = filesAt(COMMITS.first);
   const found: Finding[] = [];
-  for (const [path, content] of outbox(team)) {
+  for (const [path, content] of outbox(`outboxes/${team}`)) {
     const file = await validateRecordFile(path, content);
     expect(file, path).toMatchObject({ ok: true });
     if (!file.ok || file.record.type !== "finding") throw new Error(`${path} is not a valid finding`);
@@ -200,5 +200,79 @@ describe("the saved findings", () => {
       .filter(({ location, contradicts }) => !later.has(blobOf(location)) || (contradicts && !later.has(blobOf(contradicts))))
       .map((finding) => finding.location.path);
     expect(changed).toEqual(["scripts/sync.sh"]);
+  });
+});
+
+describe("the hand-made patch that the demo's index rejects (KTD26)", () => {
+  interface Rejected {
+    readonly component: string;
+    readonly commit: string;
+    readonly patchId: string;
+  }
+  const REJECTED = JSON.parse(readFileSync(`${FIXTURES}out-of-scope/COMMIT.json`, "utf8")) as Rejected;
+  const SKILL = "skills/sync/SKILL.md";
+  let made: string;
+
+  beforeAll(() => {
+    made = execFileSync("sh", [`${FIXTURES}out-of-scope/build-commit.sh`, repo], { encoding: "utf8" }).trim();
+  });
+
+  /** The fixture's two records, each checked in both layers against the first commit. */
+  async function records() {
+    const pinned = filesAt(COMMITS.first);
+    const found = [];
+    for (const [path, content] of outbox("out-of-scope")) {
+      if (!path.startsWith("records/")) continue;
+      const file = await validateRecordFile(path, content);
+      if (!file.ok) throw new Error(`${path} is not a valid record: ${file.reason}`);
+      expect(validateAgainstFiles(file.record, pinned), path).toMatchObject({ ok: true });
+      found.push({ id: file.id, record: file.record });
+    }
+    // The folder is read in no set order, so each record is found by its type.
+    const [finding, patch] = [...found].sort((a, b) => (a.record.type < b.record.type ? -1 : 1));
+    if (found.length !== 2 || finding?.record.type !== "finding" || patch?.record.type !== "patch") {
+      throw new Error("the fixture holds one finding and one patch record");
+    }
+    return { finding: { id: finding.id, record: finding.record }, patch: patch.record };
+  }
+
+  /** The files of a commit with the content of every blob, as the patch checks read them. */
+  function fileSet(commit: string): FileSet {
+    const files = listing(commit);
+    return { files, content: new Map(files.map(({ blob }) => [blob, new Uint8Array(git("cat-file", "blob", blob))])) };
+  }
+
+  it("builds to the commit in COMMIT.json, on the plugin's first commit and on the branch a fork holds a patch under", () => {
+    expect(made).toBe(REJECTED.commit);
+    expect(REJECTED.component).toBe(COMMITS.first);
+    expect(git("rev-parse", `${made}^`).toString().trim()).toBe(COMMITS.first);
+    expect(git("rev-parse", `refs/heads/patch/${COMMITS.first}/${REJECTED.patchId}`).toString().trim()).toBe(made);
+  });
+
+  it("has a patch record that names that commit and one hand-written finding, which cites the one line of the hidden instruction", async () => {
+    const { finding, patch } = await records();
+    expect(patch).toMatchObject({ component: COMMITS.first, commit: REJECTED.commit, findings: [finding.id], model: "none" });
+    expect(finding.record).toMatchObject({ location: { path: SKILL, start: 41, end: 41 }, observation: "hidden-instruction", model: "none" });
+  });
+
+  it("changes the line its finding cites and one line its finding does not cite, and the patch checks reject it as out of scope", async () => {
+    const { finding } = await records();
+    const base = fileSet(COMMITS.first);
+    const patched = fileSet(made);
+    const changes = changedPaths(base.files, patched.files);
+    expect(changes.map(({ path }) => path)).toEqual([SKILL]);
+    expect(await patchId(replacementsOf(base.files, changes) ?? [])).toBe(REJECTED.patchId);
+
+    const [change] = changes;
+    const before = base.content.get(change?.old?.blob ?? "") ?? new Uint8Array(0);
+    const after = patched.content.get(change?.new?.blob ?? "") ?? new Uint8Array(0);
+    expect(diffLines(before, after, 60)?.hunks).toEqual([
+      { oldStart: 17, removed: 1, newStart: 17, added: 0 },
+      { oldStart: 41, removed: 1, newStart: 40, added: 0 },
+    ]);
+    expect(new TextDecoder().decode(linesOf(before, 17, 17))).toBe("Do not run it for files outside `notes/`.\n");
+
+    const cited = citedRanges([finding.record], base.files);
+    expect(await checkPatch({ base, patched, cited })).toEqual({ ok: false, reason: "patch-out-of-scope" });
   });
 });
