@@ -8,15 +8,16 @@
 // so a later sync reads it once the component is (KTD12).
 //
 // A patch record is stored as pending, and a look at its commit is queued (see `patches.ts`).
-// A patch record that still waits is looked at once more at each sync of its node, and
-// when a sync stores a finding it names as valid.
+// A patch record that still waits is looked at once more when a sync stores a finding it
+// names as valid, and at the syncs of its node, which each take a pass of the node's
+// waiting patch records in turn.
 
 import { MAX_LISTING_ENTRIES, MAX_RECORDS_PER_COMPONENT, canonicalJson, compare, parseRecordPath, sha256Hex, validateRecordFile } from "@cairnfield/protocol";
 import type { RecordType } from "@cairnfield/protocol";
 import type { Env } from "./env.ts";
 import { readListing, readRecordFile } from "./fetch.ts";
 import type { ReadFailure } from "./fetch.ts";
-import { lookAtPatches, lookOnceAtPatches, patchesWaitingFor, waitingPatchesOf } from "./patches.ts";
+import { goOnAfter, lookAtPatches, lookOnceAtPatches, patchesWaitingFor, waitingPatchesOf } from "./patches.ts";
 import type { PatchName } from "./patches.ts";
 import { Copy, PASS_RECORDS, bump, judge, reasonAndCited } from "./records.ts";
 import type { ComponentState, StoredRecord } from "./records.ts";
@@ -58,8 +59,8 @@ async function examine(copy: Copy, state: ComponentState, path: string, bytes: U
  * component's state, and then nothing else would look at the record again. Every sync
  * asks, not only the one that stored the record: that one may have ended before its look
  * was queued. A patch record is asked for only when its component failed, and the look
- * rejects it with the rest (KTD12). On a ready copy it waits for its commit, and every
- * sync queues a look at it by itself (see `waitingPatchesOf`).
+ * rejects it with the rest (KTD12). On a ready copy it waits for its commit, and the
+ * syncs of its node queue a look at it by itself (see `waitingPatchesOf`).
  */
 async function lookAtSettled(env: Env, node: string): Promise<void> {
   const settled = await env.DB.prepare(
@@ -94,7 +95,9 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   if (head === undefined) {
     await finished(held.processed).run();
     await lookAtSettled(env, node);
-    await lookOnceAtPatches(env, await waitingPatchesOf(env, node));
+    const waiting = await waitingPatchesOf(env, node);
+    await lookOnceAtPatches(env, waiting);
+    await goOnAfter(env, node, waiting);
     return { ok: true, stored: 0, more: false };
   }
 
@@ -217,6 +220,8 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
 
   await lookAtPatches(env, patches);
   await lookAtSettled(env, node);
-  await lookAgain(await waitingPatchesOf(env, node));
+  const waiting = await waitingPatchesOf(env, node);
+  await lookAgain(waiting);
+  await goOnAfter(env, node, waiting);
   return failure === undefined ? { ok: true, head, stored, more: !complete } : { ok: false, reason: failure };
 }

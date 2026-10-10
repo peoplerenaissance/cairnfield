@@ -27,3 +27,8 @@ CREATE INDEX patches_by_component ON patches (component);
 
 -- A look at a patch record reads the valid findings the record names, by their hash.
 CREATE INDEX findings_by_hash ON records (component, hash) WHERE type = 'finding' AND state = 'valid';
+
+-- Each sync of a node looks once more at a bounded number of its patch records that still
+-- wait (KTD11). This is the path of the last one that a sync queued a look at. The next
+-- sync goes on after it, so the syncs of a node go round all of its waiting patch records.
+ALTER TABLE nodes ADD COLUMN last_looked TEXT;

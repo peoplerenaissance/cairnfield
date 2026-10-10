@@ -111,6 +111,22 @@ const shown = (view: View): string[][] => view.patches.flatMap((group) => group.
 const looks = (on: Bench): { readonly node: string; readonly path: string }[] =>
   on.queue.waiting.flatMap(({ body }) => (body.kind === "patch" ? [{ node: body.node, path: body.path }] : []));
 
+/**
+ * What earlier syncs left: this many patch records of Team A's node that still wait, the
+ * oldest first, received from `since` on. A look at one of them settles nothing and asks
+ * the node for nothing. Returns their paths, which are in the same order.
+ */
+async function leftWaiting(component: string, count: number, since: number): Promise<string[]> {
+  await env.DB.prepare(
+    `WITH RECURSIVE n (i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < ?5 - 1)
+     INSERT INTO records (node, path, component, type, state, hash, head, body, received_at)
+     SELECT ?1, 'records/' || ?2 || '/patch/' || printf('%064x', i) || '.json', ?2, 'patch', 'pending', printf('%064x', i), ?3, '{}', ?4 + i FROM n`,
+  )
+    .bind(NODE_A, component, "0a".repeat(20), since, count)
+    .run();
+  return Array.from({ length: count }, (_, i) => patchPath(component, i.toString(16).padStart(64, "0")));
+}
+
 describe("a patch record and its commit (KTD7, KTD11)", () => {
   it("asks again after a while for a patch record published before its commit, and shows the patch as valid once the fork holds the commit", async () => {
     const { on, node, component } = await oneNode();
@@ -277,14 +293,7 @@ describe("a patch record that still waits when its tries are spent or its look w
     nodesBehindFetch(node);
     const component = await on.component();
     await on.registerNode(NODE_A);
-    // What earlier syncs left: 125 patch records of the node that still wait, oldest first.
-    await env.DB.prepare(
-      `WITH RECURSIVE n (i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 124)
-       INSERT INTO records (node, path, component, type, state, hash, head, body, received_at)
-       SELECT ?1, 'records/' || ?2 || '/patch/' || printf('%064x', i) || '.json', ?2, 'patch', 'pending', printf('%064x', i), ?3, '{}', ?4 + i FROM n`,
-    )
-      .bind(NODE_A, component, "0a".repeat(20), START)
-      .run();
+    await leftWaiting(component, 125, START);
 
     expect(await syncNode(on.env, NODE_A)).toMatchObject({ ok: true, stored: 0 });
 
@@ -292,8 +301,68 @@ describe("a patch record that still waits when its tries are spent or its look w
     const looks = on.queue.waiting.filter(({ body }) => body.kind === "patch");
     expect(looks).toHaveLength(PASS_RECORDS);
     expect(looks.every(({ body }) => body.kind === "patch" && body.tries === PATCH_TRIES - 1)).toBe(true);
-    // The oldest are looked at first.
+    // They are taken in the order of their paths.
     expect(looks[0]?.body).toMatchObject({ path: `records/${component}/patch/${"0".repeat(64)}.json` });
+  });
+
+  it("looks at the waiting patch records of a node in turn over its syncs, a pass at each, and starts over after the last", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    const paths = await leftWaiting(component, 125, START);
+    const taken = (): string[] => looks(on).map(({ path }) => path);
+
+    expect(await syncNode(on.env, NODE_A)).toMatchObject({ ok: true, stored: 0 });
+    expect(taken()).toEqual(paths.slice(0, PASS_RECORDS));
+    // Each look leaves its record waiting.
+    await on.deliver();
+    expect(on.queue.waiting).toEqual([]);
+
+    // The next sync goes on after the last record that one took, and then starts over.
+    expect(await syncNode(on.env, NODE_A)).toMatchObject({ ok: true, stored: 0 });
+    expect(taken()).toEqual([...paths.slice(PASS_RECORDS), ...paths.slice(0, 2 * PASS_RECORDS - paths.length)]);
+  });
+
+  it("looks at the same waiting patch records again at the sync after one whose looks the queue did not take", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    const paths = await leftWaiting(component, 125, START);
+
+    on.queue.failures = 1;
+    await expect(syncNode(on.env, NODE_A)).rejects.toThrow("the queue took no message");
+    expect(on.queue.waiting).toEqual([]);
+
+    expect(await syncNode(on.env, NODE_A)).toMatchObject({ ok: true, stored: 0 });
+    expect(looks(on).map(({ path }) => path)).toEqual(paths.slice(0, PASS_RECORDS));
+  });
+
+  it("checks a patch record that waits behind a full pass of others at a later sync of its node, once the fork holds the commit", async () => {
+    const { on, node, component } = await oneNode();
+    const [cited] = await node.publish(finding(component));
+    const commit = "5e".repeat(20);
+    const [patch] = await node.publish(patchRecord(component, commit, [cited]));
+    await synced(on, NODE_A);
+    expect(asked(node, "patch")).toHaveLength(PATCH_TRIES);
+    // A full pass of older patch records of the node waits too, and no look settles one of them.
+    await leftWaiting(component, PASS_RECORDS, START - PASS_RECORDS);
+    await node.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }], { commit });
+
+    // One sync looks at a pass of waiting records, and the record is not among them.
+    await synced(on, NODE_A);
+    expect(asked(node, "patch")).toHaveLength(PATCH_TRIES);
+    expect((await on.view(component)).pending).toHaveLength(PASS_RECORDS + 1);
+
+    // The next sync goes on after them.
+    await synced(on, NODE_A);
+    const view = await on.view(component);
+    expect(shown(view)).toEqual([[patch]]);
+    expect(view.pending).toHaveLength(PASS_RECORDS);
+    expect(asked(node, "patch")).toHaveLength(PATCH_TRIES + 1);
   });
 
   it("queues the look at a patch record that a sync stored before a read of the copy failed for a later component", async () => {

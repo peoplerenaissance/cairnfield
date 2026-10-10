@@ -12,7 +12,8 @@
 // A look at a patch record runs from the queue. A record whose commit the node does not
 // serve yet, or whose findings are not valid here yet, is looked at again after a while,
 // a set number of times (KTD11). After that it stays pending, and is looked at once more
-// at each later sync of its node and when a finding it names becomes valid.
+// when a finding it names becomes valid and at the later syncs of its node, which each
+// take a pass of the node's waiting patch records in turn.
 
 import { DELETED_MODE, applyChanges, checkPatch, citedRanges, planPatch } from "@cairnfield/protocol";
 import type { CitedRange, FileListing, Finding, Patch, PatchFacts, PatchKind, RejectionReason, Replacement } from "@cairnfield/protocol";
@@ -81,15 +82,31 @@ export function lookOnceAtPatches(env: Env, patches: readonly PatchName[], first
  * have been lost, and the fork may hold the commit only after the tries were spent. That
  * costs one read of the node for each such record at each sync of the node. A notice
  * takes no key and causes a sync, so one sync looks at no more records than a pass
- * reads, the oldest first.
+ * reads. It takes them in the order of their paths, from the one after the last that a
+ * sync before it took (see `goOnAfter`), and starts over after the last of them. So the
+ * syncs of a node go round all of its waiting records, however many there are.
  */
 export async function waitingPatchesOf(env: Env, node: string): Promise<PatchName[]> {
   const { results } = await env.DB.prepare(
-    "SELECT records.node, records.path FROM records JOIN components ON components.component = records.component WHERE records.node = ?1 AND records.type = 'patch' AND records.state = 'pending' AND components.state = 'ready' ORDER BY records.received_at, records.path LIMIT ?2",
+    // A record after the last one taken sorts before one that is at or before it. While
+    // no record is noted as taken, the order is that of the paths alone.
+    "SELECT records.node, records.path FROM records JOIN components ON components.component = records.component WHERE records.node = ?1 AND records.type = 'patch' AND records.state = 'pending' AND components.state = 'ready' ORDER BY records.path <= (SELECT last_looked FROM nodes WHERE url = ?1), records.path LIMIT ?2",
   )
     .bind(node, PASS_RECORDS)
     .all<PatchName>();
   return results;
+}
+
+/**
+ * Notes the last of the waiting patch records that a sync of a node took, so the next
+ * sync goes on after it. `taken` is what the sync read from `waitingPatchesOf`. The sync
+ * calls this once the looks are queued, so one that queued none takes the same records
+ * again. Fewer records than a pass reads are all that wait, and nothing is noted then.
+ */
+export async function goOnAfter(env: Env, node: string, taken: readonly PatchName[]): Promise<void> {
+  const last = taken.at(-1);
+  if (!last || taken.length < PASS_RECORDS) return;
+  await env.DB.prepare("UPDATE nodes SET last_looked = ?2 WHERE url = ?1").bind(node, last.path).run();
 }
 
 /**
