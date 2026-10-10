@@ -2,7 +2,7 @@
 // is read. It holds data and no prose, and every body carries the schema version.
 
 import { ACCEPTED, COMPONENT_STATUS, INDEX_REFUSAL, NODE_REGISTERED, VIEW, conforms, recordId } from "@cairnfield/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { syncNode } from "../src/sync.ts";
 import { BRANCH, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SKILL, START, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
 import type { Answer } from "./bench.ts";
@@ -252,6 +252,55 @@ describe("a view narrowed by a teams query (KTD38)", () => {
 
     const both = await on.view(component, [NODE_B, NODE_A]);
     expect(both.findings).toEqual(whole.findings);
+  });
+
+  it("has the version of the whole view, which also moves when a claim of a node that is not listed passes its time", async () => {
+    const on = bench();
+    const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];
+    nodesBehindFetch(one, other);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    await on.registerNode(NODE_B);
+    await one.publish(finding(component));
+    await other.publish(claim(component, 4));
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+
+    clockAt(START + 15 * MINUTE - 1);
+    const live = await on.view(component, [NODE_A]);
+    expect(live.claims).toEqual([]);
+    expect(live.viewVersion).toBe((await on.view(component)).viewVersion);
+
+    clockAt(START + 15 * MINUTE);
+    const expired = await on.view(component, [NODE_A]);
+    expect(expired.viewVersion).toBe(live.viewVersion + 1);
+    expect(expired.viewVersion).toBe((await on.view(component)).viewVersion);
+    expect({ ...expired, viewVersion: live.viewVersion }).toEqual(live);
+  });
+
+  it("reads no record of a node that is not listed from the database", async () => {
+    const on = bench();
+    const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];
+    nodesBehindFetch(one, other);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    await on.registerNode(NODE_B);
+    await one.publish(finding(component));
+    await other.publish(finding(component, { location: { path: SKILL, start: 2, end: 3 } }), claim(component, 4));
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+
+    // Every row that a view takes from the database, whichever statement read it. Only a row of a record names its node.
+    const rowsRead = async (teams?: readonly string[]): Promise<string[]> => {
+      const batch = vi.spyOn(on.env.DB, "batch");
+      await on.view(component, teams);
+      const results = (await batch.mock.results[0]?.value) as D1Result<{ node?: string }>[];
+      batch.mockRestore();
+      return results.flatMap(({ results: rows }) => rows.flatMap(({ node }) => node ?? [])).sort();
+    };
+    expect(await rowsRead()).toEqual([NODE_A, NODE_B, NODE_B]);
+    expect(await rowsRead([NODE_A])).toEqual([NODE_A]);
+    expect(await rowsRead([NODE_C])).toEqual([]);
   });
 
   it("refuses a query of 101 teams, and takes one of 100", async () => {

@@ -62,25 +62,32 @@ function claimState(row: Row, closed: boolean, pastItsTime: boolean): (typeof CL
 
 /**
  * The view of a registered component, or nothing for a commit that is not registered.
- * With `teams`, every record of a node that is not listed is dropped first, and what is
- * left is grouped and counted (KTD38).
+ * With `teams`, only the records of the listed nodes are read, and they are grouped and
+ * counted (KTD38). The version is the component's, however the view is narrowed.
  */
 export async function viewOf(env: Env, component: string, teams: readonly string[] | undefined, now: number): Promise<View | undefined> {
   const db = env.DB;
+  // A claim that the index received by this time has passed its time (KTD15).
+  const lastToPass = now - claimTtlMs(env);
   // One batch, so the component, the nodes and the records are read as they stood together.
-  const [found, registered, stored] = (await db.batch([
+  const [found, registered, stored, passed] = (await db.batch([
     db.prepare("SELECT state, view_version FROM components WHERE component = ?").bind(component),
     db.prepare("SELECT url, processed, noticed_at, absorbed_at FROM nodes ORDER BY url"),
-    db.prepare("SELECT node, path, type, state, reason, hash, head, body, cited, received_at, rebuilt FROM records WHERE component = ?").bind(component),
-  ])) as [D1Result<Pick<Component, "state" | "view_version">>, D1Result<NodeRow>, D1Result<Row>];
+    // The listed nodes go in as one value, so a long list meets no limit on the values of a statement.
+    db
+      .prepare(
+        "SELECT node, path, type, state, reason, hash, head, body, cited, received_at, rebuilt FROM records WHERE component = ?1 AND (?2 IS NULL OR node IN (SELECT value FROM json_each(?2)))",
+      )
+      .bind(component, teams === undefined ? null : JSON.stringify(teams)),
+    // Counted over every node, listed or not.
+    db.prepare("SELECT COUNT(*) AS claims FROM records WHERE component = ?1 AND type = 'claim' AND state = 'valid' AND received_at <= ?2").bind(component, lastToPass),
+  ])) as [D1Result<Pick<Component, "state" | "view_version">>, D1Result<NodeRow>, D1Result<Row>, D1Result<{ claims: number }>];
   const [held] = found.results;
   if (!held) return undefined;
   const listed = teams === undefined ? undefined : new Set(teams);
-  const counted = (node: string): boolean => listed === undefined || listed.has(node);
-  const rows = stored.results.filter(({ node }) => counted(node));
+  const rows = stored.results;
 
-  const ttl = claimTtlMs(env);
-  const pastItsTime = (row: Row): boolean => now - row.received_at >= ttl;
+  const pastItsTime = (row: Row): boolean => row.received_at <= lastToPass;
 
   const valid: Published[] = [];
   const rowOf = new Map<Published, Row>();
@@ -139,12 +146,12 @@ export async function viewOf(env: Env, component: string, teams: readonly string
   }
   const recipes = [...byTree].sort(([a], [b]) => compare(a, b)).map(([tree, records]) => ({ tree, records, nodes: nodesOf(records) }));
 
-  const nodes = registered.results.filter(({ url }) => counted(url));
+  const nodes = registered.results.filter(({ url }) => listed === undefined || listed.has(url));
   // The index lag: the time since the oldest notice that is not yet processed arrived (Appendix H).
   const waiting = registered.results.flatMap(({ noticed_at, absorbed_at }) => [noticed_at, absorbed_at]).filter((at) => at !== null);
   // A claim that passes its time changes the view with no write, so the version counts
   // those claims on top of the stored number. Both only go up.
-  const timedOut = stored.results.filter((row) => row.type === "claim" && row.state === "valid" && pastItsTime(row)).length;
+  const timedOut = passed.results[0]?.claims ?? 0;
 
   return {
     version: SCHEMA_VERSION,
