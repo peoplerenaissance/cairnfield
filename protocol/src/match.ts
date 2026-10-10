@@ -8,6 +8,7 @@ import type { Criterion, Observation } from "./enums.ts";
 import type { FileListing } from "./files.ts";
 import type { CitedRange } from "./patch-checks.ts";
 import { CONFIRMED_AT } from "./limits.ts";
+import type { LineRange } from "./lines.ts";
 import type { AnyRecord, CounterFinding, Finding, Recheck } from "./schemas.ts";
 
 /**
@@ -19,11 +20,6 @@ export interface Sourced<R extends AnyRecord = AnyRecord> {
   readonly node: string;
   readonly id: string;
   readonly record: R;
-}
-
-export interface LineRange {
-  readonly start: number;
-  readonly end: number;
 }
 
 /** Two line ranges overlap when they share at least one line. */

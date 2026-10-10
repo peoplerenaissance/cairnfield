@@ -8,6 +8,7 @@ import { syncNode } from "../src/sync.ts";
 import { BRANCH, FILES, NODE_A, NODE_B, SKILL, START, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
 import type { Bench } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
+import type { Files } from "./fake-artifacts.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
 
 const MINUTE = 60_000;
@@ -980,6 +981,61 @@ describe("a record and the state of its component's copy (KTD12, KTD36)", () => 
     await on.drain();
     expect((await on.view(commit)).state).toBe("failed");
     expect(on.artifacts.imports).toHaveLength(2);
+  });
+
+  /** A component of these paths, each a short file. */
+  const notesAt = (paths: readonly string[]): Files => Object.fromEntries(paths.map((path) => [path, "A note.\n"]));
+  /** One file in each of this many folders. */
+  const inFolders = (folders: number): string[] => Array.from({ length: folders }, (_, at) => `folder-${String(at).padStart(3, "0")}/note.md`);
+
+  /**
+   * Imports a component of these paths while a finding of a node waits for the copy, and
+   * holds that the component failed with no import error and the finding was rejected.
+   */
+  async function givenUp(paths: readonly string[]): Promise<{ readonly on: Bench; readonly commit: string }> {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, notesAt(paths));
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    await on.registerNode(NODE_A);
+    const [id] = await node.publish(finding(commit, { location: { path: paths[0], start: 1, end: 1 } }));
+    await on.notice(NODE_A);
+    // The import starts and the node is synced. The copy is not ready yet.
+    await on.deliver();
+    await on.deliver();
+    expect((await on.view(commit)).pending).toEqual([{ node: NODE_A, hash: id, type: "finding" }]);
+
+    on.artifacts.finish();
+    await on.drain();
+    const view = await on.view(commit);
+    expect(view.state).toBe("failed");
+    expect(view.pending).toEqual([]);
+    expect(view.rejected).toEqual([{ node: NODE_A, hash: id, type: "finding", reason: "unknown-component" }]);
+    // No path of the copy is stored. A registration that names another branch starts nothing, and is told the state.
+    expect(await env.DB.prepare("SELECT COUNT(*) AS rows FROM files WHERE component = ?").bind(commit).first()).toEqual({ rows: 0 });
+    expect((await on.registerComponent({ url: UPSTREAM, branch: "other", commit })).body).toEqual({ version: "1", component: commit, state: "failed" });
+    return { on, commit };
+  }
+
+  it("marks a component as failed with no import error when its copy holds 501 folders, rejects a record that waited for it, and reads no folder past the 500th", async () => {
+    const { on, commit } = await givenUp(inFolders(501));
+    // The tree of the commit and 500 folders.
+    expect(on.artifacts.treeReads(`copy-${commit}`)).toBe(501);
+  });
+
+  it("marks a component as failed with no import error when its copy holds 20,001 files, and rejects a record that waited for it", async () => {
+    // 21 folders, each of 1,000 files but the last, which holds one.
+    await givenUp(Array.from({ length: 20_001 }, (_, at) => `pack-${String(Math.floor(at / 1000)).padStart(2, "0")}/note-${String(at).padStart(5, "0")}.md`));
+  });
+
+  it("lists a copy that holds exactly 500 folders", async () => {
+    const on = bench();
+    const paths = inFolders(500);
+    const commit = await on.component(notesAt(paths));
+    expect((await on.view(commit)).state).toBe("ready");
+    const listed = await env.DB.prepare("SELECT path FROM files WHERE component = ? ORDER BY path").bind(commit).all<{ path: string }>();
+    expect(listed.results.map(({ path }) => path)).toEqual(paths);
   });
 
   it("leaves the index's copy with no active token after the import", async () => {
