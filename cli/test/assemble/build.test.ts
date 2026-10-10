@@ -357,6 +357,23 @@ describe("a lens that publishes recipes", () => {
     expect(existsSync(copies) ? readdirSync(copies) : []).toEqual([]);
   });
 
+  it("leaves nothing of an export that was cut short", async () => {
+    const component = await pinnedWith(on, { patchLevel: 1 });
+    await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
+    // Git is asked for file content twice: once to check the patch, and once to export the copy.
+    // The second fails, after the export has made its folder.
+    let reads = 0;
+    on.beforeGit = (args) => {
+      if (args[0] === "cat-file" && args.includes("--batch") && ++reads === 2) throw new Error("the export failed");
+    };
+
+    const outcome = await on.run("assemble", component);
+
+    expect(reads).toBe(2);
+    expect(outcome.code).toBe(EXIT.failed);
+    expect(readdirSync(join(on.home, COPIES))).toEqual([]);
+  });
+
   it("keeps the copy when only the notice to the index fails, because the recipe is published all the same", async () => {
     const component = await pinnedWith(on, { patchLevel: 1, publishRecipes: true });
     await ownPatch(on, component, { cites: [[5, 5]], changes: bothRules(rules({ 5: undefined })) });
