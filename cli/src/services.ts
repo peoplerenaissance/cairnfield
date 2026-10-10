@@ -4,9 +4,10 @@
 //
 // Every call runs under a deadline, follows no redirect and stops reading at a size
 // limit (KTD33). An answer is data. A refusal is a code from the service's closed list.
+// Assembly also reads from the nodes of other teams, through the same calls.
 
-import { ADMIN_REPO, INDEX_REFUSAL, MAX_RECORD_BYTES, NODE_REFUSAL, NODE_ROUTES, conforms } from "@cairnfield/protocol";
-import type { Infer, Route, ShapeKind } from "@cairnfield/protocol";
+import { ADMIN_REPO, INDEX_REFUSAL, MAX_LISTING_ENTRIES, MAX_RECORD_BYTES, NODE_REFUSAL, NODE_ROUTES, conforms } from "@cairnfield/protocol";
+import type { Infer, NodeListing, Route, ShapeKind } from "@cairnfield/protocol";
 import { ADMIN_KEY, keyFrom } from "./config.ts";
 import type { Home } from "./config.ts";
 import { isArtifactsRemote } from "./git.ts";
@@ -18,6 +19,10 @@ import type { ExitCode } from "./outcome.ts";
 const DEADLINE_MS = 30_000;
 /** No answer is read past this size. The view of a large component is the largest answer. */
 const MAX_ANSWER_BYTES = 32 * 1024 * 1024;
+/** A node's listing is read up to this size: the most entries it may hold, with room for each. */
+const MAX_LISTING_BYTES = MAX_LISTING_ENTRIES * 512;
+/** A read token's answer is read up to this size. It holds a remote, a token and a time. */
+const MAX_TOKEN_ANSWER_BYTES = 8 * 1024;
 
 export type Answer<T> =
   | { readonly ok: true; readonly body: T }
@@ -31,9 +36,12 @@ type JsonRoute = Route & { readonly response: ShapeKind };
 /** What one call sends. */
 export interface Sent {
   readonly params?: { readonly [name: string]: string };
+  readonly query?: { readonly [name: string]: string };
   /** The key the route needs. It travels in the route's own header. */
   readonly key?: string;
   readonly body?: object;
+  /** The most of the answer to read, when the route's answers are smaller than the largest one. */
+  readonly maxBytes?: number;
 }
 
 async function readUpTo(response: Response, max: number): Promise<Uint8Array | undefined> {
@@ -61,13 +69,14 @@ async function call<R extends JsonRoute>(
 ): Promise<Answer<Infer<R["response"]>>> {
   // An index path starts at the index address. A node path is joined to the node's base URL.
   const path = route.path.replace(/\{([a-z]+)\}/g, (_, name: string) => encodeURIComponent(sent.params?.[name] ?? ""));
+  const query = sent.query === undefined ? "" : `?${new URLSearchParams(sent.query)}`;
   const headers = new Headers();
   if (sent.body !== undefined) headers.set("content-type", "application/json");
   if (route.key !== undefined && sent.key !== undefined) headers.set(route.key, sent.key);
   let status: number;
   let bytes: Uint8Array | undefined;
   try {
-    const response = await io.fetch(`${base}${path.startsWith("/") ? "" : "/"}${path}`, {
+    const response = await io.fetch(`${base}${path.startsWith("/") ? "" : "/"}${path}${query}`, {
       method: route.method,
       headers,
       ...(sent.body === undefined ? {} : { body: JSON.stringify(sent.body) }),
@@ -75,7 +84,7 @@ async function call<R extends JsonRoute>(
       signal: AbortSignal.timeout(DEADLINE_MS),
     });
     status = response.status;
-    bytes = await readUpTo(response, MAX_ANSWER_BYTES);
+    bytes = await readUpTo(response, sent.maxBytes ?? MAX_ANSWER_BYTES);
   } catch {
     return { ok: false, error: "unreachable" };
   }
@@ -92,8 +101,14 @@ async function call<R extends JsonRoute>(
   return { ok: false, error: "refused", reason: (body as { readonly error: string }).error };
 }
 
+/** Calls a node by its base URL. The node may be another team's. */
+export function callNodeAt<R extends JsonRoute>(io: Io, node: string, route: R, sent: Sent = {}) {
+  return call(io, node, route, NODE_REFUSAL, sent);
+}
+
+/** Calls the team's own node. */
 export function callNode<R extends JsonRoute>(io: Io, home: Home, route: R, sent: Sent = {}) {
-  return call(io, home.config.node, route, NODE_REFUSAL, sent);
+  return callNodeAt(io, home.config.node, route, sent);
 }
 
 export function callIndex<R extends JsonRoute>(io: Io, index: string, route: R, sent: Sent = {}) {
@@ -113,16 +128,21 @@ export const nodeFailed = (answer: Failed): never => failed(EXIT.node, "node", a
 /** Ends the command for a call to the index that did not succeed. */
 export const indexFailed = (answer: Failed): never => failed(EXIT.index, "index", answer);
 
+/** The head of a node's team repo with the record files it holds (R7). */
+export function nodeListing(io: Io, node: string): Promise<Answer<NodeListing>> {
+  return callNodeAt(io, node, NODE_ROUTES.listing, { maxBytes: MAX_LISTING_BYTES });
+}
+
 /**
- * Reads one record file of the team repo as the node serves it at a commit. The node
- * validates nothing (KTD7), so the caller checks the bytes. Returns nothing for a file
- * the node does not serve, or one too large to be a record.
+ * Reads one record file of a node's team repo as the node serves it at a commit. The
+ * node validates nothing (KTD7), so the caller checks the bytes. Returns nothing for a
+ * file the node does not serve, or one too large to be a record.
  */
-export async function readRecordFile(io: Io, home: Home, commit: string, path: string): Promise<Uint8Array | undefined> {
+export async function readRecordFile(io: Io, node: string, commit: string, path: string): Promise<Uint8Array | undefined> {
   const query = new URLSearchParams({ commit, path });
   let response: Response;
   try {
-    response = await io.fetch(`${home.config.node}/${NODE_ROUTES.file.path}?${query}`, {
+    response = await io.fetch(`${node}/${NODE_ROUTES.file.path}?${query}`, {
       redirect: "manual",
       signal: AbortSignal.timeout(DEADLINE_MS),
     });
@@ -168,4 +188,16 @@ export async function repoAccess(
   if (!answer.ok) return nodeFailed(answer);
   if (!isArtifactsRemote(answer.body.remote)) return stop(EXIT.node, "node-bad-answer");
   return { remote: answer.body.remote, token: answer.body.token };
+}
+
+/**
+ * Gets the read token of a component's fork from any node, by the route that needs no
+ * key (KTD7). The node may be another team's, and it names the remote, so the remote's
+ * form is checked here, before any of it reaches Git (KTD33).
+ */
+export async function forkAccess(io: Io, node: string, component: string): Promise<Answer<Access>> {
+  const answer = await callNodeAt(io, node, NODE_ROUTES.readToken, { query: { component }, maxBytes: MAX_TOKEN_ANSWER_BYTES });
+  if (!answer.ok) return answer;
+  if (!isArtifactsRemote(answer.body.remote)) return { ok: false, error: "bad-answer" };
+  return { ok: true, body: { remote: answer.body.remote, token: answer.body.token } };
 }

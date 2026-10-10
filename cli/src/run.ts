@@ -8,6 +8,7 @@
 //   cairnfield claim <component> --kind patch --findings <id>[,<id>] --intent <intent> [--number <n>]
 //   cairnfield view <component>
 //   cairnfield patch <component> --finding <id> [--replay]
+//   cairnfield assemble <component>
 //
 // Each takes `--config <file>`. Without it the command reads `cairnfield.json` in the
 // working folder.
@@ -15,6 +16,7 @@
 import { parseArgs } from "node:util";
 import type { ParseArgsConfig } from "node:util";
 import { isBranchName, isCommit, isHttpsUrl } from "@cairnfield/protocol";
+import { assemble } from "./commands/assemble.ts";
 import { claim } from "./commands/claim.ts";
 import { patch } from "./commands/patch.ts";
 import { pin } from "./commands/pin.ts";
@@ -68,6 +70,11 @@ const COMMANDS: { readonly [name: string]: Command } = {
     arguments: 1,
     run: (io, home, [component], { finding }, { replay }) =>
       isCommit(component) ? patch(io, home, { component, finding, replay: replay === true }) : usage(),
+  },
+  assemble: {
+    options: [],
+    arguments: 1,
+    run: (io, home, [component]) => (isCommit(component) ? assemble(io, home, component) : usage()),
   },
 };
 

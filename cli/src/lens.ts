@@ -1,8 +1,13 @@
 // A team's lens (R23, KTD38): the patch level, the teams it names, the patch kinds it
 // accepts and whether it publishes recipes. A lens is a local file and is never published.
 
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { PATCH_KINDS, conforms, field } from "@cairnfield/protocol";
 import type { Infer } from "@cairnfield/protocol";
+import { inCheckout } from "./config.ts";
+import type { Home } from "./config.ts";
+import { EXIT, stop } from "./outcome.ts";
 
 /** A lens names at most this many teams. The plan sets no bound, so this is a first value. */
 const MAX_LENS_TEAMS = 100;
@@ -48,4 +53,21 @@ export function parseLens(source: string): LensVerdict {
   if (!refusal) return { ok: true, lens: value as Lens };
   const known = (LENS_ERRORS as readonly string[]).includes(refusal.reason);
   return refuse(known ? (refusal.reason as LensError) : "unknown-value", refusal.field);
+}
+
+/** Reads the lens file the config names. A command that needs a lens ends without one. */
+export async function loadLens(home: Home): Promise<Lens> {
+  if (home.config.lens === undefined) return stop(EXIT.usage, "no-lens");
+  const file = resolve(home.root, home.config.lens);
+  // A lens says whose work counts. One read from a checkout would be the component's own say.
+  if (await inCheckout(file)) return stop(EXIT.usage, "bad-lens", { reason: "in-checkout" });
+  let text: string;
+  try {
+    text = await readFile(file, "utf8");
+  } catch {
+    return stop(EXIT.usage, "no-lens");
+  }
+  const read = parseLens(text);
+  if (!read.ok) return stop(EXIT.usage, "bad-lens", { reason: read.error });
+  return read.lens;
 }

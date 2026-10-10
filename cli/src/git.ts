@@ -9,10 +9,11 @@
 // file changes one.
 
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
-import { isGitHash, isNamespaceName, isRepoName } from "@cairnfield/protocol";
+import { DELETED_BLOB, DELETED_MODE, isGitHash, isNamespaceName, isRepoName } from "@cairnfield/protocol";
+import type { FileEntry } from "@cairnfield/protocol";
 import type { Io } from "./io.ts";
 import { EXIT, stop } from "./outcome.ts";
 
@@ -30,6 +31,8 @@ export interface GitCall {
   readonly input?: Uint8Array;
   /** The most standard output to keep. What Git lists and reads may come from a hostile repo, so none of it is unbounded. */
   readonly maxOutput: number;
+  /** Ends the Git process when it is aborted. */
+  readonly signal?: AbortSignal;
 }
 
 /** Starts one Git process and waits for it. */
@@ -55,6 +58,7 @@ export const runGit: GitRunner = (args, call) =>
       stdio: ["pipe", "pipe", "pipe"],
       timeout: GIT_DEADLINE_MS,
       killSignal: "SIGKILL",
+      ...(call.signal === undefined ? {} : { signal: call.signal }),
     });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
@@ -73,7 +77,11 @@ export const runGit: GitRunner = (args, call) =>
       errorBytes += chunk.length;
       if (errorBytes <= MAX_ERROR_BYTES) err.push(chunk);
     });
-    child.on("error", reject);
+    // A process that was ended through its signal reports that as an error. It is a run that failed.
+    child.on("error", (error) => {
+      if (call.signal?.aborted) resolve({ code: 1, stdout: new Uint8Array(0), stderr: "", overflowed });
+      else reject(error);
+    });
     child.on("close", (code) => {
       resolve({ code: code ?? 1, stdout: Buffer.concat(out), stderr: Buffer.concat(err).toString("utf8"), overflowed });
     });
@@ -164,9 +172,19 @@ function environment(io: Io, dir: string, { access, index, date }: GitOptions): 
   };
 }
 
+/** What a transfer from a repo of another team may take (KTD33). */
+export interface TransferBound {
+  /** The most the scratch repo may grow by. */
+  readonly bytes: number;
+  /** How long the transfer may run. */
+  readonly ms: number;
+}
+
 export interface GitOptions {
   /** The repo this call talks to. Without one, the call stays on this machine. */
   readonly access?: Access;
+  /** Stops Git when the call takes more than this, and ends the command with `fetch-too-large` or `fetch-too-slow`. */
+  readonly bound?: TransferBound;
   readonly input?: Uint8Array;
   /** An index file of the call's own, so the call builds a tree with no work tree. */
   readonly index?: string;
@@ -188,6 +206,57 @@ export interface Scratch {
   report(run: GitRun): void;
 }
 
+/** How often a bounded transfer is looked at. */
+const WATCH_EVERY_MS = 100;
+
+/** The bytes of every file under a folder. Git writes there meanwhile, so a file may be gone before it is measured. */
+async function folderBytes(dir: string): Promise<number> {
+  let bytes = 0;
+  for (const entry of await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])) {
+    if (entry.isFile()) bytes += await stat(join(entry.parentPath, entry.name)).then(({ size }) => size, () => 0);
+  }
+  return bytes;
+}
+
+/**
+ * Runs a transfer into the folder of a repo's objects, and ends it when the folder has
+ * grown past the bound or the deadline has passed. Artifacts takes no partial-clone
+ * filter, so Git cannot hold a transfer to a size itself (KTD33). Returns the run, or
+ * which bound ended it.
+ */
+async function bounded(
+  io: Io,
+  objects: string,
+  bound: TransferBound,
+  start: (signal: AbortSignal) => Promise<GitRun>,
+): Promise<GitRun | "fetch-too-large" | "fetch-too-slow"> {
+  const before = await folderBytes(objects);
+  const tooLarge = async (): Promise<boolean> => (await folderBytes(objects)) - before > bound.bytes;
+  const deadline = io.now() + bound.ms;
+  const ending = new AbortController();
+  let ended: "fetch-too-large" | "fetch-too-slow" | undefined;
+  let looking = false;
+  const watch = setInterval(() => {
+    if (looking || ended !== undefined) return;
+    looking = true;
+    void (async () => {
+      if (io.now() >= deadline) ended = "fetch-too-slow";
+      else if (await tooLarge()) ended = "fetch-too-large";
+      if (ended !== undefined) ending.abort();
+      looking = false;
+    })();
+  }, WATCH_EVERY_MS);
+  let run: GitRun;
+  try {
+    run = await start(ending.signal);
+  } finally {
+    clearInterval(watch);
+  }
+  // A transfer may end between two looks, so what it brought in is measured once more.
+  if (ended === undefined && (await tooLarge())) ended = "fetch-too-large";
+  return ended ?? run;
+}
+
 /** Runs work with a scratch repo, and deletes the repo afterwards. */
 export async function withScratch<T>(io: Io, work: (scratch: Scratch) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "cairnfield-"));
@@ -201,11 +270,15 @@ export async function withScratch<T>(io: Io, work: (scratch: Scratch) => Promise
     git: async (step, args, options = {}) => {
       if (options.access) tokens.add(options.access.token);
       const limit = options.limit ?? { bytes: MAX_OUTPUT_BYTES, error: "git-output-too-large" };
-      const run = await io.git(args, {
+      const call: GitCall = {
         env: environment(io, repo, options),
         ...(options.input === undefined ? {} : { input: options.input }),
         maxOutput: limit.bytes,
-      });
+      };
+      const run = options.bound
+        ? await bounded(io, join(repo, "objects"), options.bound, (signal) => io.git(args, { ...call, signal }))
+        : await io.git(args, call);
+      if (typeof run === "string") return stop(EXIT.git, run);
       if (run.overflowed) return stop(EXIT.failed, limit.error);
       if (run.code !== 0 && options.mayFail !== true) {
         scratch.report(run);
@@ -243,22 +316,140 @@ export async function writeBlobs(scratch: Scratch, contents: readonly Uint8Array
   return blobs;
 }
 
+/** The author and committer date of every commit the command builds on a component, in Git's own form: seconds since 1970 and a time zone. */
+const FIXED_DATE = "1760000000 +0000";
+
+/**
+ * Builds a commit on a commit the scratch repo holds: the parent's tree with each change
+ * applied, where a change with the deletion marker takes its path out. `blobs` holds the
+ * content of each new blob by its hash. The author, the committer and both dates are
+ * fixed, so the same changes on the same parent give the same commit hash on every
+ * machine (KTD17, KTD22). Returns the commit.
+ */
+export async function commitChanges(
+  scratch: Scratch,
+  parent: string,
+  changes: readonly FileEntry[],
+  blobs: ReadonlyMap<string, Uint8Array>,
+  message: string,
+): Promise<string> {
+  const contents = [...blobs];
+  const written = await writeBlobs(scratch, contents.map(([, content]) => content));
+  // Git and the protocol must agree on every blob, or the commit is not what was checked.
+  if (written.some((blob, at) => blob !== contents[at]?.[0])) stop(EXIT.git, "git-failed", { step: "hash-object" });
+
+  const index = join(await mkdtemp(join(scratch.dir, "index-")), "index");
+  await scratch.git("read-tree", ["read-tree", parent], { index });
+  await scratch.git("update-index", ["update-index", "--index-info"], {
+    index,
+    // A line with mode 0 takes its path out of the index.
+    input: inputLines(
+      changes.map(({ path, mode, blob }) => (mode === DELETED_MODE ? `0 ${DELETED_BLOB}\t${path}` : `${mode} blob ${blob}\t${path}`)),
+    ),
+  });
+  const tree = said(await scratch.git("write-tree", ["write-tree"], { index }));
+  return said(await scratch.git("commit-tree", ["commit-tree", tree, "-p", parent, "-m", message], { date: FIXED_DATE }));
+}
+
 /**
  * Fetches the commit that a branch or a full commit hash names, at depth 1, with no tag
  * and no submodule (KTD33). Returns the hash of the commit that arrived.
  */
-export async function fetchRef(scratch: Scratch, access: Access, ref: string): Promise<string> {
+export async function fetchRef(scratch: Scratch, access: Access, ref: string, bound?: TransferBound): Promise<string> {
   await scratch.git(
     "fetch",
     ["fetch", "--quiet", "--depth=1", "--no-tags", "--no-recurse-submodules", access.remote, ref],
-    { access },
+    { access, ...(bound === undefined ? {} : { bound }) },
   );
   return said(await scratch.git("fetch", ["rev-parse", "--verify", "--quiet", "FETCH_HEAD^{commit}"]));
 }
 
-/** Fetches one commit by its hash. The hash is the only thing asked for, and no other commit is accepted. */
-export async function fetchCommit(scratch: Scratch, access: Access, commit: string): Promise<void> {
-  if ((await fetchRef(scratch, access, commit)) !== commit) stop(EXIT.git, "git-failed", { step: "fetch" });
+/**
+ * Fetches one commit by its hash. The hash is the only thing asked for, and no other
+ * commit is accepted. A fetch from another team's repo is given a bound.
+ */
+export async function fetchCommit(scratch: Scratch, access: Access, commit: string, bound?: TransferBound): Promise<void> {
+  if ((await fetchRef(scratch, access, commit, bound)) !== commit) stop(EXIT.git, "git-failed", { step: "fetch" });
+}
+
+/** A commit's own lines are read up to this size. Its message may be as long as its author made it. */
+const MAX_COMMIT_BYTES = 64 * 1024;
+
+/**
+ * The parents of a commit, as the commit itself names them. A fetch at depth 1 cuts the
+ * history off at the commit, and its own lines still say what it was made on.
+ */
+export async function parentsOf(scratch: Scratch, commit: string): Promise<string[]> {
+  const { stdout } = await scratch.git("cat-file", ["cat-file", "commit", commit], {
+    limit: { bytes: MAX_COMMIT_BYTES, error: "commit-too-large" },
+  });
+  const parents: string[] = [];
+  // The lines up to the first empty one name the tree, the parents and who wrote the commit.
+  for (const line of new TextDecoder().decode(stdout).split("\n")) {
+    if (line === "") break;
+    if (line.startsWith("parent ")) parents.push(line.slice("parent ".length));
+  }
+  return parents;
+}
+
+/** The tree of a commit. */
+export async function treeOf(scratch: Scratch, commit: string): Promise<string> {
+  return said(await scratch.git("rev-parse", ["rev-parse", "--verify", "--quiet", `${commit}^{tree}`]));
+}
+
+/** One side of a path that differs between two commits. */
+export interface TreeSide {
+  readonly mode: string;
+  readonly hash: string;
+}
+
+/** A path whose entry differs between two commits. A side is missing when the commit does not hold the path. */
+export interface TreeChange {
+  /** The path is bytes, because a hostile repo may hold any. */
+  readonly path: Uint8Array;
+  readonly old?: TreeSide;
+  readonly new?: TreeSide;
+}
+
+const RAW_CHANGE = /^:([0-7]{6}) ([0-7]{6}) ([0-9a-f]{40}) ([0-9a-f]{40}) [ADMT]$/;
+
+/**
+ * Every path whose mode or content differs between the trees of two commits, with no
+ * rename worked out. The list is as long as the second commit's author made it, so the
+ * caller sets its limit.
+ */
+export async function diffTrees(scratch: Scratch, from: string, to: string, limit: OutputLimit): Promise<TreeChange[]> {
+  const { stdout } = await scratch.git("diff-tree", ["diff-tree", "-r", "-z", "--raw", "--no-renames", "--no-abbrev", from, to], { limit });
+  const changes: TreeChange[] = [];
+  let start = 0;
+  while (start < stdout.length) {
+    // `:<old mode> <new mode> <old hash> <new hash> <status>`, a zero byte, the path, a zero byte.
+    const head = stdout.indexOf(NUL, start);
+    const end = stdout.indexOf(NUL, head + 1);
+    const match = head < 0 || end < 0 ? null : RAW_CHANGE.exec(new TextDecoder().decode(stdout.subarray(start, head)));
+    if (!match) return stop(EXIT.git, "git-failed", { step: "diff-tree" });
+    const [, oldMode = "", newMode = "", oldHash = "", newHash = ""] = match;
+    changes.push({
+      path: stdout.subarray(head + 1, end),
+      ...(oldMode === DELETED_MODE ? {} : { old: { mode: oldMode, hash: oldHash } }),
+      ...(newMode === DELETED_MODE ? {} : { new: { mode: newMode, hash: newHash } }),
+    });
+    start = end + 1;
+  }
+  return changes;
+}
+
+/** The size of each object that is a blob. A hash the repo lacks, or one that names no blob, gets none. */
+export async function blobSizes(scratch: Scratch, hashes: readonly string[]): Promise<Map<string, number>> {
+  const sizes = new Map<string, number>();
+  if (hashes.length === 0) return sizes;
+  const asked = await scratch.git("cat-file", ["cat-file", "--batch-check"], { input: inputLines(hashes) });
+  // `<hash> <type> <size>` for an object the repo holds.
+  for (const line of said(asked).split("\n")) {
+    const [hash = "", type = "", size = ""] = line.split(" ");
+    if (type === "blob" && Number.isSafeInteger(Number(size))) sizes.set(hash, Number(size));
+  }
+  return sizes;
 }
 
 /** One entry of a commit's tree. The path is bytes, because a hostile repo may hold any. */

@@ -28,7 +28,7 @@ import type { Outcome } from "../outcome.ts";
 import { commitPatch, pushPatch } from "../patch/commit.ts";
 import { ANSWER_SCHEMA, draftPatch } from "../patch/edits.ts";
 import type { Drafted } from "../patch/edits.ts";
-import { adminKey, callNode, nodeFailed, readRecordFile, repoAccess, untilReady } from "../services.ts";
+import { adminKey, callNode, nodeFailed, nodeListing, readRecordFile, repoAccess, untilReady } from "../services.ts";
 import { claim } from "./claim.ts";
 import { publish } from "./publish.ts";
 import { verdict } from "./validate.ts";
@@ -100,10 +100,10 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
   // written for no finding but the team's own. The node validates nothing, so the file it
   // lists is read and held to the check the outbox's file passed. A record file's name is
   // the hash of its content (KTD1), so a valid file at this path is this record.
-  const held = await callNode(io, home, NODE_ROUTES.listing);
+  const held = await nodeListing(io, home.config.node);
   if (!held.ok) return held.error === "refused" && held.reason === "not-found" ? unknown() : nodeFailed(held);
   if (!held.body.records.some((record) => record.path === path)) return unknown();
-  const published = await readRecordFile(io, home, held.body.head, path);
+  const published = await readRecordFile(io, home.config.node, held.body.head, path);
   if (!published || !(await validateRecordFile(path, published)).ok) return unknown();
 
   // A replay publishes the claim with the number its recording holds (Appendix H).
