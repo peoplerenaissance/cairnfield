@@ -22,7 +22,7 @@ npm run setup
 | Option | What it sets |
 | --- | --- |
 | `--url <base-url>` | The node's base URL, when you know it. The script then deploys once. |
-| `--domain <hostname>` | A hostname of your own for the node, in a zone of your Cloudflare account. The node's base URL is then `https://<hostname>`. |
+| `--domain <hostname>` | A hostname of your own for the node, in a zone of your Cloudflare account. The node's base URL is then `https://<hostname>`. Give it only from a terminal: outside one, Wrangler replaces a DNS record or another Worker's custom domain at that hostname without asking, so the script stops. |
 | `--index <address>` | The index that the node tells about each push. |
 
 The script checks each address before it deploys anything. It stops when Wrangler is not logged in, and it never uses a temporary Cloudflare account. Every run sets the node's address and its index address again, so give the same options each time. The node's address is the team's identity, and an index or a lens that names the old address does not know a new one.
@@ -37,7 +37,7 @@ In the account that Wrangler is logged in to:
 - the trigger that starts that Workflow on each push to that namespace
 - the custom domain, when you give one
 
-It updates each of these that is already there. It deletes nothing.
+It updates each of these that is already there. With `--domain`, it switches off the node's address on `workers.dev`, because Wrangler gives a Worker with a custom domain no address there. It deletes nothing.
 
 ## Set the admin key
 

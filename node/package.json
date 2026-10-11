@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Cairnfield team node: a Cloudflare Worker that holds a team's repos on Artifacts and serves the node contract.",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.22"
   },
   "scripts": {
     "test": "vitest run",

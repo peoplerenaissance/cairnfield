@@ -4,7 +4,7 @@
 
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
-import { NOTICE_PATH, isIndexUrl, isNodeUrl } from "./contract.ts";
+import { NOTICE_PATH, isIndexUrl, isNodeOrigin } from "./contract.ts";
 import type { Notice } from "./contract.ts";
 import type { Env } from "./env.ts";
 
@@ -24,7 +24,7 @@ export class OnPush extends WorkflowEntrypoint<Env> {
     // the index refuses any other. This Worker also answers at the root of its host, so
     // its address has no path. A node that was deployed without such an address cannot
     // send a notice, and the instance ends in an error that says why.
-    if (!isNodeUrl(node) || new URL(node).pathname !== "/") {
+    if (!isNodeOrigin(node)) {
       throw new Error("NODE_URL is not this node's origin in the accepted spelling, so the node cannot name itself in a notice");
     }
     await step.do("send notice", async () => {

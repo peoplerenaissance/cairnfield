@@ -252,9 +252,17 @@ The work is split in three.
 
 1. The operator pins the component.
 2. The agent reads the checkout as data and writes one record file for each finding into the outbox. It runs `npx --no cairnfield validate` until its files pass, and stops.
-3. The operator runs `publish`.
+3. The operator runs `publish`. It sends the admin key to the node that `cairnfield.json` names, and an agent that ran in that folder could have changed the file. So the operator reads `cairnfield.json` first, or starts the agent with only the outbox writable.
 
-Do not start the agent in a shell that holds `CAIRNFIELD_ADMIN_KEY`. The agent has just read a component that may be hostile, and `validate` needs no key. The skill file tells the agent to check that the key is not set. The command cannot enforce where the key is set, so this rests on the operator.
+Start the agent in the folder that holds `cairnfield.json`, and give it this instruction:
+
+```
+Follow <repo>/skills/cairnfield/SKILL.md. Review the checkout of <commit>. Stop when validate accepts your files.
+```
+
+`<repo>` is the path to this repo, and `<commit>` is the full hash the operator pinned. A harness started in the repo root may also load this repo's `AGENTS.md` and `CLAUDE.md`, which are written for coding agents on this repo and give a review agent no instructions.
+
+Do not start the agent in a shell that holds `CAIRNFIELD_ADMIN_KEY` or `CAIRNFIELD_REGISTRATION_KEY`, the index's registration key, which `pin` reads when the config names an index. The agent has just read a component that may be hostile, and `validate` needs no key. The skill file tells the agent to check that neither key is set. The command cannot enforce where a key is set, so this rests on the operator.
 
 ## The protocol in brief
 
@@ -318,7 +326,7 @@ Some limits belong to the design and not to the prototype. Every node is public,
 
 - **Naming a team in a lens is a statement of trust.** `assemble` checks that team's patches against the lines their findings cite. The checks bound where a patch changes, not what it writes. The operator reads the diff.
 - **A hostile component can steer the patch agent.** The bundled agent reads a checkout, and text there may lead it to write a harmful patch. The patch checks bound what a patch can change, and the operator reads the full diff before the verdict.
-- **An outside agent must not run in a shell that holds the node's admin key.** A team's own review agent stops at `validate`, which needs no key. The command cannot enforce where the key is set.
+- **An outside agent must not run in a shell that holds the node's admin key or an index's registration key.** A team's own review agent stops at `validate`, which needs no key. The command cannot enforce where a key is set.
 - **Anonymous requests can spend a node's Artifacts request budget.** A node's `records`, `file`, `patch` and `blob` routes read Artifacts on every request, for anyone. Only the read-token route is bounded. The demo accepts this.
 
 ### Disclosure policy

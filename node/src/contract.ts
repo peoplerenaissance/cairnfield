@@ -246,6 +246,14 @@ export function isNodeUrl(value: unknown): value is string {
   return href === value || href === `${value}/`;
 }
 
+/**
+ * A base URL this Worker can have: the one accepted spelling (KTD8) with no path, because
+ * the Worker answers at the root of its host.
+ */
+export function isNodeOrigin(value: unknown): value is string {
+  return isNodeUrl(value) && new URL(value).pathname === "/";
+}
+
 /** A notice names one node by its base URL. */
 export interface Notice {
   readonly node: string;

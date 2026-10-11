@@ -8,7 +8,10 @@
 //           deploys once to learn the node's address on workers.dev, and again to give
 //           the node that address.
 // --domain  A hostname of the operator's own, for a node that is not on workers.dev.
-//           Given alone, it makes the node's base URL `https://<hostname>`.
+//           Given alone, it makes the node's base URL `https://<hostname>`. Wrangler
+//           switches off the address on workers.dev of a Worker it deploys with one. The
+//           script takes one only in a terminal, where Wrangler asks before it replaces
+//           what is at the hostname.
 // --index   The address of the index that the node tells about each push. A node with
 //           none sends no notice (KTD40).
 //
@@ -18,20 +21,24 @@
 // makes, reads, prints or stores an admin key (KTD10): it ends by saying how the
 // operator sets one.
 //
-// On a deploy, Wrangler 4.147 writes resource IDs into its config file once it has made
-// a resource for a binding it provisions, such as a database or a queue. A node has no
-// such binding, so the script does nothing to keep `wrangler.jsonc` as it is.
+// A deploy can write into Wrangler's config file. That was seen with Wrangler 4.148.0, on
+// another Worker of this repo that has a database and a queue: its first deploy made both
+// and wrote their IDs into that Worker's config file. The source of 4.147.0, which this
+// package pins, writes IDs only once it has made a resource for a binding of a kind it
+// provisions, and a database and a queue are of those kinds. That was read and not seen
+// to run. A node has no binding of those kinds, so the script does nothing to keep
+// `wrangler.jsonc` as it is.
 //
 // It ends with 0 when the node is deployed and answers, with 1 when a step fails or the
 // node does not answer, and with 2 when it is given an option or an address it cannot use.
 
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { PATHS, isIndexUrl, isNodeUrl } from "../src/contract.ts";
+import { PATHS, isIndexUrl, isNodeOrigin } from "../src/contract.ts";
 
 /** One run of Wrangler. */
 export interface WranglerCall {
@@ -46,6 +53,10 @@ export interface WranglerCall {
  * Wrangler and a fake node behind these, and the script runs unchanged.
  */
 export interface Io {
+  /** Whether Wrangler is installed in this package. */
+  readonly installed: () => Promise<boolean>;
+  /** Whether the script runs in a terminal, where Wrangler can ask the operator a question. */
+  readonly interactive: boolean;
   /** Runs the Wrangler installed in this package, and gives its exit code. */
   readonly wrangler: (args: readonly string[], call: WranglerCall) => Promise<number>;
   readonly fetch: typeof fetch;
@@ -56,17 +67,31 @@ export interface Io {
 /** This package's folder. Wrangler runs here, where its config file is. */
 const FOLDER = fileURLToPath(new URL("..", import.meta.url));
 
+/**
+ * Wrangler's own entry file, which `node_modules/.bin/wrangler` links to. The Node that
+ * runs this script runs it, so it is never a Wrangler from outside this package.
+ */
+const WRANGLER = join(FOLDER, "node_modules", "wrangler", "bin", "wrangler.js");
+
 /** The script's own process: this package's Wrangler, the network and standard output. */
 export function processIo(): Io {
   return {
+    installed: () =>
+      access(WRANGLER).then(
+        () => true,
+        () => false,
+      ),
+    // Wrangler asks a question only when its input and its output are both a terminal.
+    // In any other run it takes the answer to be yes.
+    interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
     wrangler: (args, call) =>
       new Promise((resolve, reject) => {
-        // Wrangler's own entry file, which `node_modules/.bin/wrangler` links to, run by
-        // the Node that runs this script. It is never a Wrangler from outside this package.
-        const child = spawn(process.execPath, [join(FOLDER, "node_modules", "wrangler", "bin", "wrangler.js"), ...args], {
+        const child = spawn(process.execPath, [WRANGLER, ...args], {
           cwd: FOLDER,
           env: { ...process.env, ...call.env },
-          stdio: call.shown ? "inherit" : "ignore",
+          // A hidden run still shows its standard error, where Wrangler says why it
+          // failed. The account's details are on its standard output.
+          stdio: call.shown ? "inherit" : ["ignore", "ignore", "inherit"],
         });
         child.on("error", reject);
         // A run that a signal ended has no code. It is a run that failed.
@@ -101,15 +126,6 @@ function optionsOf(args: readonly string[]): Options | undefined {
   } catch {
     return undefined;
   }
-}
-
-/**
- * A base URL this Worker can have: the one accepted spelling (KTD8) with no path, because
- * the Worker answers at the root of its host. The node's Workflow holds its own address
- * to the same rule, and sends no notice from any other.
- */
-function isOwnAddress(value: unknown): value is string {
-  return isNodeUrl(value) && new URL(value).pathname === "/";
 }
 
 /** What the top level of `wrangler.jsonc` deploys. A test holds these names to that file. */
@@ -155,7 +171,7 @@ function addressIn(record: string): string | undefined {
     }
     if (typeof entry !== "object" || entry === null || !("type" in entry) || entry.type !== "deploy") continue;
     const targets: readonly unknown[] = "targets" in entry && Array.isArray(entry.targets) ? entry.targets : [];
-    const address = targets.find(isOwnAddress);
+    const address = targets.find(isNodeOrigin);
     if (address !== undefined) return address;
   }
   return undefined;
@@ -222,7 +238,7 @@ export async function setupNode(io: Io, args: readonly string[]): Promise<ExitCo
   // printed back, because a URL can hold a password.
   const given = url ?? (domain === undefined ? undefined : `https://${domain}`);
   // A hostname given beside a URL is held to the same rule: it goes to Wrangler, and into what the script says.
-  const refused = url !== undefined && !isOwnAddress(url) ? "--url" : domain !== undefined && !isOwnAddress(`https://${domain}`) ? "--domain" : undefined;
+  const refused = url !== undefined && !isNodeOrigin(url) ? "--url" : domain !== undefined && !isNodeOrigin(`https://${domain}`) ? "--domain" : undefined;
   if (refused !== undefined) {
     sayAll(io, [
       `The value given with ${refused} gives no address a node can have.`,
@@ -240,9 +256,28 @@ export async function setupNode(io: Io, args: readonly string[]): Promise<ExitCo
     return EXIT.usage;
   }
 
-  // Wrangler answers with the account's details and ends with 0 only when it is logged in.
+  // With a custom domain, Wrangler asks before it replaces a DNS record or another
+  // Worker's custom domain at the hostname. Outside a terminal it asks nothing and
+  // replaces both.
+  if (domain !== undefined && !io.interactive) {
+    sayAll(io, [
+      "A hostname is given with --domain only from a terminal.",
+      "Outside one, Wrangler replaces what is at that hostname without asking: a DNS record, or another Worker's custom domain.",
+    ]);
+    return EXIT.usage;
+  }
+
+  // Without this check, the login check below would fail on a missing Wrangler and be
+  // read as a missing login.
+  if (!(await io.installed())) {
+    sayAll(io, ["Wrangler is not installed in this folder. Install it from this folder, then run the setup again:", "  npm install"]);
+    return EXIT.failed;
+  }
+  // Wrangler answers with the account's details and ends with 0 only when it is logged
+  // in. It ends with another code for any other failure too, so the script does not say
+  // which one this was.
   if ((await io.wrangler(["whoami", "--json"], { shown: false })) !== 0) {
-    sayAll(io, ["Wrangler is not logged in to Cloudflare. Log in from this folder, then run the setup again:", "  npx wrangler login"]);
+    sayAll(io, ["The login check failed. To log Wrangler in, run this from this folder, then run the setup again:", "  npx wrangler login"]);
     return EXIT.failed;
   }
 
@@ -250,6 +285,9 @@ export async function setupNode(io: Io, args: readonly string[]): Promise<ExitCo
     "This deploys a team node to the Cloudflare account that Wrangler is logged in to.",
     "It creates each of these that is missing, and updates each that is there:",
     ...[...CREATED, ...(domain === undefined ? [] : [`the custom domain ${domain}`])].map((created) => `  ${created}`),
+    // Wrangler gives a Worker no address on workers.dev when it deploys it with a custom
+    // domain and the config does not ask for one.
+    ...(domain === undefined ? [] : ["It switches off the node's address on workers.dev, because the node gets a custom domain."]),
     "It deletes nothing.",
   ]);
   let node = given;
@@ -260,7 +298,16 @@ export async function setupNode(io: Io, args: readonly string[]): Promise<ExitCo
     io.say(`The node's address is ${node}. Deploying again to give the node that address.`);
   }
   if ((await io.wrangler(deployArgs(node, options), { shown: true })) !== 0) {
-    io.say(NOT_DEPLOYED);
+    if (given !== undefined) io.say(NOT_DEPLOYED);
+    else {
+      // The first deploy made the node. The address is one the script checked, and so is
+      // the index address, so both can be said back.
+      sayAll(io, [
+        `The node is deployed at ${node}, but the deploy that gives it that address failed. What Wrangler printed above says why.`,
+        "Run the setup again with that address, so that the node has it:",
+        `  npm run setup -- --url ${node}${index === undefined ? "" : ` --index ${index}`}`,
+      ]);
+    }
     return EXIT.failed;
   }
 

@@ -1,6 +1,8 @@
 // What a command gives back: one JSON value for standard output and an exit code.
 // The codes are stable, so a person, a script or another agent can act on them. Every
 // string the command writes itself is a code, a path or a hash, and none is a sentence.
+// The one exception is the launcher, `bin/cairnfield.mjs`: on a Node older than the
+// command needs, it also writes one sentence to standard error for a person to read.
 // One output holds text from outside: `pin` lists the paths of the pinned tree that its
 // checkout leaves out, and a component's author chose those.
 
@@ -10,7 +12,11 @@ export const EXIT = {
   failed: 1,
   /** A record was refused. Nothing was published. */
   invalid: 2,
-  /** The arguments, the config file or a key in the environment is missing or wrong. */
+  /**
+   * The arguments, the config file or a key in the environment is missing or wrong. The
+   * launcher returns it too, with the error `node-too-old`, when the command is started
+   * on a Node older than it needs.
+   */
   usage: 3,
   /** The node could not be reached, refused, or gave an answer the contract does not allow. */
   node: 4,

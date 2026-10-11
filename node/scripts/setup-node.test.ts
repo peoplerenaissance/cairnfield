@@ -16,6 +16,10 @@ const INDEX = "https://index.cairnfield.example";
 const fresh = (): Response => Response.json({ error: "not-found" }, { status: 404 });
 
 interface Stand {
+  /** Whether Wrangler is installed in the package. */
+  readonly installed?: boolean;
+  /** Whether the script runs in a terminal. */
+  readonly interactive?: boolean;
   /** Whether Wrangler has a login. */
   readonly loggedIn?: boolean;
   /** The exit code of each deploy, in turn. A deploy past the end of the list ends with 0. */
@@ -48,6 +52,8 @@ function bench(stand: Stand = {}): Bench {
   let deploys = 0;
   let saidBeforeDeploy: number | undefined;
   const io: Io = {
+    installed: async () => stand.installed !== false,
+    interactive: stand.interactive !== false,
     wrangler: async (args, call) => {
       ran.push({ args, call });
       if (args[0] === "whoami") return stand.loggedIn === false ? 1 : 0;
@@ -103,6 +109,7 @@ describe("the setup script, given the node's address", () => {
     // The answer to the login check names the account, so the operator's terminal does not show it.
     expect(on.ran.map(({ call }) => call.shown)).toEqual([false, true]);
     expect(on.textBeforeDeploy()).toContain("It deletes nothing.");
+    expect(on.textBeforeDeploy()).not.toContain("switches off");
     expect(on.read).toEqual([`${NODE}/records`]);
     expect(on.text()).toContain(`The node answers at ${NODE}`);
     expect(on.text()).toContain("openssl rand -hex 32");
@@ -125,6 +132,8 @@ describe("the setup script, given the node's address", () => {
       "--domain=node.team-a.example",
     ]);
     expect(on.textBeforeDeploy()).toContain("custom domain node.team-a.example");
+    // Wrangler gives a Worker with a custom domain no address on workers.dev.
+    expect(on.textBeforeDeploy()).toContain("It switches off the node's address on workers.dev");
     expect(on.text()).toContain(`{ "node": "${NODE}", "index": "${INDEX}" }`);
   });
 
@@ -135,6 +144,14 @@ describe("the setup script, given the node's address", () => {
 
     expect(argsOf(on)[1]).toEqual(["deploy", "--env=", "--var", `NODE_URL:${NODE}`, "--var", "INDEX_URL:", "--domain=node.team-a.example"]);
     expect(on.read).toEqual([`${NODE}/records`]);
+  });
+
+  it("deploys outside a terminal too, when it is given no hostname", async () => {
+    const on = bench({ interactive: false });
+
+    expect(await setupNode(on.io, ["--url", NODE])).toBe(0);
+
+    expect(argsOf(on).map(([command]) => command)).toEqual(["whoami", "deploy"]);
   });
 
   it("takes a listing for an answer too, from a node that holds records already", async () => {
@@ -153,11 +170,15 @@ describe("the setup script, given the node's address", () => {
 
     await setupNode(on.io, ["--url", NODE]);
 
+    const trigger = "the trigger that starts that Workflow on each push to that namespace";
     const named: readonly (readonly [said: string, held: string])[] = [
       ["the Worker cairnfield-node", '"name": "cairnfield-node"'],
       ["Durable Object class ReadTokens", '"class_name": "ReadTokens"'],
       ["the Artifacts namespace cairnfield-node", '"namespace": "cairnfield-node"'],
       ["the Workflow cairnfield-node-on-push", '"name": "cairnfield-node-on-push"'],
+      [trigger, '"type": "cf.artifacts.repo.pushed"'],
+      [trigger, '"filter": { "namespace": "cairnfield-node" }'],
+      [trigger, '"workflow_name": "cairnfield-node-on-push"'],
     ];
     for (const [said, held] of named) {
       expect(on.textBeforeDeploy()).toContain(said);
@@ -190,6 +211,8 @@ describe("the setup script, given no address", () => {
       ["deploy", "--env=", "--var", "NODE_URL:", "--var", `INDEX_URL:${INDEX}`],
       ["deploy", "--env=", "--var", `NODE_URL:${NODE}`, "--var", `INDEX_URL:${INDEX}`],
     ]);
+    // The operator sees both deploys, and not the answer to the login check.
+    expect(on.ran.map(({ call }) => call.shown)).toEqual([false, true, true]);
     expect(on.textBeforeDeploy()).toContain("deploys twice");
     expect(on.text()).toContain(`The node's address is ${NODE}`);
     expect(on.read).toEqual([`${NODE}/records`]);
@@ -219,6 +242,23 @@ describe("the setup script, given no address", () => {
     expect(on.read).toEqual([]);
     expect(on.text()).toContain("Wrangler did not deploy the node");
   });
+
+  it.each([
+    ["no index address", [], `npm run setup -- --url ${NODE}`],
+    ["an index address", ["--index", INDEX], `npm run setup -- --url ${NODE} --index ${INDEX}`],
+  ])("says where the node is, and how to give it its address, when the second deploy fails with %s", async (_what, args, again) => {
+    const on = bench({ deploys: [0, 1] });
+
+    expect(await setupNode(on.io, args)).toBe(1);
+
+    expect(argsOf(on).map(([command]) => command)).toEqual(["whoami", "deploy", "deploy"]);
+    expect(on.read).toEqual([]);
+    expect(on.text()).toContain(`The node is deployed at ${NODE}`);
+    expect(on.text().split("\n")).toContain(`  ${again}`);
+    // The first deploy made the node, so the sentence for a node that is not there would be untrue.
+    expect(on.text()).not.toContain("Wrangler did not deploy the node");
+    expect(on.text()).not.toContain("secret put");
+  });
 });
 
 describe("the setup script stops", () => {
@@ -233,13 +273,35 @@ describe("the setup script stops", () => {
     expect(on.text()).not.toContain("--temporary");
   });
 
-  it("with the login instruction when Wrangler is not logged in", async () => {
+  it("before any run of Wrangler when Wrangler is not installed, and says how to install it", async () => {
+    const on = bench({ installed: false });
+
+    expect(await setupNode(on.io, ["--url", NODE])).toBe(1);
+
+    expect(on.ran).toEqual([]);
+    expect(on.read).toEqual([]);
+    expect(on.text()).toContain("npm install");
+    expect(on.text()).not.toContain("wrangler login");
+  });
+
+  it("before any run of Wrangler when a hostname is given outside a terminal, where Wrangler asks nothing", async () => {
+    const on = bench({ interactive: false });
+
+    expect(await setupNode(on.io, ["--domain", "node.team-a.example"])).toBe(2);
+
+    expect(on.ran).toEqual([]);
+    expect(on.read).toEqual([]);
+    expect(on.text()).toContain("only from a terminal");
+  });
+
+  it("with the login instruction when Wrangler's login check fails", async () => {
     const on = bench({ loggedIn: false });
 
     expect(await setupNode(on.io, ["--url", NODE])).toBe(1);
 
     expect(argsOf(on)).toEqual([["whoami", "--json"]]);
     expect(on.read).toEqual([]);
+    expect(on.text()).toContain("The login check failed");
     expect(on.text()).toContain("npx wrangler login");
     expect(on.text()).not.toContain("--temporary");
   });
@@ -274,6 +336,25 @@ describe("the setup script stops", () => {
   });
 });
 
+describe("the setup script, given an address that carries credentials", () => {
+  it.each<[string, (password: string) => string[]]>([
+    ["--url", (password) => ["--url", `https://operator:${password}@node.team-a.example`]],
+    ["--index", (password) => ["--url", NODE, "--index", `https://operator:${password}@index.cairnfield.example`]],
+  ])("stops before it runs anything, and says no part of the password, when it comes with %s", async (_option, args) => {
+    // Drawn for each run. It stands in for a password, and no service ever sees it.
+    const password = randomUUID().replaceAll("-", "");
+    const on = bench();
+
+    expect(await setupNode(on.io, args(password))).toBe(2);
+
+    expect(on.ran).toEqual([]);
+    expect(on.read).toEqual([]);
+    // A value that was cut short would still hold eight characters of the password in a row.
+    const parts = Array.from({ length: password.length - 7 }, (_, at) => password.slice(at, at + 8));
+    expect(parts.filter((part) => on.text().includes(part))).toEqual([]);
+  });
+});
+
 describe("the setup script, when the node does not answer after the deploy", () => {
   it.each<[string, () => Response]>([
     [
@@ -283,6 +364,11 @@ describe("the setup script, when the node does not answer after the deploy", () 
       },
     ],
     ["what answers is no node", () => new Response("<h1>Nothing here yet</h1>", { status: 404, headers: { "content-type": "text/html" } })],
+    ["the answer is a listing with no head", () => Response.json({ records: [] })],
+    ["the answer is a listing whose head is no hash", () => Response.json({ head: 5 })],
+    ["the answer is another refusal than a new node's", () => Response.json({ error: "bad-request" }, { status: 404 })],
+    ["the answer is a list", () => Response.json([])],
+    ["the answer is null", () => Response.json(null)],
   ])("says so, and how to read it again, when %s", async (_what, answer) => {
     const on = bench({ answer });
 
