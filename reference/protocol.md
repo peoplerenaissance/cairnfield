@@ -212,6 +212,8 @@ Until the index holds its own copy, the page shows no count of findings or patch
 
 **R41.** A fuller lens would also state the criterion each kind of use requires, the destinations the team approves and the confirmations it requires, with a level 3 that takes a patch once enough organizations stand behind it. That is not built. A lens file has none of those fields, and a lens with level 3 is refused with the code `level-3-not-built`. The library holds the rule for criteria and approved hosts as `countsAgainstLens`.
 
+**R44.** On a terminal, the demo script and the reset script print what a viewer of a recording can follow: each step heading in bold, each team's lines in a color of its own, each JSON result indented over several lines with its keys, strings and numbers colored, and the diff `assemble` prints with added lines in green and removed lines in red. A hash is shown whole and no result is cut. When the output is not a terminal, and under `NO_COLOR`, every line is plain: one line for each command and each result, and a plain diff. The command itself does not change, and its standard output stays JSON.
+
 ## Decisions
 
 **KTD1.** Records are content-addressed files. A record's ID is the SHA-256 of its canonical JSON: keys sorted, no white space, whole numbers only, in UTF-8. Its path in the team repo is `records/<component-commit>/<type>/<id>.json`. Two pushes then never differ on a file, only on where the branch points. A record whose content hash differs from its file name, or whose component or type differs from its folders, is rejected with `hash-mismatch`. `publish` never writes a published record again. The index stores each record as valid, pending or rejected.
@@ -349,6 +351,8 @@ A finding carries when the newer commit still holds its cited content. It is wri
 The carried records go out through the outbox. Nothing is carried from another team. The output names each finding and patch with a reason code, names each patch of another team in the copy the team last built at the older commit, and counts the paths the newer commit added, changed and removed. `carry` reviews none of those paths.
 
 **KTD40.** The index is optional in the command's config. With no index address, `pin` registers nothing, `publish` sends no notice, and assembly at level 0 or 1 reads only the team's own repo. `view` and level 2 need an index and end with exit code 6 without one. A node's index address is optional too, and its Workflow sends no notice without one. A team that adds an index later runs `pin` again for each pinned commit, which registers its node and that commit.
+
+**KTD41.** The demo script renders its own lines for a terminal, and the command knows nothing of it. Every line a script says passes through one function, and one function writes the command and result lines, so the renderer tells a line's kind by its prefix. The script decides once for each stream whether to paint: never under `NO_COLOR`, and otherwise only when the stream is a terminal whose own check says it shows colors. A stream that does not paint gets the plain lines unchanged. A result is colored by walking the parsed value and never by matching its text, because a value can hold another team's record fields. The diff is colored line by line, with the counts of each hunk header telling content from a file header.
 
 ## Examples
 

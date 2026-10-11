@@ -65,8 +65,14 @@ const STRING: Format = "green";
 const LITERAL: Format = "yellow";
 const SPEAKERS = /^(team-a|team-b|engineer)(\$ |> |: )(.*)$/s;
 
-/** Whether a stream paints: a terminal whose own check, given the environment, says it shows colors. */
-export function paints(stream: { readonly isTTY?: boolean; readonly hasColors?: (env: object) => boolean }, env: object): boolean {
+/**
+ * Whether a stream paints: never under `NO_COLOR`, and otherwise only for a terminal whose
+ * own check, given the environment, says it shows colors. `NO_COLOR` is read first because
+ * Node lets `FORCE_COLOR` override it, and R44 promises plain lines under `NO_COLOR`. An
+ * empty `NO_COLOR` counts as set, as Node's own check reads it.
+ */
+export function paints(stream: { readonly isTTY?: boolean; readonly hasColors?: (env: object) => boolean }, env: Io["env"]): boolean {
+  if (env["NO_COLOR"] !== undefined) return false;
   return stream.isTTY === true && typeof stream.hasColors === "function" && stream.hasColors(env);
 }
 
@@ -114,21 +120,39 @@ function paintJson(value: unknown, style: Style, indent: string): string {
   return style(typeof value === "string" ? STRING : LITERAL, JSON.stringify(value));
 }
 
-/**
- * Paints what the command writes to standard error, which is the diff `assemble` prints
- * (R25), one line at a time. The headers `renderDiff` writes and a hunk line are bold, a
- * removed line red, an added line green. Anything else, Git's own messages among it, is
- * unchanged.
- */
-export function paintWarn(text: string, style: Style): string {
-  return text.split("\n").map((line) => paintDiffLine(line, style)).join("\n");
-}
+const HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 
-function paintDiffLine(line: string, style: Style): string {
-  if (line.startsWith("--- a/") || line.startsWith("+++ b/") || line === "+++ /dev/null" || line.startsWith("@@ ")) return style("bold", line);
-  if (line.startsWith("+")) return style("green", line);
-  if (line.startsWith("-")) return style("red", line);
-  return line;
+/**
+ * Makes the painter of what the command writes to standard error, which is the diff
+ * `assemble` prints (R25). The file headers and the hunk lines `renderDiff` writes are
+ * bold, a removed line red, an added line green. A hunk line says how many removed and
+ * added lines follow, and the painter counts them down, so a content line that begins
+ * like a file header is still red or green. Anything else, Git's own messages among it,
+ * is unchanged. The painter keeps its counts across calls, because `renderDiff` writes
+ * one line at a time.
+ */
+export function diffPainter(style: Style): (text: string) => string {
+  let removed = 0;
+  let added = 0;
+  const paint = (line: string): string => {
+    const hunk = HUNK.exec(line);
+    if (hunk) {
+      removed = Number(hunk[1] ?? "1");
+      added = Number(hunk[2] ?? "1");
+      return style("bold", line);
+    }
+    if (removed > 0 && line.startsWith("-")) {
+      removed -= 1;
+      return style("red", line);
+    }
+    if (added > 0 && line.startsWith("+")) {
+      added -= 1;
+      return style("green", line);
+    }
+    if (line.startsWith("--- a/") || line.startsWith("+++ b/") || line === "+++ /dev/null") return style("bold", line);
+    return line;
+  };
+  return (text) => text.split("\n").map(paint).join("\n");
 }
 
 /** The node the lens fixtures name where a deployment has Team B's own. */
@@ -333,7 +357,8 @@ export async function launch(script: "demo" | "reset", key: string, play: (stage
   }
   const style: Style = (format, text) => styleText(format, text, { validateStream: false });
   const say: Stage["say"] = paints(process.stdout, process.env) ? (line) => console.log(paintSaid(line, style)) : (line) => console.log(line);
-  const warn: Io["warn"] = paints(process.stderr, process.env) ? (text) => io.warn(paintWarn(text, style)) : io.warn;
+  const paintWarn = diffPainter(style);
+  const warn: Io["warn"] = paints(process.stderr, process.env) ? (text) => io.warn(paintWarn(text)) : io.warn;
   const stage = await openStage({ ...io, warn }, found.deployment, say);
   try {
     await play(stage, found.key);

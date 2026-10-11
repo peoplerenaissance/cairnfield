@@ -13,7 +13,7 @@ import type { View } from "@cairnfield/protocol";
 import { Stop, failure } from "../../cli/src/outcome.ts";
 import { ADMIN_KEY, FIXTURES, INDEX, MODEL_API, MODEL_KEY, NODE, REGISTRATION_KEY, TOKEN, bench, demoPlugin, git, published } from "../../cli/test/support.ts";
 import type { Bench, Site } from "../../cli/test/support.ts";
-import { Stopped, deploymentFrom, launch, openStage, paintSaid, paintWarn, paints } from "../demo-stage.ts";
+import { Stopped, deploymentFrom, diffPainter, launch, openStage, paintSaid, paints } from "../demo-stage.ts";
 import type { Deployment, Stage, Style } from "../demo-stage.ts";
 import { EVERY_VARIABLE, demo } from "../demo.ts";
 import { reset } from "../reset-demo.ts";
@@ -444,25 +444,51 @@ describe("the terminal renderer", () => {
   });
 
   it("paints a diff: headers and hunks in bold, removed lines red, added lines green, the rest plain", () => {
-    const diff = ["--- a/scripts/sync.sh", "+++ b/scripts/sync.sh", "old mode 100644", "new mode 100755", "@@ -3,2 +3,1 @@", "-curl $HOST", "--- a removed line that looks like a header", "+++ an added line that looks like a header", "+curl sync.example", "\\ No newline at end of file", "+++ /dev/null"];
+    // Two files, as `renderDiff` writes them one line at a time: the second is deleted, and its
+    // content lines begin like file headers.
+    const diff = [
+      "--- a/scripts/sync.sh",
+      "+++ b/scripts/sync.sh",
+      "old mode 100644",
+      "new mode 100755",
+      "@@ -3,2 +3,2 @@",
+      "-curl $HOST",
+      "--- a/ removed content that begins like a header",
+      "+++ b/ added content that begins like a header",
+      "+curl sync.example",
+      "\\ No newline at end of file",
+      "--- a/notes.md",
+      "+++ /dev/null",
+      "@@ -1,2 +0,0 @@",
+      "-+++ /dev/null",
+      "--- a/",
+    ];
 
-    const painted = diff.map((line) => paintWarn(`${line}\n`, mark));
+    const painted = diff.map((line) => diffPainter(mark)(`${line}\n`));
+    const one = diffPainter(mark);
 
-    expect(painted).toEqual([
+    expect(diff.map((line) => one(`${line}\n`))).toEqual([
       "<bold>--- a/scripts/sync.sh</>\n",
       "<bold>+++ b/scripts/sync.sh</>\n",
       "old mode 100644\n",
       "new mode 100755\n",
-      "<bold>@@ -3,2 +3,1 @@</>\n",
+      "<bold>@@ -3,2 +3,2 @@</>\n",
       "<red>-curl $HOST</>\n",
-      "<red>--- a removed line that looks like a header</>\n",
-      "<green>+++ an added line that looks like a header</>\n",
+      "<red>--- a/ removed content that begins like a header</>\n",
+      "<green>+++ b/ added content that begins like a header</>\n",
       "<green>+curl sync.example</>\n",
       "\\ No newline at end of file\n",
+      "<bold>--- a/notes.md</>\n",
       "<bold>+++ /dev/null</>\n",
+      "<bold>@@ -1,2 +0,0 @@</>\n",
+      "<red>-+++ /dev/null</>\n",
+      "<red>--- a/</>\n",
     ]);
-    expect(paintWarn("warning: redirecting to https://node.example/\n", mark)).toBe("warning: redirecting to https://node.example/\n");
-    expect(diff.map((line) => paintWarn(`${line}\n`, plain))).toEqual(diff.map((line) => `${line}\n`));
+    // A painter with no hunk in hand takes a header-shaped line for a header.
+    expect(painted[6]).toBe("<bold>--- a/ removed content that begins like a header</>\n");
+    expect(one("warning: redirecting to https://node.example/\n")).toBe("warning: redirecting to https://node.example/\n");
+    const plainOne = diffPainter(plain);
+    expect(diff.map((line) => plainOne(`${line}\n`))).toEqual(diff.map((line) => `${line}\n`));
   });
 
   it("paints only a terminal that shows colors, by the environment it is given", () => {
@@ -475,6 +501,8 @@ describe("the terminal renderer", () => {
     expect(paints(pipe, { TERM: "xterm-256color" })).toBe(false);
     expect(paints(stream(true), { TERM: "xterm-256color" })).toBe(true);
     expect(paints(stream(true), { TERM: "xterm-256color", NO_COLOR: "1" })).toBe(false);
+    expect(paints(stream(true), { TERM: "xterm-256color", NO_COLOR: "1", FORCE_COLOR: "1" })).toBe(false);
+    expect(paints(stream(true), { TERM: "xterm-256color", NO_COLOR: "" })).toBe(false);
     expect(paints(stream(true), { TERM: "dumb" })).toBe(false);
   });
 });
