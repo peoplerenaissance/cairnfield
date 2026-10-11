@@ -29,7 +29,7 @@ import { INDEX_ROUTES, TEAM_BRANCH } from "@cairnfield/protocol";
 import { loadHome } from "../cli/src/config.ts";
 import { fetchRef, said, withScratch } from "../cli/src/git.ts";
 import { callIndex, repoAccess } from "../cli/src/services.ts";
-import { PLUGIN, RESET_KEY, halt, launch, listingOf, notFound, notify, processed, settle, untilView } from "./demo-stage.ts";
+import { PLUGIN, RESET_KEY, halt, launch, listingOf, notify, processed, settle, untilView, viewNow } from "./demo-stage.ts";
 import type { Label, Stage, Team } from "./demo-stage.ts";
 
 const BRANCH = `refs/heads/${TEAM_BRANCH}`;
@@ -61,15 +61,10 @@ async function empty(stage: Stage, team: Team): Promise<string | undefined> {
   });
 }
 
-/** Whether the index has the demo plugin's first commit registered. A view of it lists the nodes, with the head the index last processed for each. */
-async function indexHoldsTheDemo(stage: Stage): Promise<boolean> {
-  const answer = await callIndex(stage.io, stage.index, INDEX_ROUTES.view, { params: { component: PLUGIN.first } });
-  if (answer.ok) return true;
-  return notFound(answer) ? false : halt("the index gave no view");
-}
-
 /** Empties both nodes, then the index. Returns each node's head. */
 export async function reset(stage: Stage, resetKey: string): Promise<Emptied> {
+  // The addresses come from the environment, under names the deploy scripts read too. So the script says what it is about to reset.
+  stage.say(`Resetting the demo: the nodes ${stage.a.node} and ${stage.b.node}, and the index ${stage.index}`);
   const heads: (readonly [Team, string])[] = [];
   for (const team of [stage.a, stage.b]) {
     const head = await empty(stage, team);
@@ -78,7 +73,8 @@ export async function reset(stage: Stage, resetKey: string): Promise<Emptied> {
 
   // A node the index does not know is read by no sync, and neither is one with no head. Nothing waits for either.
   const read: (readonly [Team, string])[] = [];
-  if (await indexHoldsTheDemo(stage)) {
+  // A view of the plugin's first commit lists the nodes, with the head the index last processed for each.
+  if (await viewNow(stage, PLUGIN.first)) {
     for (const [team, head] of heads) if (await notify(stage, team)) read.push([team, head]);
   }
   const untilRead = (awaited: string): Promise<unknown> => untilView(stage, PLUGIN.first, awaited, (view) => processed(view, read));

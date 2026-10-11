@@ -3,12 +3,17 @@
 // the record checks, the patch checks, the match groups and the patch groups. Those are
 // the rules the index Worker applies, so a view here groups, collapses and rejects as the
 // deployed index would. It does not keep the Worker's order of entries, and it counts no
-// hosts, so a test sorts what it compares.
+// hosts, so a test sorts what it compares. The Worker builds its view in
+// `index/src/view.ts`, over a database this runtime does not have, and the command
+// regroups one in `cli/src/commands/view.ts`. A change to the shape of a view is made in
+// all three.
 //
 // It keeps what the scripts depend on in the Worker's behavior. It reads a node only
 // when a notice names it. It never drops a record a node has stopped listing. A reset
 // drops every record and reads every node again. A notice for a node it does not know
-// answers not-found.
+// answers not-found. With a lag set, it reads a node only after that many reads of a
+// view, as the Worker reads a node some time after a notice, so a script that does not
+// wait for the index does not pass.
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -50,6 +55,8 @@ interface Published<R extends AnyRecord = AnyRecord> extends Sourced<R> {
 }
 
 export interface TestIndex {
+  /** How many reads of a view pass between a notice and the read of its node. With `Infinity` the index never reads a node. */
+  lag: number;
   /** Every request the index got, in order. */
   readonly requests: Seen[];
   /** How many record files the index holds. */
@@ -66,8 +73,12 @@ const blobOf = (repo: string, name: string): Uint8Array => new Uint8Array(execFi
  * Puts an index at the bench's index address. `sites` holds each node by its base URL.
  * A node is read only once it is registered, and a record only once its component is.
  */
-export function testIndex(on: Bench, sites: ReadonlyMap<string, Site>, keys: { readonly registration: string; readonly reset: string }): TestIndex {
+export function testIndex(on: Bench, sites: ReadonlyMap<string, Site>, keys: { readonly registration: string; readonly reset: string }, lag = 0): TestIndex {
   const requests: Seen[] = [];
+  /** The nodes the index was told of and has not read yet, each with the reads of a view still to pass. */
+  const due = new Map<string, number>();
+  /** What the patch checks said of each patch record whose commit and findings the index has, by node and record ID. */
+  const checked = new Map<string, PatchFacts | { readonly rejected: View["rejected"][number] }>();
   const nodes: string[] = [];
   const components = new Set<string>();
   const read = new Map<string, Read>();
@@ -91,6 +102,23 @@ export function testIndex(on: Bench, sites: ReadonlyMap<string, Site>, keys: { r
     processed.set(node, head);
   }
 
+  /** Takes a notice for a node: reads it now, or once the lag has passed. */
+  function tell(node: string): void {
+    if (made.lag === 0) sync(node);
+    else due.set(node, made.lag);
+  }
+
+  /** One read of a view has passed. A node whose lag is over is read. */
+  function tick(): void {
+    for (const [node, left] of due) {
+      if (left > 1) due.set(node, left - 1);
+      else {
+        due.delete(node);
+        sync(node);
+      }
+    }
+  }
+
   async function view(component: string): Promise<View | undefined> {
     if (!components.has(component)) return undefined;
     let base = copies.get(component);
@@ -104,7 +132,8 @@ export function testIndex(on: Bench, sites: ReadonlyMap<string, Site>, keys: { r
     const valid: Published[] = [];
     const pending: View["pending"][number][] = [];
     const rejected: View["rejected"][number][] = [];
-    for (const { node, path, head, content } of read.values()) {
+    // Taken before the first wait, so a view holds what the index held when it was asked for.
+    for (const { node, path, head, content } of [...read.values()]) {
       const named = parseRecordPath(path);
       if (named?.component !== component) continue;
       const verdict = await validateRecordFile(path, content);
@@ -132,10 +161,17 @@ export function testIndex(on: Bench, sites: ReadonlyMap<string, Site>, keys: { r
         pending.push({ node: entry.node, hash: entry.id, type: "patch" });
         continue;
       }
-      for (const { blob } of [...base, ...patched]) if (!content.has(blob)) content.set(blob, blobOf(fork, blob));
-      const verdict = await checkPatch({ base: { files: base, content }, patched: { files: patched, content }, cited: citedRanges(cited, base) });
-      if (verdict.ok) facts.set(entry, verdict);
-      else rejected.push({ node: entry.node, hash: entry.id, type: "patch", reason: verdict.reason });
+      // A commit and the findings a record names never change, so a record is checked once.
+      const key = `${entry.node} ${entry.id}`;
+      let known = checked.get(key);
+      if (!known) {
+        for (const { blob } of [...base, ...patched]) if (!content.has(blob)) content.set(blob, blobOf(fork, blob));
+        const verdict = await checkPatch({ base: { files: base, content }, patched: { files: patched, content }, cited: citedRanges(cited, base) });
+        known = verdict.ok ? verdict : { rejected: { node: entry.node, hash: entry.id, type: "patch", reason: verdict.reason } };
+        checked.set(key, known);
+      }
+      if ("rejected" in known) rejected.push(known.rejected);
+      else facts.set(entry, known);
     }
     const shown = valid.filter((entry) => !isOfType(entry, "patch") || facts.has(entry));
 
@@ -220,17 +256,18 @@ export function testIndex(on: Bench, sites: ReadonlyMap<string, Site>, keys: { r
     }
     if (seen.method === "POST" && path === "/notices") {
       if (!nodes.includes(body.node ?? "")) return refuse("not-found", 404);
-      sync(body.node ?? "");
+      tell(body.node ?? "");
       return answer({});
     }
     if (seen.method === "POST" && path === "/reset") {
       if (seen.headers.get(RESET_KEY_HEADER) !== keys.reset) return refuse("unauthorized", 401);
       read.clear();
       processed.clear();
-      for (const node of nodes) sync(node);
+      for (const node of nodes) tell(node);
       return answer({});
     }
     const viewed = /^\/components\/([0-9a-f]{40})\/view$/.exec(path);
+    if (seen.method === "GET" && viewed) tick();
     const built = seen.method === "GET" && viewed ? await view(viewed[1] ?? "") : undefined;
     return built ? Response.json(built) : refuse("not-found", 404);
   }
@@ -241,5 +278,6 @@ export function testIndex(on: Bench, sites: ReadonlyMap<string, Site>, keys: { r
     requests.push(seen);
     return respond(seen, url.pathname);
   };
-  return { requests, held: () => read.size, view };
+  const made: TestIndex = { lag, requests, held: () => read.size, view };
+  return made;
 }

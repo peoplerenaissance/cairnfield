@@ -16,6 +16,9 @@
 //
 //   npm run demo
 //
+// It starts only from the reset state: two nodes that list no record and an index that
+// holds none of the demo. A deployment that has published nothing is in that state.
+//
 // It reads the addresses of the two demo nodes and the index from TEAM_A_NODE_URL,
 // TEAM_B_NODE_URL and INDEX_URL, each node's admin key from TEAM_A_ADMIN_KEY and
 // TEAM_B_ADMIN_KEY, and the index's registration key from CAIRNFIELD_REGISTRATION_KEY.
@@ -37,7 +40,7 @@ import { fetchCommit, fetchRef, said, withScratch } from "../cli/src/git.ts";
 import type { Outcome } from "../cli/src/outcome.ts";
 import { pushPatch } from "../cli/src/patch/commit.ts";
 import { adminKey, forkAccess, writableFork } from "../cli/src/services.ts";
-import { FIXTURES, PLUGIN, command, engineer, halt, headOf, launch, listingOf, notify, processed, settle, untilView } from "./demo-stage.ts";
+import { FIXTURES, PLUGIN, command, engineer, halt, headOf, launch, listingOf, notify, processed, settle, untilView, viewNow } from "./demo-stage.ts";
 import type { Stage, Team } from "./demo-stage.ts";
 
 const { first, later } = PLUGIN;
@@ -96,6 +99,36 @@ function must(held: boolean, what: string): void {
 }
 
 const sameIds = (found: readonly string[], wanted: readonly string[]): boolean => JSON.stringify([...found].sort()) === JSON.stringify([...wanted].sort());
+
+/** A list the command printed under one field. Anything else there stops the script, because a check would then read nothing. */
+function listUnder(output: Outcome["output"], field: string): readonly { readonly [field: string]: unknown }[] {
+  const value = output[field];
+  return Array.isArray(value) ? (value as { readonly [field: string]: unknown }[]) : halt(`the command printed no list under ${field}`);
+}
+
+/** The patches `assemble` says went into a copy, each with its patch ID and the node it came from. */
+function patchesIn(built: Outcome["output"]): PatchInCopy[] {
+  return listUnder(built, "patches").map(({ patchId, node }) =>
+    typeof patchId === "string" && typeof node === "string" ? { patchId, node } : halt("assemble printed a patch with no patch ID or no node"),
+  );
+}
+
+/**
+ * Stops the script unless the demo is at its start: neither node lists a record, and the
+ * index holds none for the plugin's two commits. From any other state the steps would
+ * pass on records that were there already, and no claim would be seen as live.
+ */
+async function mustBeAtTheStart(stage: Stage): Promise<void> {
+  for (const team of [stage.a, stage.b]) {
+    if (((await listingOf(stage, team))?.records.length ?? 0) > 0) halt(`${team.label}: the node holds records already. Run npm run demo:reset first`);
+  }
+  for (const component of [first, later]) {
+    const view = await viewNow(stage, component);
+    if (view && [view.claims, view.findings, view.patches, view.recipes, view.pending, view.rejected].some((held) => held.length > 0)) {
+      halt("the index holds records of the demo already. Run npm run demo:reset first");
+    }
+  }
+}
 
 /**
  * The number of the claim each recording was made under (Appendix H). A missing recording
@@ -158,7 +191,7 @@ async function approve(stage: Stage, team: Team, component: string, name: string
   const approvals = join(stage.work, `${name}.approvals.json`);
   await writeFile(approvals, `${JSON.stringify(await command(stage, team, "approvals"))}\n`);
   await engineer(stage, "verify", PLUGIN.url, folder, "--approvals", approvals);
-  return { tree, patches: built["patches"] as PatchInCopy[] };
+  return { tree, patches: patchesIn(built) };
 }
 
 /** Step one: Team A alone, with no index in its config (R38). */
@@ -170,7 +203,9 @@ async function alone(stage: Stage): Promise<{ readonly anyHost: string; readonly
   await toOutbox(a, "outboxes/team-a");
   await command(stage, a, "publish");
   const anyHost = await replay(stage, a, ANY_HOST);
-  return { anyHost, copy: await approve(stage, a, first, "alone") };
+  const copy = await approve(stage, a, first, "alone");
+  must(sameIds(copy.patches.map(({ patchId }) => patchId), [anyHost]), "a first copy that holds Team A's any-host patch and no other");
+  return { anyHost, copy };
 }
 
 /**
@@ -220,7 +255,7 @@ async function together(stage: Stage, anyHost: string, claimOf: (team: Team, fin
   const claims = (
     await Promise.all([claim(a, HIDDEN_INSTRUCTION), inTurn(() => claim(b, HIDDEN_INSTRUCTION), () => claim(b, EVERY_VARIABLE))])
   ).flat();
-  await untilView(stage, first, "the three patch claims", (view) => claims.every((id) => view.claims.some((shown) => shown.id === id)));
+  await untilView(stage, first, "the three patch claims as live", (view) => claims.every((id) => view.claims.some((shown) => shown.id === id && shown.state === "live")));
   // The patches would close the claims before a person saw them on the page.
   await stage.io.sleep(CLAIMS_SHOWN_MS);
 
@@ -266,12 +301,13 @@ async function carrying(stage: Stage, own: readonly string[], everyVariable: str
   const { a } = stage;
   stage.say("Step four. The plugin has a later commit. Team A carries its own findings and patches to it.");
   const carried = await command(stage, a, "carry", first, later, "--branch", PLUGIN.branch);
-  const patches = carried["patches"] as { readonly patchId?: string; readonly carried: boolean }[];
+  const patches = listUnder(carried, "patches");
   must(
-    patches.every((patch) => patch.carried) && sameIds(patches.map(({ patchId }) => patchId ?? ""), own),
+    patches.every((patch) => patch["carried"] === true) && sameIds(patches.map((patch) => String(patch["patchId"])), own),
     "Team A's two patches at the later commit, each with the patch ID it had",
   );
-  must(sameIds(carried["leftBehind"] as string[], [everyVariable]), "Team B's patch named as left behind");
+  const leftBehind = carried["leftBehind"];
+  must(Array.isArray(leftBehind) && sameIds(leftBehind.map(String), [everyVariable]), "Team B's patch named as left behind");
   const copy = await approve(stage, a, later, "later");
   must(copy.patches.every((patch) => patch.node === a.node) && sameIds(copy.patches.map(({ patchId }) => patchId), own), "a later copy that holds Team A's own patches and no other");
   return copy;
@@ -287,6 +323,7 @@ async function recordsOf(stage: Stage, team: Team): Promise<string[]> {
 export async function demo(stage: Stage): Promise<Shown> {
   const { a, b } = stage;
   const claimOf = await recordedClaims(stage);
+  await mustBeAtTheStart(stage);
   const one = await alone(stage);
   const two = await together(stage, one.anyHost, claimOf);
   const three = await takingTeamB(stage, one.copy, two.everyVariable);

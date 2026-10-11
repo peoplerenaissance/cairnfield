@@ -98,7 +98,7 @@ export function halt(why: string): never {
  * missing or in no form the protocol accepts, and never a value: a name tells the
  * operator what to set.
  */
-function deploymentFrom(env: Io["env"], key: string): { readonly deployment: Deployment; readonly key: string } | { readonly missing: readonly string[] } {
+export function deploymentFrom(env: Io["env"], key: string): { readonly deployment: Deployment; readonly key: string } | { readonly missing: readonly string[] } {
   const wanted: (readonly [name: string, accepts: (value: unknown) => value is string])[] = [
     [TEAM_A_NODE, isNodeUrl],
     [TEAM_B_NODE, isNodeUrl],
@@ -200,19 +200,30 @@ const INDEX_DEADLINE_MS = 5 * 60_000;
 /** How often the view is read while a script waits. The page reads it as often. */
 const POLL_MS = 2_000;
 
-/** The view of one component commit, or nothing when the index gave none: it knows no such commit, or the read failed. */
-async function viewOf(stage: Stage, component: string): Promise<View | undefined> {
-  const answer = await callIndex(stage.io, stage.index, INDEX_ROUTES.view, { params: { component } });
-  return answer.ok && answer.body.component === component ? answer.body : undefined;
+const readView = (stage: Stage, component: string): Promise<Answer<View>> => callIndex(stage.io, stage.index, INDEX_ROUTES.view, { params: { component } });
+
+/** The view of one component commit as the index holds it now, or nothing for a commit the index does not know. A read that fails stops the script. */
+export async function viewNow(stage: Stage, component: string): Promise<View | undefined> {
+  const answer = await readView(stage, component);
+  if (answer.ok) return answer.body;
+  return notFound(answer) ? undefined : halt("the index gave no view");
 }
 
-/** Reads a view until it holds what the script waits for, and stops the script when the index does not get there in time. */
+/**
+ * Reads a view until it holds what the script waits for, and stops the script when the
+ * index does not get there in time. A read that fails is tried again, because a commit
+ * that was just registered has no view yet. When the last read failed too, the message
+ * says how.
+ */
 export async function untilView(stage: Stage, component: string, awaited: string, holds: (view: View) => boolean): Promise<View> {
   const deadline = stage.io.now() + INDEX_DEADLINE_MS;
   for (;;) {
-    const view = await viewOf(stage, component);
-    if (view && holds(view)) return view;
-    if (stage.io.now() >= deadline) return halt(`the index did not show ${awaited} within five minutes`);
+    const answer = await readView(stage, component);
+    if (answer.ok && answer.body.component === component && holds(answer.body)) return answer.body;
+    if (stage.io.now() >= deadline) {
+      const failed = answer.ok ? "" : `. Its last answer was ${answer.error === "refused" ? answer.reason : answer.error}`;
+      return halt(`the index did not show ${awaited} within five minutes${failed}`);
+    }
     await stage.io.sleep(POLL_MS);
   }
 }
