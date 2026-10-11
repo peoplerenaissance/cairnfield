@@ -11,7 +11,7 @@ The repo holds a static site, the workspace scaffold, the protocol library in `p
 - Never edit anything under `docs/brainstorms/`. It is a historical record, and the plan overrides it wherever they differ.
 - Public documentation is in `reference/`: the protocol, the threat model and the platform notes. `reference/protocol.md` states each requirement, decision and example that a comment in the code cites, under the same ID. When you cite an ID in a comment that it does not hold yet, add it there. Keep what was observed on the platform apart from what was only read in its documentation, as `reference/platform-notes.md` does.
 - `skills/cairnfield/SKILL.md` is for a team's own review agent, which writes findings to the outbox and runs `validate` and no other command (R21). It ships in this repo and is never served by the index. Bring it up to date when a record's fields, a closed list or the output of `validate` changes.
-- `site/` is the public microsite, a Cloudflare Worker that serves static files from `site/public/`. It answers at its own domain, which `site/wrangler.jsonc` names, and has no address on `workers.dev` and no version URLs. The `production` branch is the one the site is meant to deploy from, through Workers Builds, so a push to `production` is a deploy. Ask the developer first.
+- `site/` is the public microsite, a Cloudflare Worker that serves static files from `site/public/`. It answers at its own domain, which `site/wrangler.jsonc` names, and has no address on `workers.dev` and no version URLs. It deploys from the `production` branch, as "Branches and releases" below says.
 
 When the plan and this file disagree, the plan wins. Tell the developer about the disagreement.
 
@@ -21,6 +21,30 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 - Use the Wrangler installed in each project (4.147 or later), never a global one.
 - Worker secrets are set by the developer by hand. Stop and ask when a step needs one. Never write a secret to a file in the repo.
 - Never run `wrangler deploy --temporary`. When Wrangler is not logged in it suggests that flag, which creates a temporary Cloudflare account and accepts Cloudflare's terms on the developer's behalf. Stop and ask the developer to log in instead.
+
+## Branches and releases
+
+The repo has two long-lived branches. A ruleset on GitHub holds each to its rule, for admins too.
+
+- `main` takes every change through a pull request, merged as a squash. No other merge method is offered there. Nobody pushes to it, force-pushes it or deletes it.
+- `production` moves only through a release: a pull request from `main` into `production`, merged as a merge commit. No other merge method is offered there, and nothing is committed to it directly.
+
+A release is a deploy of the site. Workers Builds watches `production` and runs `npx wrangler deploy` in `site/` on each push to it. Nothing else deploys from a branch: the index and the nodes are deployed by hand, as the table below says. So ask the developer before you open or merge a release.
+
+To make a release:
+
+```
+git fetch origin
+git log --oneline origin/production..origin/main
+gh pr create --base production --head main --title "Release YYYY-MM-DD"
+gh pr merge <number> --merge
+```
+
+The second line lists what the release would ship. Put that list in the pull request's body.
+
+- A release is a merge commit because a squash would write a commit onto `production` that `main` does not hold. The two branches would then have parted, and the next release would show every change that had already shipped.
+- Never merge `production` into `main`. A fix goes to `main` first and reaches `production` with the next release.
+- To take a release back, roll the Worker back to its earlier version on Cloudflare. A revert on `production` parts the two branches.
 
 ## Commands that exist today
 

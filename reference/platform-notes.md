@@ -201,6 +201,23 @@ So each demo node environment in `node/wrangler.jsonc` repeats its `artifacts` b
 
 One consequence holds for Cairnfield whatever a test shows. Nothing deploys from a records repo. A push there would become a deploy, and a token that can write records could then change a Worker.
 
+## Workers Builds and Access for the site
+
+**Observed on Oct 11, 2026**, on the site's Worker, which serves static files and has no script.
+
+- Importing the GitHub repository in the dashboard made the Worker and ran one build from the repository's default branch. The form had a field for the folder to build in, and none for the branch.
+- The branch a Worker deploys from is set afterwards, in the Worker's build settings. Changing it started no build.
+- With the folder set to `/site/`, the build ran `npx wrangler deploy` there with the repo's own config. That deploy attached the custom domain the config names and made its DNS record.
+- With `workers_dev` and `preview_urls` set to false in the config, the Worker's address on `workers.dev` answered 404.
+- An Access application for the domain's hostname was made before the Worker existed. From the first deploy, every path answered with a redirect to the login, `robots.txt` among them. So Access stands in front of a Worker that only serves static files, and a crawler sees no page of it.
+
+**Not yet observed:** a push to the deploy branch starting a build. The first release will show it.
+
+**Documentation, read on Oct 11, 2026. Not run.**
+
+- Access can also be attached to a Worker by name. It then covers every address of that Worker: its routes, its custom domains, its address on `workers.dev` and its previews.
+- A build for a branch other than the deploy branch runs only when preview builds are switched on.
+
 ## The demo's account
 
 The demo's two nodes and its index run as separate Workers in one Cloudflare account. Each node has its own Artifacts namespace. The index was never shown reading a node in another account.
