@@ -333,7 +333,7 @@ Some limits belong to the design and not to the prototype. Every node is public,
 
 ### Disclosure policy
 
-The disclosure policy is the last part of [`reference/threat-model.md`](reference/threat-model.md#disclosure-policy). This repo holds no finding about a real product and takes none. Every plugin, host, team and organization in its fixtures and demos is invented. For a finding about a real component, and for a flaw in Cairnfield itself, the rule is the same: tell the maintainer first, and delay publishing. A published record is public at once and is never edited or deleted.
+The disclosure policy is the last part of [`reference/threat-model.md`](reference/threat-model.md#disclosure-policy). This repo holds no finding about a real product and takes none. Every plugin, host, team and organization in its fixtures and demos is invented. For a finding about a real component, and for a flaw in Cairnfield itself, the rule is the same: tell the maintainer first, and delay publishing. A published record is public at once and is never edited or deleted. [`SECURITY.md`](SECURITY.md) says how to report a flaw in Cairnfield in private.
 
 ## Status, as of October 11, 2026
 
