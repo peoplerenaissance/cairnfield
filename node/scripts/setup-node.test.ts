@@ -222,6 +222,17 @@ describe("the setup script, given no address", () => {
 });
 
 describe("the setup script stops", () => {
+  it("before any call when a hostname given beside a URL is no hostname, and does not say the value back", async () => {
+    const on = bench();
+
+    expect(await setupNode(on.io, ["--url", NODE, "--domain", "node.team-a.example/path --temporary"])).toBe(2);
+
+    expect(argsOf(on)).toEqual([]);
+    expect(on.read).toEqual([]);
+    expect(on.text()).toContain("The value given with --domain gives no address a node can have.");
+    expect(on.text()).not.toContain("--temporary");
+  });
+
   it("with the login instruction when Wrangler is not logged in", async () => {
     const on = bench({ loggedIn: false });
 

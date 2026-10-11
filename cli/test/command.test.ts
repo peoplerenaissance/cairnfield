@@ -180,8 +180,13 @@ describe("the command's own file", () => {
     const printed: string[] = [];
     const told: string[] = [];
     Object.defineProperty(process, "versions", { value: { ...versions, node: "20.19.4" }, configurable: true });
-    vi.spyOn(process.stdout, "write").mockImplementation((text) => (printed.push(String(text)), true));
-    vi.spyOn(console, "error").mockImplementation((line: string) => void told.push(line));
+    vi.spyOn(process.stdout, "write").mockImplementation((text) => {
+      printed.push(String(text));
+      return true;
+    });
+    vi.spyOn(console, "error").mockImplementation((line: string) => {
+      told.push(line);
+    });
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`exit ${code}`);
     });

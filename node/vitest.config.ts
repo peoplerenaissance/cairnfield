@@ -6,7 +6,6 @@ import { defineConfig } from "vitest/config";
 //
 // The Worker's tests run inside the Workers runtime, with the bindings of the Wrangler
 // config (KTD29). Each test puts the in-memory fake in place of the Artifacts binding.
-// The setup script's tests are the last project, and they run in Node.
 
 /** The Workers pool over the Wrangler config, with these variables set on top of it. */
 function workersPool(variables: { readonly [name: string]: string } = {}) {

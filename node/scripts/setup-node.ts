@@ -137,6 +137,9 @@ function deployArgs(node: string, { domain, index }: Options): string[] {
 
 const NOT_DEPLOYED = "Wrangler did not deploy the node. What it printed above says why.";
 
+/** Where a node lists its records. A read of it shows whether a node answers at an address. */
+const listingUrl = (node: string): string => `${node}/${PATHS.listing}`;
+
 /**
  * The address in Wrangler's record of a deploy. The record lists what Wrangler deployed
  * to, and of those only an address on workers.dev is written as a URL. It comes from
@@ -194,7 +197,7 @@ const ANSWER_DEADLINE_MS = 20_000;
  */
 async function answers(io: Io, node: string): Promise<boolean> {
   try {
-    const response = await io.fetch(`${node}/${PATHS.listing}`, { signal: AbortSignal.timeout(ANSWER_DEADLINE_MS) });
+    const response = await io.fetch(listingUrl(node), { signal: AbortSignal.timeout(ANSWER_DEADLINE_MS) });
     const body: unknown = await response.json();
     if (typeof body !== "object" || body === null) return false;
     if (response.status === 200) return "head" in body && typeof body.head === "string";
@@ -218,9 +221,11 @@ export async function setupNode(io: Io, args: readonly string[]): Promise<ExitCo
   // Every address is checked before anything is deployed. The operator's own value is not
   // printed back, because a URL can hold a password.
   const given = url ?? (domain === undefined ? undefined : `https://${domain}`);
-  if (given !== undefined && !isOwnAddress(given)) {
+  // A hostname given beside a URL is held to the same rule: it goes to Wrangler, and into what the script says.
+  const refused = url !== undefined && !isOwnAddress(url) ? "--url" : domain !== undefined && !isOwnAddress(`https://${domain}`) ? "--domain" : undefined;
+  if (refused !== undefined) {
     sayAll(io, [
-      `The value given with ${url === undefined ? "--domain" : "--url"} gives no address a node can have.`,
+      `The value given with ${refused} gives no address a node can have.`,
       "A node's address is the origin it answers at: https, a lower-case hostname, no path and no slash at its end.",
       "For example: --url https://node.team-a.example, or --domain node.team-a.example",
     ]);
@@ -264,9 +269,9 @@ export async function setupNode(io: Io, args: readonly string[]): Promise<ExitCo
   if (answered) io.say(`The node answers at ${node}`);
   else {
     sayAll(io, [
-      `The node is deployed, but nothing answered as a node at ${node}/${PATHS.listing}`,
+      `The node is deployed, but nothing answered as a node at ${listingUrl(node)}`,
       "A new address can take a few minutes to start. Read it again with:",
-      `  curl ${node}/${PATHS.listing}`,
+      `  curl ${listingUrl(node)}`,
       'A new node answers {"error":"not-found"}, because it has no team repo yet.',
     ]);
   }
