@@ -210,8 +210,7 @@ One consequence holds for Cairnfield whatever a test shows. Nothing deploys from
 - With the folder set to `/site/`, the build ran `npx wrangler deploy` there with the repo's own config. That deploy attached the custom domain the config names and made its DNS record.
 - With `workers_dev` and `preview_urls` set to false in the config, the Worker's address on `workers.dev` answered 404.
 - An Access application for the domain's hostname was made before the Worker existed. From the first deploy, every path answered with a redirect to the login, `robots.txt` among them. So Access stands in front of a Worker that only serves static files, and a crawler sees no page of it.
-
-**Not yet observed:** a push to the deploy branch starting a build. The first release will show it.
+- A push to the deploy branch started a build. The first release was a pull request merged as a merge commit. Its build ran and deployed in about 25 seconds, and GitHub showed it as a check on that commit.
 
 **Documentation, read on Oct 11, 2026. Not run.**
 
