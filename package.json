@@ -16,7 +16,9 @@
     "deploy:site": "npm --prefix site run deploy",
     "test": "vitest run",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/tsconfig.json",
-    "scan:secrets": "secretlint \"**/*\""
+    "scan:secrets": "secretlint \"**/*\"",
+    "demo": "node scripts/demo.ts",
+    "demo:reset": "node scripts/reset-demo.ts"
   },
   "devDependencies": {
     "@secretlint/secretlint-rule-pattern": "^13.0.7",
