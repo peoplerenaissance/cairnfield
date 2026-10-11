@@ -92,25 +92,24 @@ export function paintSaid(line: string, style: Style): string {
   } catch {
     return line;
   }
-  return `${label}> ${paintJson(value, style, " ".repeat(who.length + 2), 0)}`;
+  return `${label}> ${paintJson(value, style, " ".repeat(who.length + 2))}`;
 }
 
 /**
  * The value as `JSON.stringify` writes it with two spaces, colored by kind. The value is
  * walked and each leaf is written by `JSON.stringify`, so a string is shown escaped and
- * never interpreted (KTD16, KTD33). `pad` is what each line after the first starts with.
+ * never interpreted (KTD16, KTD33). `indent` is what the lines of this level start with.
  */
-function paintJson(value: unknown, style: Style, pad: string, depth: number): string {
-  const inner = `${pad}${"  ".repeat(depth + 1)}`;
-  const close = `${pad}${"  ".repeat(depth)}`;
+function paintJson(value: unknown, style: Style, indent: string): string {
+  const inner = `${indent}  `;
   if (Array.isArray(value)) {
     if (value.length === 0) return "[]";
-    return `[\n${value.map((item) => `${inner}${paintJson(item, style, pad, depth + 1)}`).join(",\n")}\n${close}]`;
+    return `[\n${value.map((item) => `${inner}${paintJson(item, style, inner)}`).join(",\n")}\n${indent}]`;
   }
   if (typeof value === "object" && value !== null) {
     const entries = Object.entries(value);
     if (entries.length === 0) return "{}";
-    return `{\n${entries.map(([key, item]) => `${inner}${style(KEY, JSON.stringify(key))}: ${paintJson(item, style, pad, depth + 1)}`).join(",\n")}\n${close}}`;
+    return `{\n${entries.map(([key, item]) => `${inner}${style(KEY, JSON.stringify(key))}: ${paintJson(item, style, inner)}`).join(",\n")}\n${indent}}`;
   }
   return style(typeof value === "string" ? STRING : LITERAL, JSON.stringify(value));
 }
@@ -332,7 +331,6 @@ export async function launch(script: "demo" | "reset", key: string, play: (stage
     console.error(`The ${script} cannot start. Set these in the environment: ${found.missing.join(", ")}`);
     process.exit(2);
   }
-  // The decision is made once for each stream. Only a stream that paints reaches a painter.
   const style: Style = (format, text) => styleText(format, text, { validateStream: false });
   const say: Stage["say"] = paints(process.stdout, process.env) ? (line) => console.log(paintSaid(line, style)) : (line) => console.log(line);
   const warn: Io["warn"] = paints(process.stderr, process.env) ? (text) => io.warn(paintWarn(text, style)) : io.warn;
