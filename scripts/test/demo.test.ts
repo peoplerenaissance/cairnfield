@@ -5,14 +5,16 @@
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Writable } from "node:stream";
+import { WriteStream } from "node:tty";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ADMIN_KEY_HEADER, TEAM_BRANCH } from "@cairnfield/protocol";
 import type { View } from "@cairnfield/protocol";
 import { Stop, failure } from "../../cli/src/outcome.ts";
 import { ADMIN_KEY, FIXTURES, INDEX, MODEL_API, MODEL_KEY, NODE, REGISTRATION_KEY, TOKEN, bench, demoPlugin, git, published } from "../../cli/test/support.ts";
 import type { Bench, Site } from "../../cli/test/support.ts";
-import { Stopped, deploymentFrom, launch, openStage } from "../demo-stage.ts";
-import type { Deployment, Stage } from "../demo-stage.ts";
+import { Stopped, deploymentFrom, launch, openStage, paintSaid, paintWarn, paints } from "../demo-stage.ts";
+import type { Deployment, Stage, Style } from "../demo-stage.ts";
 import { EVERY_VARIABLE, demo } from "../demo.ts";
 import { reset } from "../reset-demo.ts";
 import { testIndex } from "./index.ts";
@@ -372,5 +374,107 @@ describe("a script's start from the command line", () => {
       expect(keys).toEqual([REGISTRATION_KEY, RESET_KEY]);
       expect(errors).toEqual(["The demo stopped: the index did not show Team A's records within five minutes", 'The reset stopped: {"error":"node-refused","reason":"unauthorized"}']);
     });
+  });
+});
+
+describe("the terminal renderer", () => {
+  /** A style that marks text instead of coloring it, so a test reads what was painted and how. */
+  const mark: Style = (format, text) => `<${[format].flat().join("+")}>${text}</>`;
+  const plain: Style = (_format, text) => text;
+  const unmarked = (painted: string): string => painted.replaceAll(/<[a-z+]*>|<\/>/g, "");
+  const COMMIT = "0123456789abcdef0123456789abcdef01234567";
+
+  it("paints a command line: the label in the team's color, the command in bold", () => {
+    const line = `team-a$ cairnfield pin ${COMMIT}`;
+
+    const painted = paintSaid(line, mark);
+
+    expect(painted).toMatch(/^<[a-z]+>team-a<\/>\$ <bold>cairnfield pin [0-9a-f]{40}<\/>$/);
+    expect(paintSaid(line, plain)).toBe(line);
+  });
+
+  it("paints a result over several lines, indented by the prefix, and the value reads back", () => {
+    const value = { records: 4, published: [`finding/${COMMIT}`, "patch/x"], notice: "none", kept: true, lost: null };
+    const line = `team-b> ${JSON.stringify(value)}`;
+
+    const painted = paintSaid(line, mark);
+    const lines = unmarked(painted).split("\n");
+
+    expect(lines[0]).toBe("team-b> {");
+    expect(lines.slice(1).every((shown) => shown.startsWith(" ".repeat("team-b> ".length)))).toBe(true);
+    expect(lines).toHaveLength(JSON.stringify(value, null, 2).split("\n").length);
+    expect(JSON.parse(unmarked(painted).slice("team-b> ".length).replaceAll(`\n${" ".repeat(8)}`, "\n"))).toEqual(value);
+    expect(paintSaid(line, plain)).toBe(`team-b> ${JSON.stringify(value, null, 2).replaceAll("\n", `\n${" ".repeat(8)}`)}`);
+  });
+
+  it("colors each key, string and literal by its kind, and the punctuation not at all", () => {
+    const painted = paintSaid('engineer> {"tree":"abc","count":2,"ok":false,"none":null,"list":[]}', mark);
+
+    expect(painted).toContain('<blue>"tree"</>: <green>"abc"</>');
+    expect(painted).toContain('<blue>"count"</>: <yellow>2</>');
+    expect(painted).toContain('<blue>"ok"</>: <yellow>false</>');
+    expect(painted).toContain('<blue>"none"</>: <yellow>null</>');
+    expect(painted).toContain('<blue>"list"</>: []');
+    expect(painted.match(/<[a-z]+>[{}[\],:]/g)).toBeNull();
+  });
+
+  it("shows a hostile string as JSON writes it, and never as text", () => {
+    const hostile = 'say {"a":1} and "quote"\nthen \u001b[31mred';
+    const value = { note: hostile };
+
+    const painted = paintSaid(`team-a> ${JSON.stringify(value)}`, mark);
+
+    expect(painted).toContain(`<green>${JSON.stringify(hostile)}</>`);
+    expect(painted).not.toContain("\u001b");
+    expect(unmarked(painted).split("\n")).toHaveLength(JSON.stringify(value, null, 2).split("\n").length);
+  });
+
+  it("leaves a result that is not JSON, a heading's body, a prose line's body and an unknown line alone", () => {
+    expect(paintSaid("team-a> not json", mark)).toBe("team-a> not json");
+    expect(paintSaid("Step two. Team A adds the index to its config, and Team B joins.", mark)).toBe("<bold>Step two. Team A adds the index to its config, and Team B joins.</>");
+    expect(paintSaid("team-a: takes 3 records off the branch of its repo of records", mark)).toMatch(/^<[a-z]+>team-a<\/>: takes 3 records off the branch of its repo of records$/);
+    expect(paintSaid("The index drops its records and reads every node again.", mark)).toBe("The index drops its records and reads every node again.");
+    expect(paintSaid("someone-else$ cairnfield pin", mark)).toBe("someone-else$ cairnfield pin");
+  });
+
+  it("gives each team and the engineer a color of its own", () => {
+    const colorOf = (who: string): string => /^<([a-z]+)>/.exec(paintSaid(`${who}$ cairnfield verify`, mark))?.[1] ?? "";
+
+    expect(new Set([colorOf("team-a"), colorOf("team-b"), colorOf("engineer")]).size).toBe(3);
+  });
+
+  it("paints a diff: headers and hunks in bold, removed lines red, added lines green, the rest plain", () => {
+    const diff = ["--- a/scripts/sync.sh", "+++ b/scripts/sync.sh", "old mode 100644", "new mode 100755", "@@ -3,2 +3,1 @@", "-curl $HOST", "--- a removed line that looks like a header", "+++ an added line that looks like a header", "+curl sync.example", "\\ No newline at end of file", "+++ /dev/null"];
+
+    const painted = diff.map((line) => paintWarn(`${line}\n`, mark));
+
+    expect(painted).toEqual([
+      "<bold>--- a/scripts/sync.sh</>\n",
+      "<bold>+++ b/scripts/sync.sh</>\n",
+      "old mode 100644\n",
+      "new mode 100755\n",
+      "<bold>@@ -3,2 +3,1 @@</>\n",
+      "<red>-curl $HOST</>\n",
+      "<red>--- a removed line that looks like a header</>\n",
+      "<green>+++ an added line that looks like a header</>\n",
+      "<green>+curl sync.example</>\n",
+      "\\ No newline at end of file\n",
+      "<bold>+++ /dev/null</>\n",
+    ]);
+    expect(paintWarn("warning: redirecting to https://node.example/\n", mark)).toBe("warning: redirecting to https://node.example/\n");
+    expect(diff.map((line) => paintWarn(`${line}\n`, plain))).toEqual(diff.map((line) => `${line}\n`));
+  });
+
+  it("paints only a terminal that shows colors, by the environment it is given", () => {
+    type Stream = Parameters<typeof paints>[0];
+    const stream = (isTTY: boolean): Stream => Object.assign(new Writable(), { isTTY, getColorDepth: WriteStream.prototype.getColorDepth, hasColors: WriteStream.prototype.hasColors });
+    const pipe: Stream = Object.assign(new Writable(), { hasColors: WriteStream.prototype.hasColors });
+
+    expect(paints(stream(false), { TERM: "xterm-256color" })).toBe(false);
+    expect(paints(stream(false), { TERM: "xterm-256color", FORCE_COLOR: "1" })).toBe(false);
+    expect(paints(pipe, { TERM: "xterm-256color" })).toBe(false);
+    expect(paints(stream(true), { TERM: "xterm-256color" })).toBe(true);
+    expect(paints(stream(true), { TERM: "xterm-256color", NO_COLOR: "1" })).toBe(false);
+    expect(paints(stream(true), { TERM: "dumb" })).toBe(false);
   });
 });
