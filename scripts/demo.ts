@@ -53,7 +53,12 @@ const HIDDEN_INSTRUCTION = "981ae3aa8aadd84d9f44c609c4302727d91b4d381b92c124d721
 /** `plugin.json` lets the plugin read every environment variable. Team B found it, on the line after the any-host rule. */
 export const EVERY_VARIABLE = "f8f4d273cee270d729eaa06f6868645a6e88335ce4953b8840f4bd55e8279614";
 
-/** The patch runs the demo replays (KTD18). A run with no recording for one of them does not start. */
+/**
+ * The patch runs the demo replays (KTD18). A run with no recording for one of them does
+ * not start. The two recordings for the hidden instruction are written by hand, with the
+ * model `none`: in four live runs on that line the bundled agent wrote no patch. The other
+ * two hold what a model wrote.
+ */
 const RUNS = [
   ["team-a", ANY_HOST],
   ["team-a", HIDDEN_INSTRUCTION],
