@@ -9,14 +9,15 @@ The repo holds a static site, the workspace scaffold, the protocol library in `p
 - The build plan is a private planning document. It lives under `docs/`, which Git ignores, so it is not part of this repo. Never commit a file under `docs/`.
 - When `docs/plans/` exists in your checkout, the plan there is the source of truth. Read its Goal Capsule first, then the unit you are working on and the requirements (R) and decisions (KTD) that unit cites. Do not read the whole file to find your way; scan its headings.
 - Never edit anything under `docs/brainstorms/`. It is a historical record, and the plan overrides it wherever they differ.
-- Public documentation goes in `reference/`: the protocol, the threat model and the platform notes. It arrives with the README unit.
+- Public documentation is in `reference/`: the protocol, the threat model and the platform notes. `reference/protocol.md` states each requirement, decision and example that a comment in the code cites, under the same ID. When you cite an ID in a comment that it does not hold yet, add it there. Keep what was observed on the platform apart from what was only read in its documentation, as `reference/platform-notes.md` does.
+- `skills/cairnfield/SKILL.md` is for a team's own review agent, which writes findings to the outbox and runs `validate` and no other command (R21). It ships in this repo and is never served by the index. Bring it up to date when a record's fields, a closed list or the output of `validate` changes.
 - `site/` is the public microsite, a Cloudflare Worker that serves static files from `site/public/`.
 
 When the plan and this file disagree, the plan wins. Tell the developer about the disagreement.
 
 ## Setup
 
-- Node 22.22.1. Run `nvm use` in the repo root. Wrangler will not start on Node 20.
+- Node 22.22.1. Run `nvm use` in the repo root. Wrangler will not start on Node 20. The command's name is linked to `cli/bin/cairnfield.mjs`, plain JavaScript that every Node reads. On a Node older than 22.22 it prints `{"error":"node-too-old",...}` and returns exit code 3, and on a newer one it loads the command.
 - Use the Wrangler installed in each project (4.147 or later), never a global one.
 - Worker secrets are set by the developer by hand. Stop and ask when a step needs one. Never write a secret to a file in the repo.
 - Never run `wrangler deploy --temporary`. When Wrangler is not logged in it suggests that flag, which creates a temporary Cloudflare account and accepts Cloudflare's terms on the developer's behalf. Stop and ask the developer to log in instead.
@@ -29,8 +30,8 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 | `npm run check` | `site/` | Dry-run of the site deploy |
 | `npm run deploy:site` | repo root | Deploys the site. Ask the developer first |
 | `npm install` | repo root, and again in `node/` | Installs the workspace. `node/` and `site/` install on their own |
-| `npm test` | repo root, and in `node/` | Runs the Vitest suites |
-| `npm run typecheck` | repo root, and in `node/` | Type-checks every package and `scripts/`. In `node/` and `index/` it first writes the binding types with `wrangler types`. In `index/` it also checks the page's scripts against a browser's types |
+| `npm test` | repo root, and in `node/` | Runs the Vitest suites. In `node/` the Worker's tests run in the Workers runtime and the setup script's tests in Node |
+| `npm run typecheck` | repo root, and in `node/` | Type-checks every package and `scripts/`. In `node/` and `index/` it first writes the binding types with `wrangler types`. In `node/` it also checks `node/scripts/` against Node's types. In `index/` it also checks the page's scripts against a browser's types |
 | `npm run check` | `node/` | Dry-run of the node deploy: the default config and both demo environments |
 | `npm run build` | `index/` | Writes the public page's files to `index/dist/page/`, which Git ignores |
 | `npm run check` | `index/` | Builds the page, then a dry-run of the index deploy |
@@ -38,6 +39,7 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 | `npm run deploy` | `index/` | Builds the page, then deploys the index. `GIT_URLS` must be set in the shell to the Git URLs the index may import, with a space between two. `CLAIM_TTL_SECONDS` is optional. Ask the developer first |
 | `npm run deploy` | `node/` | Deploys one team node from the default config. `NODE_URL` must be set in the shell to the node's base URL. `INDEX_URL` is optional. Ask the developer first |
 | `npm run deploy:demo` | `node/` | Deploys the two demo nodes. `TEAM_A_NODE_URL` and `TEAM_B_NODE_URL` must be set. Ask the developer first |
+| `npm run setup -- [--url <base-url>] [--domain <hostname>] [--index <address>]` | `node/` | Deploys one team node from the default config, as a team does for itself. With no URL it deploys twice, to learn the node's address on `workers.dev` and then to give the node that address. It never touches the admin key. `node/README.md` says more. Ask the developer first |
 | `node scripts/check-node-contract.ts <node-url> <component-commit> <patch-commit>` | repo root | Checks a deployed node against the protocol's node contract |
 | `npx cairnfield <command>` | a folder with a `cairnfield.json`. `verify` needs none | Runs the command. `npm install` links it. `cli/src/run.ts` lists the commands and `cli/src/outcome.ts` the exit codes |
 | `node cli/evals/injection.ts fixtures/injection/<name>` | repo root | Runs the live patch agent on one injection fixture. It calls a model with the developer's key. Ask the developer first |
@@ -55,7 +57,7 @@ The page reads the view and nothing else (KTD14). It sets every value from a rec
 
 `index/wrangler.jsonc` names its database and its queue and holds no database ID: Wrangler finds both by name. Do not write an ID into it. The index's registration key and reset key are Worker secrets, `REGISTRATION_KEY` and `RESET_KEY`, and the same rule holds for them as for the node's admin key.
 
-The order of an index release matters, and each step is the developer's. For the first release: create the queue and the database with `npx wrangler queues create cairnfield-index-sync` and `npx wrangler d1 create cairnfield-index` in `index/`, run `npm run migrate`, then `npm run deploy`, then set the two secrets. For a later release: run `npm run migrate` before `npm run deploy`, and keep each migration additive, so the Worker that is still running works on the new schema.
+The order of an index release matters, and each step is the developer's. For the first release, in `index/`: run `npm run deploy`, then `npm run migrate`, then set the two secrets, then `git restore wrangler.jsonc`. With Wrangler 4.148 the first deploy created the database and the queue by itself and wrote their IDs into `index/wrangler.jsonc`, which the repo keeps free of IDs. The new database has no tables, and the view answers HTTP 500, until the migration has run. Creating the queue or the database by hand first is not needed. For a later release: run `npm run migrate` before `npm run deploy`, and keep each migration additive, so the Worker that is still running works on the new schema.
 
 Registering a failed component with the index again retries its import with the Git URL and branch the index stored for it. A component whose finished copy does not hold the commit fails again until that copy is deleted by hand. A new URL or branch for a commit is not taken.
 
@@ -78,11 +80,12 @@ The `.snyk` files in the repo root, `index/`, `sim/` and `node/` ignore two advi
 | `protocol/` | Record schemas, limits, validation, patch checks | Pure functions, no platform dependency |
 | `node/` | Team node Worker | Self-contained, its own lockfile, imports nothing from the workspace |
 | `index/` | Index Worker, database migrations, public page | |
-| `cli/` | The `cairnfield` command and reviewer agents | |
+| `cli/` | The `cairnfield` command and its patch agent | `cli/bin/` holds the launcher the command's name is linked to |
 | `sim/` | Scale simulator | |
 | `fixtures/` | Demo plugin, lens files, each demo team's saved findings, injection fixtures, recordings and the hand-made patch an index rejects | The plugin's two commits are frozen |
 | `site/` | Microsite | Self-contained, its own lockfile |
 | `reference/` | Public protocol, threat model and platform notes | |
+| `skills/cairnfield/` | The skill file for a team's own review agent | Never served by the index |
 
 ## Rules that must not break
 

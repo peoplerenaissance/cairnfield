@@ -153,8 +153,7 @@
   .term { background: #1B2529; color: #D7DFDB; font: 400 13px/1.7 var(--mono); padding: 16px 18px 18px; overflow-x: auto; }
   .term .p { color: var(--lichen); } .term .cmd { color: #fff; font-weight: 500; }
   .term .ok { color: #A9C77B; } .term .dimm { color: #7F8E91; } .term .warn { color: #E7B55C; }
-  .term div { white-space: pre-wrap; }
-  .term .cmd { overflow-wrap: anywhere; }
+  .term div { white-space: pre-wrap; overflow-wrap: anywhere; }
   .term div + div { margin-top: 2px; }
 
   .field { position: relative; height: 210px; background: var(--paper); }
@@ -277,7 +276,6 @@
   .timeline .v { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 150px; text-align: center; white-space: nowrap; font: 500 11.5px/1 var(--mono); color: var(--muted); }
   .timeline .v .dotc { width: 12px; height: 12px; border-radius: 50%; background: var(--ink); }
   .timeline .link { width: 60px; height: 2px; background: var(--line); margin-bottom: 23px; }
-  .ghostcairn { width: 44px; height: 30px; border: 1.5px dotted var(--muted); border-radius: 50% 50% 46% 54% / 60% 60% 40% 40%; }
 
   table.plain { width: 100%; border-collapse: collapse; font-size: 14.5px; }
   table.plain th { text-align: left; font: 500 12.5px/1.2 var(--mono); color: var(--muted); padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: bottom; }

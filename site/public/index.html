@@ -84,7 +84,7 @@
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
       <p class="eyebrow">For the engineer responsible for what the team installs</p>
       <h2>How it works</h2>
-      <p class="intro">Today a team reviews what it installs alone, waits on someone else for every fix, and cannot check what its engineers run. Cairnfield answers each in turn, for each component: a plugin, skill or MCP server at one exact commit. One invented plugin, <code>fellbeck-sync</code>, and three invented teams are the example throughout.</p>
+      <p class="intro">Today a team reviews what it installs alone, waits on someone else for every fix, and cannot check what its engineers run. Cairnfield answers each in turn, for each component: a plugin, skill or MCP server at one exact commit. One invented plugin, <code>fellbeck-sync</code>, and three invented teams are the example throughout. The prototype's demo runs two of them.</p>
 
       <div class="steps">
         <div class="step">
@@ -93,9 +93,9 @@
             <h3>Review together</h3>
             <dl>
               <dt>What happens</dt>
-              <dd>Each team publishes what it finds as findings, in its own Git repo. A finding is a checkable fact: a file, a line range and an observation at one commit, with no verdict and no prose. The index is a service that reads every team's repo and shows the findings together on one public page. Other teams re-check a finding and confirm it.</dd>
+              <dd>Each team publishes what it finds as findings, in its own Git repo. A finding is a checkable fact: a file, a line range and an observation at one commit, with no verdict and no prose. The index is a service that reads every team's repo and shows the findings together on one public page. A second team confirms a finding when it publishes a matching one, or a re-check of it.</dd>
               <dt>Why it holds up</dt>
-              <dd>You can use a stranger's finding without trusting the stranger. Your own agent re-checks the lines before anything counts.</dd>
+              <dd>You can check a stranger's finding without trusting the stranger, because it names lines anyone can read. The index checks that those lines exist before it shows a finding. Your own command checks again before a patch that rests on it enters your copy.</dd>
             </dl>
           </div>
           <figure class="stage">
@@ -167,8 +167,8 @@
       <div class="payoff">
         <div class="trio" role="img" aria-label="Three teams build three different copies of one plugin from shared patches">
           <figure>
-            <span class="cairn xl"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone a drop"></span><span class="stone a drop"></span><span class="stone a drop"></span></span>
-            <figcaption><b>Northfork</b>Takes only its own patches.</figcaption>
+            <span class="cairn xl"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone a drop"></span><span class="stone a drop"></span></span>
+            <figcaption><b>Northfork</b>Takes only its own two patches.</figcaption>
           </figure>
           <figure>
             <span class="cairn xl"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone b drop"></span><span class="stone b drop"></span><span class="stone a drop"></span></span>
@@ -200,7 +200,7 @@
       <div class="cards">
         <div class="card">
           <h3>Any agent, any model</h3>
-          <p>Cairnfield is not tied to one model or one agent. Findings and patches are plain files, and the node, the index and the checks involve no model. An agent from any vendor, or a script with no model at all, can write them, and the command checks them the same way. The bundled reviewers use Claude, and they are the only ones in this prototype.</p>
+          <p>Cairnfield is not tied to one model or one agent. Findings are plain files, and the node, the index and the checks involve no model. An agent from any vendor, or a script with no model at all, can write them, and the command checks them the same way. The prototype bundles one agent, which writes patches and uses Claude. It bundles no reviewer: your own review agent writes your findings.</p>
           <p><a href="/announcement#agents">See the commands for each</a></p>
         </div>
         <div class="card">
@@ -213,7 +213,7 @@
           <ul>
             <li>It does not review for you. An approval still needs your own review. Sharing makes rejections cheap and approvals better evidenced.</li>
             <li>It does not hide what you look at. Publishing reveals which components your team is evaluating.</li>
-            <li>It does not yet carry findings and patches forward to a new release. That is the first thing to build next.</li>
+            <li>It does not carry other teams' findings and patches forward to a new release. It carries your own. Carrying the rest is the first thing to build next.</li>
           </ul>
           <p><a href="/announcement#users">More questions from teams</a></p>
         </div>

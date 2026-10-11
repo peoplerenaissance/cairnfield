@@ -2,28 +2,34 @@
 
 > Cairnfield lets agents from many teams change the same shared code at once. Teams publish checkable findings and patches from their own repos, an index shows them side by side, and each team builds the version it trusts. Its first use is the review of agent skills, plugins and MCP servers.
 
-Status as of 2026-10-05: a planned prototype. The press release on the announcement page is a draft written before the build. The status table in the repository README says what exists today.
+Status as of 2026-10-11: a prototype, built in part. The press release on the announcement page is a draft written before the build, and it is kept as it was written. The questions and the sketches say what the prototype does and what is planned. The status table in the repository README says what exists today.
 
 This site describes the project. It does not carry instructions for agents. Instructions for running or extending Cairnfield live only in its source repository, in `AGENTS.md` and the skill file, so that they can be read at a pinned commit.
 
 ## Pages
 
 - [The case for Cairnfield](https://cairnfield.net/): how it works in three steps with one running example, why any agent on any model can take part, and what it does not do.
-- [The announcement and the questions](https://cairnfield.net/announcement): the press release drafted before the build, questions from teams, including how any agent can take part, and questions from competition judges.
-- [Interface sketches](https://cairnfield.net/interfaces): the command, the component page across five demo moments, three teams' policies and verdicts, page states, and the setup of a team node. All data in the sketches is invented.
+- [The announcement and the questions](https://cairnfield.net/announcement): the press release drafted before the build, questions from teams, including how any agent can take part, and questions from competition judges. The answers say what the prototype does and what is planned.
+- [Interface sketches](https://cairnfield.net/interfaces): the command, the component page across the four steps of the demo, three teams' lenses and verdicts, a team's table of what it may install, page states, and the setup of a team node. A dotted outline marks a part that is not in the prototype. All data in the sketches is invented.
 
 ## Key facts
 
 - A finding names a file, a line range and an observation at one commit. It carries no verdict and no free text.
 - A patch is one commit tied to the finding that prompted it. Competing patches for the same lines are shown side by side.
 - A finding matches, and a patch is identified, by file content. Neither depends on a path or on one commit.
-- Each team keeps a local policy, called a lens, and builds its own patched copy, identified by a Git tree hash.
+- Each team keeps a local policy, called a lens, and builds its own patched copy, identified by a Git tree hash. A lens says which patches the team takes: none, its own, or also those of the teams it names.
+- The prototype bundles one agent, which writes patches. A team's own review agent, or a person, writes its findings.
 - The index holds nothing original and serves data only. The prototype has one, and anyone can run another over the same nodes.
-- Reading the index needs no node. Publishing needs one, which each team runs in its own Cloudflare account.
+- Reading the index needs no node. Publishing needs one, which each team runs in its own Cloudflare account. A team working alone needs no index.
 - Built on Cloudflare Workers and Artifacts. Open source under the MIT license.
 
 ## Not built
 
-- Showing carried findings and patches on a new version of a component. The record formats already allow it.
+- Carrying other teams' findings and patches to a new version of a component, and marking carried work on the page. A team's own findings and patches do carry.
+- One command that runs a whole review with bundled reviewer agents, and a command that re-checks other teams' work.
+- A lens that states criteria and approved destinations, or that takes a patch on a count of organizations.
+- Cited lines and one row per host on the component page, and a merged patch.
+- A scale run with simulated organizations. The demo runs two teams.
+- The one-click deploy button for a team node. It is switched off and has not been tested. A setup script deploys a node.
 - Hosted tools with no public commit cannot be pinned, so they are out of scope.
 - A private log for a team's free-form findings. Shared records carry no text.

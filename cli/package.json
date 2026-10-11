@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The cairnfield command and its reviewer agents.",
+  "description": "The cairnfield command and its patch agent.",
   "bin": {
     "cairnfield": "./bin/cairnfield.mjs"
   },
