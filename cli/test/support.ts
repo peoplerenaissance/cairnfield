@@ -182,12 +182,12 @@ export interface Bench extends Site {
   /** Called before each Git call, so a test can change the remote under the command. */
   beforeGit: ((args: readonly string[], call: GitCall) => void) | undefined;
   /** Answers a request in place of the fake node and index, or throws as a network would. */
-  respond: ((seen: Seen) => Response | undefined) | undefined;
+  respond: ((seen: Seen) => Response | Promise<Response> | undefined) | undefined;
   /** Writes the config file. */
   configure(config: { readonly [field: string]: unknown }): void;
   run(...argv: string[]): Promise<Outcome>;
-  /** Puts the node of another team at a base URL, with repos of its own. */
-  another(url: string, namespace: string): Site;
+  /** Puts the node of another team at a base URL, with repos of its own, and an admin key of its own when one is given. */
+  another(url: string, namespace: string, key?: string): Site;
   dispose(): void;
 }
 
@@ -212,8 +212,8 @@ interface Hosted extends Site {
   answer(seen: Seen, path: string, query: URLSearchParams): Response;
 }
 
-/** Makes the fake node of one team, with its repos in a folder of their own under `remotes`. */
-function host(remotes: string, namespace: string): Hosted {
+/** Makes the fake node of one team, with its repos in a folder of their own under `remotes`. It answers its admin routes to `key`. */
+function host(remotes: string, namespace: string, key: string): Hosted {
   mkdirSync(join(remotes, namespace), { recursive: true });
 
   const repo = (name: string): string => join(remotes, namespace, `${name}.git`);
@@ -276,7 +276,7 @@ function host(remotes: string, namespace: string): Hosted {
     if (seen.method === "GET" && path === "file") return file(query);
     if (seen.method === "GET" && path === "read-token") return readToken(query);
     if (!path.startsWith("admin/")) return refuse("not-found");
-    if (seen.headers.get(ADMIN_KEY_HEADER) !== ADMIN_KEY) return refuse("unauthorized");
+    if (seen.headers.get(ADMIN_KEY_HEADER) !== key) return refuse("unauthorized");
     const body = (seen.body ?? {}) as { readonly repo?: unknown; readonly component?: unknown; readonly commit?: unknown };
     if (path === "admin/import") {
       if (node.importRefusal !== undefined) return refuse(node.importRefusal);
@@ -308,8 +308,8 @@ export function bench(sharing?: Bench): Bench {
   const remotes = sharing?.remotes ?? join(root, "remotes");
   mkdirSync(home, { recursive: true });
   const sites = new Map<string, Hosted>();
-  const another = (url: string, namespace: string): Site => {
-    const site = host(remotes, namespace);
+  const another = (url: string, namespace: string, key: string = ADMIN_KEY): Site => {
+    const site = host(remotes, namespace, key);
     sites.set(url, site);
     return site;
   };
@@ -480,8 +480,8 @@ function pluginRepo(): string {
   return built;
 }
 
-/** The demo plugin, as the node would hold it after an import: the copy of its first commit. */
-export function demoPlugin(on: Bench): Commits {
+/** The demo plugin, as a node would hold it after an import: the copy of its first commit. */
+export function demoPlugin(on: Site): Commits {
   const repo = pluginRepo();
   const [first = "", later = ""] = git(repo, ["rev-parse", "HEAD~1", "HEAD"]).split("\n");
   git(repo, ["push", "--quiet", on.createRepo(`copy-${first}`), TEAM_BRANCH]);
@@ -546,9 +546,9 @@ export function finding(component: string, overrides: { readonly [field: string]
   };
 }
 
-/** The paths of the record files on the team repo's branch. */
-export function published(on: Bench): string[] {
-  const listed = git(on.repo("team"), ["ls-tree", "-r", "--name-only", TEAM_BRANCH]);
+/** The paths of the record files on the branch of a node's team repo. */
+export function published(at: Site): string[] {
+  const listed = git(at.repo("team"), ["ls-tree", "-r", "--name-only", TEAM_BRANCH]);
   return listed === "" ? [] : listed.split("\n");
 }
 
@@ -611,7 +611,7 @@ export function forkCommit(at: Site, from: string, component: string, changes: r
 }
 
 /** The files of a commit, as a node lists them. */
-function filesOf(repo: string, commit: string): { path: string; mode: string; blob: string }[] {
+export function filesOf(repo: string, commit: string): { path: string; mode: string; blob: string }[] {
   return git(repo, ["ls-tree", "-r", commit])
     .split("\n")
     .map((line) => {
