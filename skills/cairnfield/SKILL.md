@@ -151,10 +151,10 @@ Leave no placeholder behind: a file in the outbox under any name but its ID is r
 Run it in the folder that holds `cairnfield.json`, never inside a checkout:
 
 ```sh
-npx --no cairnfield validate
+npx --no --offline cairnfield validate
 ```
 
-It takes no argument and one option, `--config <file>`, for a config file in another folder. Anything else gives `{"error":"usage"}`. `--no` belongs to `npx`: without it, `npx` may download and run a package of that name when the command is not installed where you are. If `npx` prints an error of its own and no line of JSON, stop and tell the operator. When the operator gave you another way to start `cairnfield`, use it with the same arguments.
+It takes no argument and one option, `--config <file>`, for a config file in another folder. Anything else gives `{"error":"usage"}`. `--no` and `--offline` belong to `npx`. Without `--no` it may download and run a package of that name when the command is not installed where you are. Without `--offline` it asks the npm registry about that name first, which is a network connection. If `npx` prints an error of its own and no line of JSON, stop and tell the operator. When the operator gave you another way to start `cairnfield`, use it with the same arguments.
 
 The command prints one line of JSON and returns an exit code.
 

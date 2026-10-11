@@ -153,7 +153,7 @@ A group is confirmed when two organizations stand behind it: the authors of its 
 
 The library also holds the rule that reads criteria against a lens, `countsAgainstLens`. It reads a criterion and a host, never an observation alone. No command applies it yet.
 
-**R11.** The index rejects a patch that changes a line its findings do not cite, that adds a file, that leaves a byte-identical copy of the content it replaces unchanged, or that passes a size limit. It stores the reason. It computes the patch's kind from the diff. The command runs the same checks on a patch it wrote, before any commit is pushed.
+**R11.** The index rejects a patch that changes a line its findings do not cite, that adds a file, that leaves a byte-identical copy of the content it replaces unchanged, or that is over a size limit. It stores the reason. It computes the patch's kind from the diff. The command runs the same checks on a patch it wrote, before any commit is pushed.
 
 **R12.** One sync path serves a push notice, a retry and a full rebuild. Each ends in the same steps: read the node's head and listing, fetch the record files not read yet, check each one, store it.
 

@@ -253,7 +253,7 @@ Cairnfield bundles no reviewer agent. A team's findings come from its own review
 The work is split in three.
 
 1. The operator pins the component.
-2. The agent reads the checkout as data and writes one record file for each finding into the outbox. It runs `npx --no cairnfield validate` until its files pass, and stops.
+2. The agent reads the checkout as data and writes one record file for each finding into the outbox. It runs `npx --no --offline cairnfield validate` until its files pass, and stops.
 3. The operator runs `publish`. It sends the admin key to the node that `cairnfield.json` names, and an agent that ran in that folder could have changed the file. So the operator reads `cairnfield.json` first, or starts the agent with only the outbox writable.
 
 Start the agent in the folder that holds `cairnfield.json`, and give it this instruction:

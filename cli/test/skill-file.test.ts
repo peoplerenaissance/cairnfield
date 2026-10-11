@@ -136,7 +136,8 @@ describe("the skill file", () => {
     // R21: an outside agent runs `validate` and no other command. The check for a key is the shell's own test.
     const [keys, ...started] = blocksOf(SKILL, "sh");
     expect(keys).toMatch(/^\[ -z "\$\{[A-Z_]+\+x\}\$\{[A-Z_]+\+x\}" \] && echo unset$/);
-    expect(started).toEqual(["npx --no cairnfield validate"]);
+    // `--offline` keeps `npx` from asking the registry about the name when the command is not linked.
+    expect(started).toEqual(["npx --no --offline cairnfield validate"]);
   });
 
   it("gives its worked example the canonical JSON and the ID the protocol gives that record", async () => {
