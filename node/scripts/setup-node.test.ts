@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { setupNode } from "./setup-node.ts";
+import { setupNode, wranglerEnv } from "./setup-node.ts";
 import type { Io, WranglerCall } from "./setup-node.ts";
 
 const NODE = "https://node.team-a.example";
@@ -197,6 +197,19 @@ describe("the setup script, given the node's address", () => {
 
     expect(JSON.stringify(on.ran)).not.toContain(key);
     expect(on.text()).not.toContain(key);
+  });
+});
+
+describe("the environment of a run of Wrangler", () => {
+  it("holds the shell's variables and the run's own, and the admin key under neither of its names", () => {
+    const shell = { PATH: "/usr/bin", CLOUDFLARE_API_TOKEN: "the-account-token", CAIRNFIELD_ADMIN_KEY: "the-admin-key", ADMIN_KEY: "the-admin-key" };
+
+    // Wrangler keeps its own login, which it needs. The node's admin key it has no use for.
+    expect(wranglerEnv(shell, { WRANGLER_OUTPUT_FILE_PATH: "/tmp/record" })).toEqual({
+      PATH: "/usr/bin",
+      CLOUDFLARE_API_TOKEN: "the-account-token",
+      WRANGLER_OUTPUT_FILE_PATH: "/tmp/record",
+    });
   });
 });
 

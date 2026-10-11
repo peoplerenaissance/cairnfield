@@ -18,8 +18,8 @@
 // The script deploys the top level of `wrangler.jsonc` with the Wrangler installed in
 // this package, and it deletes nothing. It never passes `--temporary`, which makes a
 // temporary Cloudflare account and accepts Cloudflare's terms for the operator. It never
-// makes, reads, prints or stores an admin key (KTD10): it ends by saying how the
-// operator sets one.
+// makes, reads, prints or stores an admin key (KTD10), and it hands Wrangler none that
+// the shell holds. It ends by saying how the operator sets one.
 //
 // A deploy can write into Wrangler's config file. That was seen with Wrangler 4.148.0, on
 // another Worker of this repo that has a database and a queue: its first deploy made both
@@ -73,6 +73,21 @@ const FOLDER = fileURLToPath(new URL("..", import.meta.url));
  */
 const WRANGLER = join(FOLDER, "node_modules", "wrangler", "bin", "wrangler.js");
 
+/**
+ * The names an operator's shell may hold the node's admin key under: the command's
+ * variable, and the name of the Worker's secret.
+ */
+const ADMIN_KEY_NAMES = ["CAIRNFIELD_ADMIN_KEY", "ADMIN_KEY"];
+
+/**
+ * The environment of one run of Wrangler: the shell's, with the run's own variables and
+ * without the node's admin key, which Wrangler has no use for.
+ */
+export function wranglerEnv(shell: NodeJS.ProcessEnv, added: WranglerCall["env"]): NodeJS.ProcessEnv {
+  const kept = Object.entries(shell).filter(([name]) => !ADMIN_KEY_NAMES.includes(name));
+  return { ...Object.fromEntries(kept), ...added };
+}
+
 /** The script's own process: this package's Wrangler, the network and standard output. */
 export function processIo(): Io {
   return {
@@ -88,7 +103,7 @@ export function processIo(): Io {
       new Promise((resolve, reject) => {
         const child = spawn(process.execPath, [WRANGLER, ...args], {
           cwd: FOLDER,
-          env: { ...process.env, ...call.env },
+          env: wranglerEnv(process.env, call.env),
           // A hidden run still shows its standard error, where Wrangler says why it
           // failed. The account's details are on its standard output.
           stdio: call.shown ? "inherit" : ["ignore", "ignore", "inherit"],
