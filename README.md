@@ -26,7 +26,7 @@ Each team hosts one piece, its node: a Cloudflare Worker that keeps the team's r
 | Deploy a team node | [Deploy a node](#deploy-a-node) | A Cloudflare account |
 | Have your own review agent write findings | [Let your own agent write findings](#let-your-own-agent-write-findings) | The skill file |
 
-The command needs Node 22.22 and Git, and is written for macOS and Linux. On an older Node it prints `{"error":"node-too-old",...}`, says which Node it needs and stops. Windows is not supported in the prototype. A node and an index each run in a Cloudflare account on the Workers Paid plan, which Artifacts requires. Usage beyond the included amounts is billed to you.
+The command needs Node 22.22 and Git, and is written for macOS and Linux. On an older Node it prints `{"error":"node-too-old",...}`, says which Node it needs and stops. Node 23 before 23.6 counts as older. Windows is not supported in the prototype. A node and an index each run in a Cloudflare account on the Workers Paid plan, which Artifacts requires. Usage beyond the included amounts is billed to you.
 
 Install once, in the repo root:
 

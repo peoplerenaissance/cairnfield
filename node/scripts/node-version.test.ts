@@ -15,16 +15,21 @@ function runAs(version: string): SpawnSyncReturns<string> {
 }
 
 describe("the Node version check of the setup", () => {
-  it.each(["20.19.4", "22.21.9"])("stops on Node %s, and names the version it found", (version) => {
+  // Node 23 runs TypeScript as it is from 23.6 on, so the releases of 23 before it are too old as well.
+  it.each([
+    ["20.19.4", "22.22"],
+    ["22.21.9", "22.22"],
+    ["23.5.1", "23.6"],
+  ])("stops on Node %s, and names the version it found", (version, needs) => {
     const { status, stdout, stderr } = runAs(version);
 
     expect(status).toBe(1);
-    expect(stderr).toContain("Node 22.22 or later");
+    expect(stderr).toContain(`Node ${needs} or later`);
     expect(stderr).toContain(`This is Node ${version}.`);
     expect(stdout).toBe("");
   });
 
-  it.each(["22.22.0", "23.0.0"])("lets Node %s through, and prints nothing", (version) => {
+  it.each(["22.22.0", "23.6.0", "24.0.0"])("lets Node %s through, and prints nothing", (version) => {
     const { status, stdout, stderr } = runAs(version);
 
     expect(status).toBe(0);

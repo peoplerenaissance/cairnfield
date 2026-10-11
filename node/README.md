@@ -4,7 +4,7 @@ A team node is the one piece of Cairnfield a team hosts: a Cloudflare Worker tha
 
 ## What you need
 
-- Node 22.22 or later. In a clone of the repo, `nvm use` selects it.
+- Node 22.22 or later, and on the Node 23 line 23.6 or later. In a clone of the repo, `nvm use` selects it.
 - A Cloudflare account on the Workers Paid plan, which Artifacts requires. Usage beyond the included amounts is billed to you.
 
 ## Deploy a node
