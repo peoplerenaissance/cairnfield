@@ -21,7 +21,7 @@ import {
 } from "@cairnfield/protocol";
 import type { Finding } from "@cairnfield/protocol";
 import { EXIT } from "../src/outcome.ts";
-import { OUTBOX, bench, pinTree, putRecord } from "./support.ts";
+import { OUTBOX, bench, pinTree, putFile, putRecord } from "./support.ts";
 import type { Bench } from "./support.ts";
 
 const SKILL = readFileSync(new URL("../../skills/cairnfield/SKILL.md", import.meta.url), "utf8");
@@ -90,6 +90,12 @@ function example(): Finding {
   return JSON.parse(only("blocks of JSON in its worked example", blocksOf(under("Worked example"), "json"))) as Finding;
 }
 
+/** The name the file has an agent give a record before it knows the record's ID. */
+const PLACEHOLDER = "0".repeat(64);
+
+/** The outputs of `validate` that the worked example prints as blocks, in the order it prints them. */
+const printedIn = (worked: string): string[] => blocksOf(worked).filter((block) => block.startsWith('{"records"'));
+
 /** The finding moved to line 6, as the file moves it. That line does not hold the hostname. */
 const onLine6 = (record: Finding): Finding => ({ ...record, location: { ...record.location, start: 6, end: 6 } });
 
@@ -126,6 +132,13 @@ describe("the skill file", () => {
     expect(counts(/^- `path` .*?(\d[\d,]*) characters/gm)).toEqual([MAX_PATH_LENGTH]);
   });
 
+  it("has the agent start one program, `validate`, after a check of its own shell that starts none", () => {
+    // R21: an outside agent runs `validate` and no other command. The check for a key is the shell's own test.
+    const [keys, ...started] = blocksOf(SKILL, "sh");
+    expect(keys).toMatch(/^\[ -z "\$\{[A-Z_]+\+x\}\$\{[A-Z_]+\+x\}" \] && echo unset$/);
+    expect(started).toEqual(["npx --no cairnfield validate"]);
+  });
+
   it("gives its worked example the canonical JSON and the ID the protocol gives that record", async () => {
     const worked = under("Worked example");
     const record = example();
@@ -134,7 +147,9 @@ describe("the skill file", () => {
     // Canonical JSON puts the keys in order, and `check` is the first key of a finding.
     expect(only("blocks that are a record on one line", blocksOf(SKILL).filter((block) => block.startsWith('{"check"')))).toBe(canonicalJson(record));
     // The example names two records and no other: the finding, and the same finding on line 6.
-    expect(new Set(worked.match(/\b[0-9a-f]{64}\b/g))).toEqual(new Set([id, await recordId(onLine6(record))]));
+    // The third name is the one a record waits under until `validate` has said its ID.
+    expect(new Set(worked.match(/\b[0-9a-f]{64}\b/g))).toEqual(new Set([PLACEHOLDER, id, await recordId(onLine6(record))]));
+    expect(under("The file and its name")).toContain(`\`${PLACEHOLDER}.json\``);
     expect(blocksOf(worked)).toContain(`${OUTBOX}/${recordPath(record, id)}`);
   });
 });
@@ -146,6 +161,23 @@ describe("validate, on the worked example of the skill file", () => {
   });
   afterEach(() => {
     on.dispose();
+  });
+
+  it("says where the finding belongs while it waits under the placeholder name, with the output the file prints", async () => {
+    const worked = under("Worked example");
+    const record = example();
+    const { commit, outcome } = await pinTree(on, [{ path: record.location.path, content: "#\n" }]);
+    expect(outcome.code).toBe(EXIT.ok);
+
+    const here = { ...record, component: commit };
+    const waiting = recordPath(here, PLACEHOLDER);
+    putFile(on, waiting, `${JSON.stringify(here, null, 2)}\n`);
+    const refused = await on.run("validate");
+    // The record is not yet held to the checkout, so the lines it cites need not be there.
+    expect(refused).toEqual({ code: EXIT.invalid, output: { records: 0, rejected: [{ record: waiting, reason: "hash-mismatch", expected: recordPath(here, await recordId(here)) }] } });
+    // The first output the example prints is this one, for the example's commit and its ID.
+    const [printed = ""] = printedIn(worked);
+    expect(printed.replaceAll(record.component, commit).replaceAll(await recordId(record), await recordId(here))).toBe(JSON.stringify(refused.output));
   });
 
   it("accepts the finding, and refuses the same finding on line 6, with the two outputs the file prints", async () => {
@@ -177,7 +209,9 @@ describe("validate, on the worked example of the skill file", () => {
     expect(refused).toEqual({ code: EXIT.invalid, output: { records: 1, rejected: [{ record: moved, reason: "host-not-in-lines", field: "host" }] } });
     // The line the file prints names the example's commit and the ID that follows from it.
     // With this test's commit and its ID in their place, it is the line the command prints.
-    const printed = only("blocks that are an output of `validate` in its worked example", blocksOf(worked).filter((block) => block.startsWith('{"records"')));
+    // It is the second of the two outputs the example prints as a block.
+    const [, printed = "", ...more] = printedIn(worked);
+    expect(more).toEqual([]);
     const forThisCommit = printed.replaceAll(record.component, commit).replaceAll(await recordId(onLine6(record)), await recordId(onLine6(here)));
     expect(forThisCommit).toBe(JSON.stringify(refused.output));
   });

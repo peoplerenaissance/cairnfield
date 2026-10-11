@@ -247,6 +247,15 @@ export async function setupNode(io: Io, args: readonly string[]): Promise<ExitCo
     ]);
     return EXIT.usage;
   }
+  // With a hostname the node answers there and nowhere else. A URL beside it that names
+  // another address would be the address the node is told, at which it does not answer.
+  if (url !== undefined && domain !== undefined && url !== `https://${domain}`) {
+    sayAll(io, [
+      "The values given with --url and --domain name two addresses.",
+      "With --domain the node's address is https:// and that hostname. Give --domain alone, or a --url that names the same address.",
+    ]);
+    return EXIT.usage;
+  }
   if (index !== undefined && !isIndexUrl(index)) {
     sayAll(io, [
       "The value given with --index is no address a node can send a notice to.",

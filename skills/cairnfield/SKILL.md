@@ -137,20 +137,14 @@ A record file sits in the outbox at
 
 The ID comes from the record's values, so the file itself may be spaced and ordered as you like. The file holds the record and nothing else, in at most 4,096 bytes, with no repeated key, no backslash escape and no number written as `7.0` or `7e0`.
 
-To get the ID, write the record as `draft.json` in the folder it belongs in, and run this from the operator's folder. It needs only Node, which the command needs too.
+You do not work the ID out. `validate` tells you where the file belongs:
 
-```sh
-node -e '
-const canonical = (v) =>
-  Array.isArray(v) ? "[" + v.map(canonical).join(",") + "]"
-  : v && typeof v === "object" ? "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}"
-  : JSON.stringify(v);
-const record = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-console.log(require("crypto").createHash("sha256").update(canonical(record)).digest("hex"));
-' .cairnfield/outbox/records/<component>/finding/draft.json
-```
+1. Write the record in its folder under the placeholder name `0000000000000000000000000000000000000000000000000000000000000000.json`, which is 64 zeros. Do this for one record at a time, because every record waits under that one name.
+2. Run `validate`, as the next section says. While the record itself is refused, the entry for your file gives the `reason`. Fix the file and run `validate` again.
+3. Once the record passes, the entry's `reason` is `hash-mismatch`, and its `expected` is the path the file belongs at, under `.cairnfield/outbox/`. The name of that path is the ID. Move the file there with your own file tools.
+4. Run `validate` again. Only now is the record checked against the checkout.
 
-Then rename `draft.json` to `<id>.json`. Leave no draft behind: a file in the outbox under any other name is rejected.
+Leave no placeholder behind: a file in the outbox under any name but its ID is rejected.
 
 ## The one command
 
@@ -191,7 +185,7 @@ An entry of `rejected` holds these fields.
 | `host-not-in-lines` | The lines `location` cites do not hold `host` as a whole hostname. |
 | `unknown-component` | There is no checkout here for the record's `component`. Use the commit the operator pinned. |
 
-Fix a rejected file of yours by writing the record again under its new ID, and delete the old file. Leave a rejected file that is not yours as it is, and tell the operator.
+Fix a rejected file of yours by writing the corrected record under the placeholder name, as above, and delete the old file. A changed record has another ID. Leave a rejected file that is not yours as it is, and tell the operator.
 
 ## Worked example
 
@@ -219,13 +213,19 @@ Line 7 loads a program from an outside host. That needs the network, so it break
 }
 ```
 
-Its ID is `8d015bafc7035b94b8f6a01cbc4b8122db48a4a0e8259390ee17448e8f2c4c7d`, so the file is
+Written first under the placeholder name, it makes `validate` return 2 and print:
+
+```
+{"records":0,"rejected":[{"record":"records/399aeb0efe1c0cba15bcb4871c66e6282ff95eb2/finding/0000000000000000000000000000000000000000000000000000000000000000.json","reason":"hash-mismatch","expected":"records/399aeb0efe1c0cba15bcb4871c66e6282ff95eb2/finding/8d015bafc7035b94b8f6a01cbc4b8122db48a4a0e8259390ee17448e8f2c4c7d.json"}]}
+```
+
+So its ID is `8d015bafc7035b94b8f6a01cbc4b8122db48a4a0e8259390ee17448e8f2c4c7d`, and the file is
 
 ```
 .cairnfield/outbox/records/399aeb0efe1c0cba15bcb4871c66e6282ff95eb2/finding/8d015bafc7035b94b8f6a01cbc4b8122db48a4a0e8259390ee17448e8f2c4c7d.json
 ```
 
-`validate` prints `{"records":1,"rejected":[]}` and returns 0.
+Moved there, it makes `validate` print `{"records":1,"rejected":[]}` and return 0.
 
 With `"start": 6, "end": 6` the record has another ID and is still well formed, but line 6 does not hold the hostname. With that file added, `validate` returns 2 and prints:
 

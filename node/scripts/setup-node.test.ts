@@ -273,6 +273,19 @@ describe("the setup script stops", () => {
     expect(on.text()).not.toContain("--temporary");
   });
 
+  it("before any call when a URL and a hostname name two addresses, and says neither value back", async () => {
+    const on = bench();
+
+    // Wrangler would put the node at the hostname, and the node would be told it is at the URL.
+    expect(await setupNode(on.io, ["--url", NODE, "--domain", "node.team-b.example"])).toBe(2);
+
+    expect(argsOf(on)).toEqual([]);
+    expect(on.read).toEqual([]);
+    expect(on.text()).toContain("The values given with --url and --domain name two addresses.");
+    expect(on.text()).not.toContain("team-a");
+    expect(on.text()).not.toContain("team-b");
+  });
+
   it("before any run of Wrangler when Wrangler is not installed, and says how to install it", async () => {
     const on = bench({ installed: false });
 
