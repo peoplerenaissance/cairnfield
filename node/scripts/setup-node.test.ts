@@ -392,6 +392,8 @@ describe("the setup script, when the node does not answer after the deploy", () 
     ["what answers is no node", () => new Response("<h1>Nothing here yet</h1>", { status: 404, headers: { "content-type": "text/html" } })],
     ["the answer is a listing with no head", () => Response.json({ records: [] })],
     ["the answer is a listing whose head is no hash", () => Response.json({ head: 5 })],
+    ["the answer has a head that is text and no Git hash", () => Response.json({ head: "ok", records: [] })],
+    ["the answer has a head and no list of records", () => Response.json({ head: "a".repeat(40) })],
     ["the answer is another refusal than a new node's", () => Response.json({ error: "bad-request" }, { status: 404 })],
     ["the answer is a list", () => Response.json([])],
     ["the answer is null", () => Response.json(null)],

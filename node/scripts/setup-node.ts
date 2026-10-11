@@ -38,7 +38,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { PATHS, isIndexUrl, isNodeOrigin } from "../src/contract.ts";
+import { PATHS, isGitHash, isIndexUrl, isNodeOrigin } from "../src/contract.ts";
 
 /** One run of Wrangler. */
 export interface WranglerCall {
@@ -231,7 +231,8 @@ async function answers(io: Io, node: string): Promise<boolean> {
     const response = await io.fetch(listingUrl(node), { signal: AbortSignal.timeout(ANSWER_DEADLINE_MS) });
     const body: unknown = await response.json();
     if (typeof body !== "object" || body === null) return false;
-    if (response.status === 200) return "head" in body && typeof body.head === "string";
+    // A listing names the head of the team's repo, a Git hash, and lists its record files.
+    if (response.status === 200) return "head" in body && isGitHash(body.head) && "records" in body && Array.isArray(body.records);
     return response.status === 404 && "error" in body && body.error === "not-found";
   } catch {
     return false;
