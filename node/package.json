@@ -10,15 +10,30 @@
   "scripts": {
     "test": "vitest run",
     "types": "wrangler types --strict-vars=false",
-    "typecheck": "npm run types && tsc -p tsconfig.json",
+    "typecheck": "npm run types && tsc -p tsconfig.json && tsc -p scripts/tsconfig.json",
     "check": "wrangler deploy --dry-run --env=\"\" && wrangler deploy --dry-run --env team-a && wrangler deploy --dry-run --env team-b",
     "deploy": "wrangler deploy --env=\"\" --var NODE_URL:${NODE_URL:?set NODE_URL to the base URL of this node} --var INDEX_URL:${INDEX_URL:-}",
     "deploy:team-a": "wrangler deploy --env team-a --var NODE_URL:${TEAM_A_NODE_URL:?set TEAM_A_NODE_URL to the base URL of the team-a node} --var INDEX_URL:${INDEX_URL:-}",
     "deploy:team-b": "wrangler deploy --env team-b --var NODE_URL:${TEAM_B_NODE_URL:?set TEAM_B_NODE_URL to the base URL of the team-b node} --var INDEX_URL:${INDEX_URL:-}",
-    "deploy:demo": "npm run deploy:team-a && npm run deploy:team-b"
+    "deploy:demo": "npm run deploy:team-a && npm run deploy:team-b",
+    "setup": "node scripts/node-version.cjs && node scripts/setup.ts"
+  },
+  "cloudflare": {
+    "bindings": {
+      "ADMIN_KEY": {
+        "description": "The node's admin key. The `cairnfield` command sends it to import a component, create a fork and get repo tokens, so only your team should hold it. Generate one with `openssl rand -hex 32`. A node with no key refuses every admin call."
+      },
+      "NODE_URL": {
+        "description": "The node's own base URL, which is its identity. It is the origin this Worker answers at, in lower case, with `https://` and no slash at its end. On `workers.dev` that is `https://<worker name>.<your subdomain>.workers.dev`."
+      },
+      "INDEX_URL": {
+        "description": "The address of the index this node tells about each push: an HTTPS URL with no slash at its end. It is optional. A node with none sends no notice, and its team works alone."
+      }
+    }
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@types/node": "^22.20.5",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11",
     "wrangler": "4.147.0"

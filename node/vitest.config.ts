@@ -4,8 +4,9 @@ import { defineConfig } from "vitest/config";
 // Self-contained on purpose: without this file Vitest would pick up the
 // workspace config in the parent directory.
 //
-// The tests run inside the Workers runtime, with the bindings of the Wrangler config
-// (KTD29). Each test puts the in-memory fake in place of the Artifacts binding.
+// The Worker's tests run inside the Workers runtime, with the bindings of the Wrangler
+// config (KTD29). Each test puts the in-memory fake in place of the Artifacts binding.
+// The setup script's tests are the last project, and they run in Node.
 
 /** The Workers pool over the Wrangler config, with these variables set on top of it. */
 function workersPool(variables: { readonly [name: string]: string } = {}) {
@@ -57,6 +58,11 @@ export default defineConfig({
           workersPool({ NODE_URL: "https://node.team-a.example", INDEX_URL: "https://index.cairnfield.example/" }),
         ],
         test: { name: "node with an index address that ends in a slash", include: [SLASHED] },
+      },
+      {
+        // The setup script starts Wrangler as a process, and the Workers runtime has none
+        // to start. So this project has no Workers pool, and its tests run in Node.
+        test: { name: "setup script", include: ["scripts/**/*.test.ts"] },
       },
     ],
   },
