@@ -5,7 +5,7 @@
   "type": "module",
   "description": "The cairnfield command and its reviewer agents.",
   "bin": {
-    "cairnfield": "./src/main.ts"
+    "cairnfield": "./bin/cairnfield.mjs"
   },
   "scripts": {
     "test": "vitest run",

@@ -169,6 +169,7 @@ The command prints one line of JSON and returns an exit code.
 | 0 | `{"records":1,"rejected":[]}` | Every file in the outbox is a valid record. `records` counts them: yours and any that were waiting already. You are done. |
 | 2 | `{"records":0,"rejected":[...]}` | At least one file was refused. `rejected` has one entry for each. |
 | 3 | `{"error":"usage"}`, `{"error":"no-config"}` or `{"error":"bad-config"}` | A wrong argument, no config file where you ran it, or a config file the command will not use. Check the folder and the arguments. Never write or change a config file. |
+| 3 | `{"error":"node-too-old","needs":"22.22","found":"..."}` | The command was started on a Node older than it needs. Stop and tell the operator. |
 | 1 | `{"error":"bad-checkout","component":"..."}`, `{"error":"outbox-unreadable"}` or `{"error":"failed"}` | A checkout or the outbox is damaged. Stop and tell the operator. |
 
 An entry of `rejected` holds these fields.

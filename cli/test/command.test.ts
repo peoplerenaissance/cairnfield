@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EXIT } from "../src/outcome.ts";
 import { isArtifactsRemote, redact } from "../src/git.ts";
 import { run } from "../src/run.ts";
@@ -173,5 +173,27 @@ describe("the command's own file", () => {
   it("can be started by its name", () => {
     const bin = fileURLToPath(new URL("../../node_modules/.bin/cairnfield", import.meta.url));
     expect(execFileSync(bin, ["validate"], { cwd: on.home, encoding: "utf8" })).toBe('{"records":0,"rejected":[]}\n');
+  });
+
+  it("says which Node it needs on an older one, as its one line of JSON and as a sentence, and runs nothing", async () => {
+    const versions = process.versions;
+    const printed: string[] = [];
+    const told: string[] = [];
+    Object.defineProperty(process, "versions", { value: { ...versions, node: "20.19.4" }, configurable: true });
+    vi.spyOn(process.stdout, "write").mockImplementation((text) => (printed.push(String(text)), true));
+    vi.spyOn(console, "error").mockImplementation((line: string) => void told.push(line));
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`exit ${code}`);
+    });
+    try {
+      // The launcher is what the command's name is linked to. It reads the version before it loads the command.
+      await expect(import(new URL("../bin/cairnfield.mjs", import.meta.url).href)).rejects.toThrow(`exit ${EXIT.usage}`);
+    } finally {
+      vi.restoreAllMocks();
+      Object.defineProperty(process, "versions", { value: versions, configurable: true });
+    }
+
+    expect(printed).toEqual(['{"error":"node-too-old","needs":"22.22","found":"20.19.4"}\n']);
+    expect(told).toEqual(["cairnfield needs Node 22.22 or later. This is Node 20.19.4."]);
   });
 });
