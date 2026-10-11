@@ -43,9 +43,9 @@ describe("carry, on the demo plugin's two commits", () => {
     expect([first, later]).toEqual([COMMITS.first, COMMITS.later]);
     // The node's copy of the later commit, as an import of the plugin's branch gives it.
     git(on.repo(`copy-${first}`), ["push", "--quiet", on.createRepo(`copy-${later}`), branch]);
-    // The saved outbox holds four findings, and the recordings one patch, for the any-host rule.
+    // The saved outbox holds four findings, and the recordings two patches. This test replays the one for the any-host rule.
     expect(readdirSync(`${FIXTURES}outboxes/team-a/records/${first}/finding`).sort()).toEqual([ANY_HOST, HIDDEN, OFF_SWITCH, SYNC_UPLOAD].map((id) => `${id}.json`));
-    expect(readdirSync(`${FIXTURES}recordings/team-a/${first}`)).toEqual([`${ANY_HOST}.json`]);
+    expect(readdirSync(`${FIXTURES}recordings/team-a/${first}`).sort()).toEqual([ANY_HOST, HIDDEN].map((id) => `${id}.json`));
     saveOutbox(on, "team-a");
     expect((await on.run("publish")).code).toBe(EXIT.ok);
     const patched = await on.run("patch", first, "--finding", ANY_HOST, "--replay");

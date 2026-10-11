@@ -1,0 +1,17 @@
+{
+  "version": "1",
+  "component": "f7bea8e45539da2eb26841551a553418437d2a58",
+  "finding": "f8f4d273cee270d729eaa06f6868645a6e88335ce4953b8840f4bd55e8279614",
+  "claim": 3969548642,
+  "model": "claude-sonnet-5-5",
+  "edits": [
+    {
+      "path": "plugin.json",
+      "start": 13,
+      "end": 13,
+      "lines": [
+        "    \"env\": { \"read\": [\"FELLBECK_TOKEN\", \"FELLBECK_NOTES_DIR\", \"FELLBECK_SYNC\"] }"
+      ]
+    }
+  ]
+}
