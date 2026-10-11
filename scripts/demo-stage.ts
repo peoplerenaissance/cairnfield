@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { styleText } from "node:util";
 import { INDEX_ROUTES, isIndexUrl, isNodeUrl, isToken } from "@cairnfield/protocol";
 import type { NodeListing, View } from "@cairnfield/protocol";
 import { MODEL_KEY } from "../cli/src/agents/live.ts";
@@ -44,6 +45,115 @@ export const RESET_KEY = "CAIRNFIELD_RESET_KEY";
 
 /** Every key a script or the command may find in the environment. A team's command is handed its own two and none of the rest. */
 const KEYS = [ADMIN_KEY, REGISTRATION_KEY, MODEL_KEY, TEAM_A_KEY, TEAM_B_KEY, RESET_KEY];
+
+// What a script prints on a terminal (R44, KTD41). The command prints JSON and knows
+// nothing of this. Every line a script says passes through the `say` that `launch`
+// supplies, and `runs` below is the only writer of command and result lines, so the
+// renderer tells a line's kind by the prefix this file writes. A stream that does not
+// paint gets the plain `say` and the unwrapped `warn`, so off a terminal nothing changes.
+
+/** A format `util.styleText` takes: one name or several. */
+type Format = Parameters<typeof styleText>[0];
+/** Puts one format on a text. A test passes one that marks instead of coloring. */
+export type Style = (format: Format, text: string) => string;
+
+/** The color of each speaker's label. */
+const COLORS: { readonly [who in Label | "engineer"]: Format } = { "team-a": "cyan", "team-b": "magenta", engineer: "yellow" };
+/** The colors of a result's JSON, as `jq` colors by default: keys, strings, and the literals. */
+const KEY: Format = "blue";
+const STRING: Format = "green";
+const LITERAL: Format = "yellow";
+const SPEAKERS = /^(team-a|team-b|engineer)(\$ |> |: )(.*)$/s;
+
+/**
+ * Whether a stream paints: never under `NO_COLOR`, and otherwise only for a terminal whose
+ * own check, given the environment, says it shows colors. `NO_COLOR` is read first because
+ * Node lets `FORCE_COLOR` override it, and R44 promises plain lines under `NO_COLOR`. An
+ * empty `NO_COLOR` counts as set, as Node's own check reads it.
+ */
+export function paints(stream: { readonly isTTY?: boolean; readonly hasColors?: (env: object) => boolean }, env: Io["env"]): boolean {
+  if (env["NO_COLOR"] !== undefined) return false;
+  return stream.isTTY === true && typeof stream.hasColors === "function" && stream.hasColors(env);
+}
+
+/**
+ * Paints one line a script says. A command has its label in the speaker's color and the
+ * command in bold. A result has its label colored and its JSON over several lines, each
+ * after the first indented by the width of the prefix. A speaker's prose has only its
+ * label colored. A step heading is bold. Any other line, and a result that is not JSON,
+ * is unchanged.
+ */
+export function paintSaid(line: string, style: Style): string {
+  if (line.startsWith("Step ")) return style("bold", line);
+  const shape = SPEAKERS.exec(line);
+  if (!shape) return line;
+  const who = shape[1] as keyof typeof COLORS;
+  const [, , separator, rest = ""] = shape;
+  const label = style(COLORS[who], who);
+  if (separator === "$ ") return `${label}$ ${style("bold", rest)}`;
+  if (separator === ": ") return `${label}: ${rest}`;
+  let value: unknown;
+  try {
+    value = JSON.parse(rest);
+  } catch {
+    return line;
+  }
+  return `${label}> ${paintJson(value, style, " ".repeat(who.length + 2))}`;
+}
+
+/**
+ * The value as `JSON.stringify` writes it with two spaces, colored by kind. The value is
+ * walked and each leaf is written by `JSON.stringify`, so a string is shown escaped and
+ * never interpreted (KTD16, KTD33). `indent` is what the lines of this level start with.
+ */
+function paintJson(value: unknown, style: Style, indent: string): string {
+  const inner = `${indent}  `;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    return `[\n${value.map((item) => `${inner}${paintJson(item, style, inner)}`).join(",\n")}\n${indent}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value);
+    if (entries.length === 0) return "{}";
+    return `{\n${entries.map(([key, item]) => `${inner}${style(KEY, JSON.stringify(key))}: ${paintJson(item, style, inner)}`).join(",\n")}\n${indent}}`;
+  }
+  return style(typeof value === "string" ? STRING : LITERAL, JSON.stringify(value));
+}
+
+const HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
+
+/**
+ * Makes the painter of what the command writes to standard error, which is the diff
+ * `assemble` prints (R25). The file headers and the hunk lines `renderDiff` writes are
+ * bold, a removed line red, an added line green. A hunk line says how many removed and
+ * added lines follow, and the painter counts them down, so a content line that begins
+ * like a file header is still red or green. Anything else, Git's own messages among it,
+ * is unchanged. The painter keeps its counts across calls, because `renderDiff` writes
+ * one line at a time.
+ */
+export function diffPainter(style: Style): (text: string) => string {
+  let removed = 0;
+  let added = 0;
+  const paint = (line: string): string => {
+    const hunk = HUNK.exec(line);
+    if (hunk) {
+      removed = Number(hunk[1] ?? "1");
+      added = Number(hunk[2] ?? "1");
+      return style("bold", line);
+    }
+    if (removed > 0 && line.startsWith("-")) {
+      removed -= 1;
+      return style("red", line);
+    }
+    if (added > 0 && line.startsWith("+")) {
+      added -= 1;
+      return style("green", line);
+    }
+    if (line.startsWith("--- a/") || line.startsWith("+++ b/") || line === "+++ /dev/null") return style("bold", line);
+    return line;
+  };
+  return (text) => text.split("\n").map(paint).join("\n");
+}
 
 /** The node the lens fixtures name where a deployment has Team B's own. */
 const TEAM_B_STAND_IN = "https://node.team-b.example";
@@ -245,7 +355,11 @@ export async function launch(script: "demo" | "reset", key: string, play: (stage
     console.error(`The ${script} cannot start. Set these in the environment: ${found.missing.join(", ")}`);
     process.exit(2);
   }
-  const stage = await openStage(io, found.deployment, (line) => console.log(line));
+  const style: Style = (format, text) => styleText(format, text, { validateStream: false });
+  const say: Stage["say"] = paints(process.stdout, process.env) ? (line) => console.log(paintSaid(line, style)) : (line) => console.log(line);
+  const paintWarn = diffPainter(style);
+  const warn: Io["warn"] = paints(process.stderr, process.env) ? (text) => io.warn(paintWarn(text)) : io.warn;
+  const stage = await openStage({ ...io, warn }, found.deployment, say);
   try {
     await play(stage, found.key);
   } catch (error) {

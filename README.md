@@ -145,7 +145,7 @@ These are the commands. Each is run as `npx --no cairnfield <command>`, and each
 
 ### Replay the demo
 
-`npm run demo`, from the repo root, plays the demo's four steps with two teams. It reads each team's saved findings from `fixtures/outboxes/` and the saved edits of each patch run from `fixtures/recordings/`. It calls no model.
+`npm run demo`, from the repo root, plays the demo's four steps with two teams. It reads each team's saved findings from `fixtures/outboxes/` and the saved edits of each patch run from `fixtures/recordings/`. It calls no model. On a terminal it prints each team in its own color, each result as indented JSON and the diff `assemble` prints in red and green. Piped, or with `NO_COLOR` set, it prints one plain line for each command and each result.
 
 1. **One team alone.** Team A has no index in its config. It pins the plugin, publishes its saved findings, replays the patch for the any-host finding, builds its copy and records a verdict. An engineer's `verify` then runs on the published copy.
 2. **Two teams at the same moment.** Team A adds the index to its config and pins again, which registers its node and the commit. Team B pins and publishes. Both teams then claim and patch at the same moment. Both remove the hidden instruction, with the same edit, so the index shows one patch with two organizations. Team B also narrows the environment variables, on the line after Team A's any-host patch, so the page shows those two patches side by side. Team B then publishes a patch made by hand that changes a line its finding does not cite, and the index rejects it.
