@@ -1,0 +1,10 @@
+{
+  // The setup script and its tests run in Node, where the script starts Wrangler as a
+  // process. So they are checked here with Node's types, apart from the Worker, which
+  // `../tsconfig.json` checks with the types of the Workers runtime.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["."]
+}

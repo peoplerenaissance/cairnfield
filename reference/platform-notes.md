@@ -1,0 +1,212 @@
+# Platform notes
+
+Cairnfield runs on Cloudflare Workers and Cloudflare Artifacts, and is deployed with Wrangler. These notes say what each was seen to do while the prototype was built, and what was only read in documentation.
+
+Every note carries one of three labels.
+
+- **Observed.** Someone ran it and saw the result, on the date given.
+- **Documentation.** It was read in Cloudflare's documentation or in the binding types. It was not run.
+- **Working note.** It was written down while building. The note does not say whether it was run.
+
+The platform changes. Check a note against the live service before you rely on it.
+
+## Local environment
+
+**Observed in October 2026.**
+
+- Outside the repo folder a shell may fall back to an older Node. The command needs Node 22.22, and Wrangler does not start on Node 20. Run `nvm use` in the repo root. `.nvmrc` names 22.22.1.
+
+**Working notes.**
+
+- Wrangler 4.147 needs Node 22. A global Wrangler 4.43 had no `artifacts` commands. Use the Wrangler installed in each project, never a global one.
+- `node/` pins Wrangler to one exact version, because the push trigger shape it accepts differs from the guide and may change. Run the dry-run deploy again after any upgrade.
+- Worker secrets are set by hand, with `wrangler secret put`. No secret is written to a file in the repo.
+- When Wrangler is not logged in, it suggests `wrangler deploy --temporary`. That flag creates a temporary Cloudflare account and accepts Cloudflare's terms for whoever runs it. Do not run it.
+- `wrangler dev` with `"remote": true` on the `artifacts` binding runs a Worker locally against the real Artifacts service.
+- A Worker registered as a queue consumer must export a queue handler, or the deploy fails.
+- Leaving a KV namespace ID out of the Wrangler config provisions the namespace on deploy.
+- `"workers_dev": false` with `"preview_urls": false` deploys a Worker with no public URL.
+- npm 10 crashes while it resolves the peer set of Vitest 4.1, which the Workers test pool needs. `.npmrc` sets `legacy-peer-deps` in the repo root and in `node/` for that reason.
+
+## Tests and the Artifacts binding
+
+**Observed in October 2026.** Artifacts has no local simulation. The Workers test pool would open a session on the developer's Cloudflare account to reach it. `remoteBindings: false` in `node/vitest.config.ts` and `index/vitest.config.ts` stops that. The tests put an in-memory fake in place of the binding, and no test reaches the live service.
+
+## Artifacts, first check
+
+**Observed on Oct 4, 2026**, against a live Artifacts namespace made for the check.
+
+### Names and tokens
+
+- A namespace is created by the first repo created in it. `wrangler artifacts namespaces list` was empty before that.
+- A repo remote has the form `https://<account-id>.artifacts.cloudflare.net/git/<namespace>/<repo>.git`.
+- A repo token has the form `art_v2_<hex>?expires=<unix seconds>`. The documentation still shows `art_v1_`. Match both when you redact a log.
+- `wrangler artifacts repos create --json` returns `id`, `name`, `description`, `default_branch`, `remote` and `token`.
+- `wrangler artifacts repos issue-token --json` returns `id`, `plaintext`, `scope` and `expires_at`.
+- The Wrangler CLI has no import command and no fork command. Both exist on the binding and in the REST API.
+
+### Git over HTTPS
+
+- `git -c http.extraHeader="Authorization: Bearer <token>"` works for clone, fetch, pull and push.
+- A token for one repo, used on another repo, fails with HTTP 403 and "Invalid or expired token".
+- A read token used to push fails with HTTP 403 and "Insufficient permissions".
+- With no token, the remote answers "Authentication required".
+- Two rejections appear when pushes collide: `! [rejected] (fetch first)` and `! [remote rejected] (stale ref)`. Treat both as "pull and retry". Three pushes at once to one branch all landed within three tries.
+- `git fetch <remote> <full commit hash>` works, so one patch commit can be fetched with no branch name.
+- A clone that held only a fork's URL and a read token fetched a patch commit from the fork, with no Cloudflare credentials. This was within one account.
+- A repo marked read-only accepted pushes and a force-push from a write token. So Cairnfield never issues a write token for a component copy, and names a component by commit hash, never by branch.
+- A force-push is allowed, so a team can rewrite the history of its own repo.
+
+### The Workers binding
+
+- `repo.info()` returns `id`, `name`, `description`, `defaultBranch`, `createdAt`, `updatedAt`, `lastPushAt`, `source`, `readOnly` and `remote`.
+- An entry of `repo.log()` carries `hash`, `treeHash`, `message`, `author`, `committer`, `parents`, `authoredAt` and `committedAt`. The two times are Unix seconds.
+- `repo.readFile({ ref, path })` returns a Blob, or null for a missing path. A 40-character commit hash works as `ref`. A short hash returns null.
+- An import takes a branch, not a commit. Older commits on that branch were readable by full hash.
+- `import()` returns before the import finishes. In the check, `log()` returned commits about 3 seconds later.
+- An imported repo reported `defaultBranch` as `main` when its only branch was `master`. `lastPushAt` stayed null after pushes. Rely on neither field.
+- `info().source` reads `git:<url>` for an import and `artifacts:<namespace>/<repo>` for a fork.
+- `repo.createToken(scope, ttl)` returns `id`, `plaintext`, `scope` and `expiresAt`.
+
+### The push trigger
+
+This entry in a Wrangler config deployed and fired. The Artifacts guide shows another shape, with `filter.repoName` and a single `target`, which Wrangler 4.147 does not accept.
+
+```jsonc
+"workflows": [{ "name": "<workflow-name>", "binding": "ONPUSH", "class_name": "OnPush" }],
+"triggers": {
+  "events": [
+    {
+      "type": "cf.artifacts.repo.pushed",
+      "filter": { "namespace": "<namespace>" },
+      "targets": [{ "type": "workflow", "workflow_name": "<workflow-name>" }]
+    }
+  ]
+}
+```
+
+- The Workflow's `event.payload` held `id`, `type`, `source` with `namespace` and `repoName`, and an inner `payload` with `ref`, `before`, `after`, `commits`, `totalCommitsCount` and `commitsTruncated`.
+- The Workflow instance finished about 2 seconds after the push.
+- A Workflow step called an outside host over HTTP.
+- `wrangler queues subscription create --source artifacts.repo` fails, because it has no flags for the namespace and the repo that the API requires.
+
+**Not known.** Whether the trigger honors the Workflow creation limit of 100 per second, and what it uses as the instance ID.
+
+## Deployed nodes and index
+
+**Observed on Oct 9 and 10, 2026**, on the demo's deployed Workers.
+
+- Artifacts refused a push made with a read token, at the handshake and at the push endpoint.
+- An import brought a branch's full history.
+- A fetch of one commit by its hash at depth 1 worked.
+- The command on one team's machine fetched another team's patch commit from that team's fork, with the fork's public read token. Both nodes were in one account.
+- The index read the nodes over HTTP. The index and the nodes are Workers in one account, and each sets the `global_fetch_strictly_public` compatibility flag.
+- A node shows a new head in the index within about a minute of a push.
+- Artifacts took a push of a commit whose root tree holds no file. The demo's reset pushed one to each node's repo of records on Oct 10, twice, and each node then listed no record at the new head.
+
+## The index's first deploy
+
+**Observed on Oct 10, 2026**, with Wrangler 4.148.0.
+
+- `wrangler deploy` found no D1 database and no queue under the configured names, and created both by itself.
+- It then rewrote the Wrangler config file, with resource IDs in it and without the comments. This repo keeps no ID in `index/wrangler.jsonc`, so that rewrite is discarded.
+- The new database had no tables. The view answered HTTP 500 until the migrations ran.
+- Afterwards Wrangler found the database by its name, with no ID in the config.
+
+`AGENTS.md` gives the order of an index release.
+
+## Artifacts reference check
+
+**Documentation, read on Oct 6, 2026.** The full Artifacts reference was read against the design. A fact marked (types) came from the binding types bundled with Wrangler 4.147.0, which the documentation names as the source of truth. Nothing in this section was run against the live service on that day.
+
+### What the reference and the types say
+
+- A tree entry has `name`, `mode`, `hash` and `type` (types). `type` is one of `tree`, `blob`, `symlink`, `gitlink` and `exec`, so a walk can spot a symbolic link and a submodule entry. `readTree` returns the immediate children of one tree. Commit metadata has `treeHash` and `parents` (types).
+- The config schema in Wrangler 4.147.0 accepts `filter.namespace`, `filter.repo_name` and `targets` entries with `type` and `workflow_name`, and no other keys. The guide, updated Oct 1, still shows `filter.repoName` and one `target` with `scriptName` and `workflowName`.
+- A create, an import and a fork each return a token. `createToken` defaults to write scope and a life of 24 hours.
+- `fork()` copies only the default branch unless `defaultBranchOnly` is false (types).
+- `log()` reads `HEAD` by default, returns an empty list for a ref it cannot resolve, and follows first parents only. `get()` throws `IMPORT_IN_PROGRESS` or `FORK_IN_PROGRESS` until a repo is ready.
+- A name starts with a letter or a digit. A namespace name has 2 to 63 characters. Object IDs are lower-case.
+- Control-plane requests are limited per namespace.
+- The documentation promises no delivery for a push event. So `publish` sends the index a notice of its own.
+- The `filter` capability of Git is not supported. A shallow fetch is.
+- Every remote has one form, on `artifacts.cloudflare.net`.
+- An import can fail with `INVALID_URL`, `REMOTE_AUTH_REQUIRED`, `NOT_FOUND`, `UPSTREAM_UNAVAILABLE` or `MEMORY_LIMIT`. An import takes a branch and an optional depth.
+- A push to any repo in a namespace starts the Workflow of a trigger that filters by namespace only. A delete is accepted before it completes.
+- The best-practices page prefers a repo per agent to one shared repo.
+- The binding names a namespace and no account. That is why an index reads another team's repos through that team's node.
+
+### Where the documentation is stale
+
+- The documentation shows the token prefix `art_v1_`. The service issued `art_v2_` (observed Oct 4).
+- The documentation presents `readOnly` as a guard. A write token still pushed to a read-only repo (observed Oct 4).
+- The documentation says `list()` returns a `status` for each repo. The types have no such field, so readiness comes from `get()`.
+- One page says the binding cannot read files. The types have `readFile`, `readTree` and `readBlob`, and `readFile` was observed on Oct 4.
+
+### Where the reference agreed with what was observed
+
+- The remote URL form, and a namespace created by its first repo.
+- Repo-scoped read and write tokens, sent in `http.extraHeader`.
+- `readFile` at a full commit hash.
+- Import by branch from a public HTTPS remote, and no Wrangler command for import or fork.
+- The fields of the push payload.
+
+## Platform limits
+
+**Documentation, not run.**
+
+- **Workflows.** 10,000 steps per instance by default. 1 MiB per step result and per event payload. 50,000 concurrent instances. 100 instance creations per second per Workflow. The documentation gives no default for step retries and timeouts.
+- **D1.** 10 GB per database. 1,000 queries per Worker invocation. 100 bound parameters per query. One writer per database. `db.batch()` runs as one transaction.
+- **Queues.** No built-in deduplication.
+- **Artifacts.** 2,000 control-plane requests per 10 seconds per namespace. 2,000 Git requests per 10 seconds per repo. 1 GB per repo, 32 MB per blob and 1 TB per account. The documentation classes the binding as control plane, so a node's reads and its token mints share one namespace budget.
+- **Artifacts pricing.** The first 10,000 operations and the first 1 GB each month are included. A clone or a fetch with a read token that a node issued is an operation on that node's account. The pricing page and the changelog say billing starts Oct 14, 2026. The announcement post says Oct 15.
+- **Worker to Worker.** A `fetch` from one Worker to another in the same account fails with error 1042 unless `global_fetch_strictly_public` is set.
+- **Plan.** Artifacts needs the Workers Paid plan.
+
+## The deploy button
+
+**Result: not tested.** Nobody has run Cloudflare's deploy button against the node in `node/`.
+
+Until a test shows otherwise, the setup script in `node/` is the supported way to deploy a node. It runs as `npm run setup` there. A test has to show that the button sets up three things: the Artifacts binding, the Workflow and the push trigger. It also has to leave the admin key for the operator to set.
+
+**Documentation, not run.** This is what Cloudflare's page on deploy buttons says.
+
+- The URL form is `https://deploy.workers.cloudflare.com/?url=<public repo URL>`. A subdirectory is given as `.../tree/main/<dir>`. The repo must be public, on GitHub or GitLab.
+- The subdirectory becomes the root of a new repo, so it must hold its own dependencies and lockfile. `node/` does.
+- The resources it lists as provisioned are KV, D1, R2, Hyperdrive, Vectorize, Secrets Store, Durable Objects, Workers AI and Queues.
+- Artifacts, Workflows and event triggers are not listed. The page does not say that they fail.
+- It prompts for the secrets named in `.dev.vars.example` or `.env.example`. Plain values go in `vars`.
+- It runs a `deploy` script from `package.json` when one exists, and `npx wrangler deploy` otherwise.
+- A `cloudflare.bindings.<NAME>.description` entry in `package.json` adds help text for that variable or secret on the setup page.
+- The setup page lets the operator rename the repository, the Worker and the resources.
+- Each Worker in a repo needs its own button.
+- A temporary account, as `wrangler deploy --temporary` makes one, cannot host a node or an index. Its supported resources do not include Artifacts or Workflows.
+- Cloudflare's Terraform provider documents no Artifacts binding and no Workflow binding. So the other route to a node is a Wrangler script, not Terraform.
+
+## Wrangler environments
+
+**Documentation, not run.** A Wrangler environment deploys as `<name>-<env>` and inherits no bindings and no `vars`. Wrangler 4.147.0 requires a Workflow name to be unique in the account, and a deploy from another environment takes over a Workflow of the same name.
+
+So each demo node environment in `node/wrangler.jsonc` repeats its `artifacts` binding, and declares its own Workflow and its own push trigger for its own namespace.
+
+## Workers Builds for Artifacts
+
+**Documentation, read on Oct 8, 2026. Not run.**
+
+- An Artifacts repository connects to a Worker through Workers Builds. The guide describes the connection only as dashboard steps.
+- A push to the production branch runs the build and deploy commands. Only `main` is supported as the production branch.
+- Builds for other branches must be switched on. A push then creates or updates a Preview URL for the branch.
+- The repository must hold the source and the configuration to build and deploy. An empty repository connects, and its first build fails until a commit arrives.
+- The account role needs the Artifacts Read and Artifacts Edit permissions.
+
+One consequence holds for Cairnfield whatever a test shows. Nothing deploys from a records repo. A push there would become a deploy, and a token that can write records could then change a Worker.
+
+## The demo's account
+
+The demo's two nodes and its index run as separate Workers in one Cloudflare account. Each node has its own Artifacts namespace. The index was never shown reading a node in another account.
+
+## Leftovers of the first check
+
+The check of Oct 4 left a namespace with five repos, a Worker with its Workflow, a KV namespace and a queue. All were deleted on Oct 9, 2026. No part of Cairnfield used them.
+
+A report to Cloudflare that a read-only repo accepts pushes was drafted and not sent.

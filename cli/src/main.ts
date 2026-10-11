@@ -1,5 +1,5 @@
-#!/usr/bin/env node
 // The `cairnfield` command. It prints one line of JSON and returns an exit code.
+// `bin/cairnfield.mjs` is what the command's name is linked to, and it loads this file.
 
 import { processIo } from "./io.ts";
 import { run } from "./run.ts";

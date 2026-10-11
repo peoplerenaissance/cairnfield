@@ -1,6 +1,7 @@
 // The command as a whole: its config file, its keys, its arguments and what it prints.
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
+import type { SpawnSyncReturns } from "node:child_process";
 import { once } from "node:events";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -173,5 +174,34 @@ describe("the command's own file", () => {
   it("can be started by its name", () => {
     const bin = fileURLToPath(new URL("../../node_modules/.bin/cairnfield", import.meta.url));
     expect(execFileSync(bin, ["validate"], { cwd: on.home, encoding: "utf8" })).toBe('{"records":0,"rejected":[]}\n');
+  });
+
+  /** Starts the launcher, which the command's name is linked to, in a Node that gives the version as its own. */
+  function startedOn(version: string, ...argv: string[]): SpawnSyncReturns<string> {
+    // Node loads this file first, and the launcher reads the version before it loads the command.
+    const preload = join(on.home, "node-version.cjs");
+    writeFileSync(preload, `Object.defineProperty(process.versions, "node", { value: ${JSON.stringify(version)} });\n`);
+    const launcher = fileURLToPath(new URL("../bin/cairnfield.mjs", import.meta.url));
+    return spawnSync(process.execPath, ["--require", preload, launcher, ...argv], { cwd: on.home, encoding: "utf8" });
+  }
+
+  // Node 23 runs TypeScript as it is from 23.6 on, so the releases of 23 before it are too old as well.
+  it.each([
+    ["20.19.4", "22.22"],
+    ["22.21.9", "22.22"],
+    ["23.5.1", "23.6"],
+  ])("says which Node it needs on Node %s, as its one line of JSON and as a sentence, and runs nothing", (version, needs) => {
+    const ran = startedOn(version, "validate");
+    // A command that ran would print a line of its own after this one.
+    expect(ran.stdout).toBe(`{"error":"node-too-old","needs":"${needs}","found":"${version}"}\n`);
+    expect(ran.stderr).toBe(`cairnfield needs Node ${needs} or later. This is Node ${version}.\n`);
+    expect(ran.status).toBe(EXIT.usage);
+  });
+
+  // 22.22.0 is the oldest Node the command runs on, and 22.21.9 is one minor version short of it.
+  it.each(["22.22.0", "23.6.0", "24.0.0"])("runs the command on Node %s", (version) => {
+    const ran = startedOn(version, "validate");
+    expect(ran.stdout).toBe('{"records":0,"rejected":[]}\n');
+    expect(ran.status).toBe(EXIT.ok);
   });
 });
