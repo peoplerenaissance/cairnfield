@@ -11,7 +11,7 @@ The repo holds a static site, the workspace scaffold, the protocol library in `p
 - Never edit anything under `docs/brainstorms/`. It is a historical record, and the plan overrides it wherever they differ.
 - Public documentation is in `reference/`: the protocol, the threat model and the platform notes. `reference/protocol.md` states each requirement, decision and example that a comment in the code cites, under the same ID. When you cite an ID in a comment that it does not hold yet, add it there. Keep what was observed on the platform apart from what was only read in its documentation, as `reference/platform-notes.md` does.
 - `skills/cairnfield/SKILL.md` is for a team's own review agent, which writes findings to the outbox and runs `validate` and no other command (R21). It ships in this repo and is never served by the index. Bring it up to date when a record's fields, a closed list or the output of `validate` changes.
-- `site/` is the public microsite, a Cloudflare Worker that serves static files from `site/public/`.
+- `site/` is the public microsite, a Cloudflare Worker that serves static files from `site/public/`. It answers at its own domain, which `site/wrangler.jsonc` names, and has no address on `workers.dev` and no version URLs. The `production` branch is the one the site is meant to deploy from, through Workers Builds, so a push to `production` is a deploy. Ask the developer first.
 
 When the plan and this file disagree, the plan wins. Tell the developer about the disagreement.
 
@@ -28,7 +28,7 @@ When the plan and this file disagree, the plan wins. Tell the developer about th
 | --- | --- | --- |
 | `npm run dev:site` | repo root | Serves the microsite locally at `http://localhost:8787` |
 | `npm run check` | `site/` | Dry-run of the site deploy |
-| `npm run deploy:site` | repo root | Deploys the site. Ask the developer first |
+| `npm run deploy:site` | repo root | Deploys the site by hand, to the domain `site/wrangler.jsonc` names. Ask the developer first |
 | `npm install` | repo root, and again in `node/` | Installs the workspace. `node/` and `site/` install on their own |
 | `npm test` | repo root, and in `node/` | Runs the Vitest suites. In `node/` the Worker's tests run in the Workers runtime and the setup script's tests in Node |
 | `npm run typecheck` | repo root, and in `node/` | Type-checks every package and `scripts/`. In `node/` and `index/` it first writes the binding types with `wrangler types`. In `node/` it also checks `node/scripts/` against Node's types. In `index/` it also checks the page's scripts against a browser's types |

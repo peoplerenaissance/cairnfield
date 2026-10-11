@@ -2,6 +2,11 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "cairnfield-site",
   "compatibility_date": "2026-10-05",
+  // The site answers at its own domain and nowhere else. An address on workers.dev and a
+  // version URL would each be a second way in, past whatever stands in front of the domain.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "cairnfield.net", "custom_domain": true }],
   // Static assets only: there is no Worker script, so no "main".
   "assets": {
     "directory": "./public",
