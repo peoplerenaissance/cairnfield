@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cairnfield interface sketches</title>
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="description" content="Sketches of the Cairnfield command, the component page, lenses, approvals, the states a record can be in, and the setup of a team node.">
 <style>
   @font-face { font-family: "Routed Gothic"; src: url("fonts/routed-gothic.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
@@ -285,6 +288,7 @@
   .oneclick > span:last-child { flex: 1 1 22em; max-width: 46em; }
 
   footer.wrap { padding-block: 56px 72px; color: var(--muted); font-size: 13.5px; }
+  footer.wrap p { margin: 0 0 8px; }
 
   [hidden] { display: none !important; }
 
@@ -879,8 +883,7 @@ cairnfield reconcile 9f3c1e7a…</pre>
       <div class="chrome"><i></i><i></i><i></i><span>a team operator's machine</span></div>
       <div class="term">
         <div class="dim"># The node's directory is self-contained. It needs Node 22.22.</div>
-        <div><span class="p">$</span> <span class="cmd">git clone https://github.com/OWNER/cairnfield && cd cairnfield/node</span></div>
-        <div class="dim"># OWNER is a placeholder until the repository is public.</div>
+        <div><span class="p">$</span> <span class="cmd">git clone https://github.com/peoplerenaissance/cairnfield && cd cairnfield/node</span></div>
         <div><span class="p">$</span> <span class="cmd">nvm use && npm install</span></div>
         <div><span class="p">$</span> <span class="cmd">npx wrangler login</span></div>
         <div><span class="p">$</span> <span class="cmd">npm run setup</span></div>
@@ -925,7 +928,7 @@ cairnfield reconcile 9f3c1e7a…</pre>
     <!--
       Cloudflare's own button, from https://developers.cloudflare.com/workers/platform/deploy-buttons/
       To activate: replace the span with
-        <a class="deploy-official" href="https://deploy.workers.cloudflare.com/?url=https://github.com/OWNER/REPO/tree/main/node"><img …></a>
+        <a class="deploy-official" href="https://deploy.workers.cloudflare.com/?url=https://github.com/peoplerenaissance/cairnfield/tree/main/node"><img …></a>
     -->
     <p class="oneclick">
       <span class="deploy-official inactive"><img src="/deploy-to-cloudflare.svg" alt="Deploy to Cloudflare, switched off for now" width="183" height="40"></span>
@@ -936,7 +939,9 @@ cairnfield reconcile 9f3c1e7a…</pre>
 </main>
 
 <footer class="wrap">
-  Sketches first drawn before the build, and brought in line with the prototype. The sketch of the component page follows the real page's sections and words, and not its exact layout. The status table in the repository README says what exists today.
+  <p>Sketches first drawn before the build, and brought in line with the prototype. The sketch of the component page follows the real page's sections and words, and not its exact layout. The status table in the repository README says what exists today.</p>
+  <p><a href="https://github.com/peoplerenaissance/cairnfield">The project on GitHub</a>. Cairnfield is an unofficial side project by the <a href="https://sparkwise.co">Sparkwise</a> engineering team.</p>
+  <p>Copyright 2026 People Renaissance, Inc. All rights reserved.</p>
 </footer>
 
 <script>

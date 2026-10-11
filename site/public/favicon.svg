@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Cairnfield</title>
+  <!-- A cairn of four stones in the site's own stone colours, on no background. Each stone
+       is its colour with a darker band along its underside, as the cairns on the pages have. -->
+  <defs>
+    <clipPath id="base"><ellipse cx="32" cy="53" rx="26" ry="9"/></clipPath>
+    <clipPath id="slate"><ellipse cx="33" cy="39" rx="21.5" ry="9"/></clipPath>
+    <clipPath id="sand"><ellipse cx="31" cy="25" rx="17" ry="9"/></clipPath>
+    <clipPath id="iron"><ellipse cx="32" cy="11.5" rx="12.5" ry="9"/></clipPath>
+  </defs>
+  <g clip-path="url(#base)">
+    <rect width="64" height="64" fill="#747D80"/>
+    <ellipse cx="32" cy="49.5" rx="26" ry="9" fill="#8E979A"/>
+  </g>
+  <g transform="rotate(-4 33 39)">
+    <g clip-path="url(#slate)">
+      <rect width="64" height="64" fill="#4A565E"/>
+      <ellipse cx="33" cy="35.5" rx="21.5" ry="9" fill="#5E6C76"/>
+    </g>
+  </g>
+  <g transform="rotate(5 31 25)">
+    <g clip-path="url(#sand)">
+      <rect width="64" height="64" fill="#A89069"/>
+      <ellipse cx="31" cy="21.5" rx="17" ry="9" fill="#C9AE84"/>
+    </g>
+  </g>
+  <g transform="rotate(-6 32 11.5)">
+    <g clip-path="url(#iron)">
+      <rect width="64" height="64" fill="#824C38"/>
+      <ellipse cx="32" cy="8" rx="12.5" ry="9" fill="#A0624A"/>
+    </g>
+  </g>
+</svg>
