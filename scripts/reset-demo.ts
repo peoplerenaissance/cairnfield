@@ -71,7 +71,9 @@ export async function reset(stage: Stage, resetKey: string): Promise<Emptied> {
     if (head !== undefined) heads.push([team, head]);
   }
 
-  // A node the index does not know is read by no sync, and neither is one with no head. Nothing waits for either.
+  // A node the index does not know is read by no sync. One with no head is read, and a view shows nothing
+  // of that read, so there is nothing to wait for. A claim the index first stores before that read ends
+  // counts as expired, and the demo then stops at its wait for live claims.
   const read: (readonly [Team, string])[] = [];
   // A view of the plugin's first commit lists the nodes, with the head the index last processed for each.
   if (await viewNow(stage, PLUGIN.first)) {

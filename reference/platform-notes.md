@@ -102,6 +102,7 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - The command on one team's machine fetched another team's patch commit from that team's fork, with the fork's public read token. Both nodes were in one account.
 - The index read the nodes over HTTP. The index and the nodes are Workers in one account, and each sets the `global_fetch_strictly_public` compatibility flag.
 - A node shows a new head in the index within about a minute of a push.
+- Artifacts took a push of a commit whose root tree holds no file. The demo's reset pushed one to each node's repo of records on Oct 10, twice, and each node then listed no record at the new head.
 
 ## The index's first deploy
 
