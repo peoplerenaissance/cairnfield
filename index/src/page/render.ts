@@ -222,7 +222,7 @@ const ABOUT = {
   recipes: "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more organizations published come first.",
   // What a fetch is, and three things of every count (R45): whose number it is, what it counts, and that a missing count is not a count of zero.
   fetches:
-    "A fetch is one download over Git of a team's fork: the team's own repository of this version, where it keeps its patches. Each team's node states its own number, and the index cannot check it. The number counts the fetches of that fork since the fork was made, and the team's own commands add to it. A team that is not listed here has no count in this view, which is not a count of zero.",
+    "A fetch is one download over Git of a team's fork: the team's own repository of this version, where it keeps its patches. Each team's node states its own number, and the index cannot check it. The number counts the fetches of that fork since its node began to count them, and the team's own commands add to it. A team that is not listed here has no count in this view, which is not a count of zero.",
   rejected: "The index refused these records, because each failed one of its checks. A refused record counts for nothing on this page.",
 } as const;
 

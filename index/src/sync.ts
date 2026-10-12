@@ -14,7 +14,7 @@
 //
 // A sync ends by asking the node for its count of the fetches of each fork whose
 // component is registered and in the node's listing (see `fetches.ts`). A count is no
-// record, and no answer to that question fails the sync.
+// record. No answer to that question fails the sync, and no error in storing one does.
 
 import { MAX_LISTING_ENTRIES, MAX_RECORDS_PER_COMPONENT, canonicalJson, compare, parseRecordPath, sha256Hex, validateRecordFile } from "@cairnfield/protocol";
 import type { RecordType } from "@cairnfield/protocol";
@@ -228,7 +228,13 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   await lookAgain(waiting);
   await goOnAfter(env, node, waiting);
   // Last, once everything about the node's records is written and queued: what the node
-  // says of its fetches changes none of it.
-  await readFetchCounts(env, node, held.syncs, listed);
+  // says of its fetches changes none of it, and neither does a count the database did
+  // not take. The counts of an earlier sync stay, and the node's next sync asks again.
+  try {
+    await readFetchCounts(env, node, held.syncs, listed);
+  } catch {
+    // A code and a registered URL. Nothing of the error is logged.
+    console.warn(JSON.stringify({ event: "counts-failed", node, reason: "not-stored" }));
+  }
   return failure === undefined ? { ok: true, head, stored, more: !complete } : { ok: false, reason: failure };
 }

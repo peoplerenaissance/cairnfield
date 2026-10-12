@@ -5,7 +5,8 @@
 // The index asks for the counts inside a sync of the node (KTD43), and a count never
 // fails that sync. A node that cannot be reached, or whose answer is not the contract's,
 // changes nothing: the count of an earlier sync stays. Only a node that says it has
-// counted no fetch takes its count away.
+// counted no fetch takes its count away. An error in writing the counts leaves here, and
+// the sync catches it (see `sync.ts`).
 
 import type { Env } from "./env.ts";
 import { FETCH_AHEAD, readFetches } from "./fetch.ts";

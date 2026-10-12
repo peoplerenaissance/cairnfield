@@ -91,7 +91,7 @@ const DECLARED_COUNT = "This team's node states how often its fork was fetched. 
 /** The three things the page says of every count, in the line under the heading of its section. */
 const OF_A_COUNT = [
   "Each team's node states its own number, and the index cannot check it.",
-  "The number counts the fetches of that fork since the fork was made, and the team's own commands add to it.",
+  "The number counts the fetches of that fork since its node began to count them, and the team's own commands add to it.",
   "A team that is not listed here has no count in this view, which is not a count of zero.",
 ];
 /** That line whole: what a fetch is, and then the three. */

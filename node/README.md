@@ -82,7 +82,7 @@ The node counts how often each fork it holds is fetched over Git, and serves the
 curl "https://node.team-a.example/fetches?component=<component commit>"
 ```
 
-It answers `{"component":"<component commit>","fetches":3}`. A fork with no counted fetch has no count, and the node answers with status 404 and `{"error":"not-found"}`. The count is the node's own statement. It names no reader, your own command's fetches are in it, and anyone can raise it. A node with an index address sends the index a notice after each fetch it counts, as it does after a push.
+It answers `{"component":"<component commit>","fetches":3}`. A fork with no counted fetch has no count, and the node answers with status 404 and `{"error":"not-found"}`. The node counts from when it begins to count: a fetch from before it was deployed with the two triggers above is in no count. It forgets a fork's count when the fork is made anew. The count is the node's own statement. It names no reader, your own command's fetches are in it, and anyone can raise it. A node with an index address sends the index a notice after each fetch it counts, as it does after a push.
 
 Then name the node in the `cairnfield.json` of the folder you work in:
 

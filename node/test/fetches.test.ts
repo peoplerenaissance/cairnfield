@@ -15,6 +15,8 @@ afterEach(reset);
 
 const NOT_FOUND = { status: 404, body: { error: "not-found" } };
 const BAD_REQUEST = { status: 400, body: { error: "bad-request" } };
+/** A count stops here (KTD6). Written out, and not taken from the node's own copy of the contract. */
+const MAX_FETCH_COUNT = 1_000_000_000;
 
 let deliveries = 0;
 
@@ -41,10 +43,12 @@ const counted = (component: string, fetches: number) => ({ status: 200, body: { 
 /** The objects the node has started, of any name. */
 const started = async () => (await listDurableObjectIds(env.READ_TOKENS)).map(String).sort();
 
+/** The object of a component's fork. */
+const objectOf = (component: string) => env.READ_TOKENS.get(env.READ_TOKENS.idFromName(`fork-${component}`));
+
 /** Everything the object of a component's fork holds. */
 function held(component: string): Promise<Map<string, unknown>> {
-  const object = env.READ_TOKENS.get(env.READ_TOKENS.idFromName(`fork-${component}`));
-  return runInDurableObject(object, (_instance, state) => state.storage.list());
+  return runInDurableObject(objectOf(component), (_instance, state) => state.storage.list());
 }
 
 /** A node with a fork that is ready. */
@@ -86,11 +90,44 @@ describe("a fork's fetch count", () => {
     expect(await asked(other)).toEqual(counted(other, 1));
   });
 
+  it("stops at the limit, and still takes the event that would have passed it", async () => {
+    // What the fork's object holds after that many counted fetches, put there by hand under the object's own key.
+    await runInDurableObject(objectOf(COMPONENT), (_instance, state) => state.storage.put("fetches", { fetches: MAX_FETCH_COUNT, events: [] }));
+    expect(await asked(COMPONENT)).toEqual(counted(COMPONENT, MAX_FETCH_COUNT));
+
+    await deliver(CLONED);
+    expect(await asked(COMPONENT)).toEqual(counted(COMPONENT, MAX_FETCH_COUNT));
+    // The event was counted and not dropped: the object remembers its ID.
+    expect((await held(COMPONENT)).get("fetches")).toEqual({ fetches: MAX_FETCH_COUNT, events: [CLONED.id] });
+  });
+
+  it("remembers the IDs of the last 100 events it counted, and counts an older event again", async () => {
+    // 101 events for the fork, each with an ID of its own.
+    const ids = Array.from({ length: 101 }, (_, at) => `fetch-event-${at + 1}`);
+    for (const id of ids) await deliver({ ...FETCHED, id });
+    expect(await asked(COMPONENT)).toEqual(counted(COMPONENT, 101));
+
+    // The second event is the oldest of the last 100, so it is remembered.
+    await deliver({ ...FETCHED, id: ids[1] });
+    expect(await asked(COMPONENT)).toEqual(counted(COMPONENT, 101));
+    // The first one is forgotten, and counts again.
+    await deliver({ ...FETCHED, id: ids[0] });
+    expect(await asked(COMPONENT)).toEqual(counted(COMPONENT, 102));
+    // The last one is remembered.
+    await deliver({ ...FETCHED, id: ids[100] });
+    expect(await asked(COMPONENT)).toEqual(counted(COMPONENT, 102));
+  }, 30_000);
+
   const NOT_COUNTED: readonly (readonly [what: string, event: object])[] = [
     ["a clone of the team repo", cloneOf("team")],
     ["a clone of the component copy", cloneOf(`copy-${COMPONENT}`)],
     ["a clone of a repo whose name only ends as a fork's does", cloneOf(`not-a-fork-${COMPONENT}`)],
     ["a push to the fork", { ...PUSH, source: { ...PUSH.source, repoName: `fork-${COMPONENT}` } }],
+    // Events the node cannot read as a fetch of a fork. Each has another ID than the event counted before it, where it has one.
+    ["a clone event with no ID", { type: CLONED.type, source: CLONED.source, payload: CLONED.payload }],
+    ["a clone event whose ID is a number", { ...CLONED, id: 7 }],
+    ["a clone event whose source is null", { ...CLONED, id: "clone-with-a-null-source", source: null }],
+    ["a clone event whose repo name is a number", { ...CLONED, id: "clone-of-a-number", source: { ...CLONED.source, repoName: 7 } }],
   ];
 
   it.each(NOT_COUNTED)("is not raised by %s", async (_what, event) => {
