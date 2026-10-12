@@ -6,9 +6,9 @@
 
    An outline carries meaning. Solid is confirmed or checked. Dashed is unconfirmed: a
    finding or a patch with one organization behind it, a record still being checked, a
-   tree hash that is published and not checked, a value that a team's record declares
-   and the index cannot check. Nothing here is dotted. Every status has a text label,
-   and the color only repeats it. */
+   tree hash that is published and not checked. Nothing here is dotted. Every status has
+   a text label, and the color only repeats it. A value that a team's record declares is
+   a statement and no status, so its line has no outline. */
 
 @font-face { font-family: "Routed Gothic"; src: url("fonts/routed-gothic.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Hanken Grotesk"; src: url("fonts/hanken-grotesk.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; }
@@ -147,8 +147,7 @@ h2 { font: 400 26px/1.1 var(--display); letter-spacing: 0.005em; margin: 0; }
 /* ---------- status labels ---------- */
 .tag { display: inline-block; font: 600 11.5px/1 var(--mono); padding: 6px 8px; border-radius: 5px; border: 1px solid var(--line); background: #fff; white-space: nowrap; }
 .tag.ok { background: #EAF1DC; border-color: #C9D8AD; color: #2E4716; }
-/* A declared value is stated and not checked, so its line takes the outline and the color of an unconfirmed label, and never a solid outline. */
-.tag.un, .declared { background: transparent; border-style: dashed; border-color: #9AA6A3; color: var(--muted); }
+.tag.un { background: transparent; border-style: dashed; border-color: #9AA6A3; color: var(--muted); }
 .tag.rej { background: var(--del); border-color: #E4B7C2; }
 .tag.live { border-color: var(--ink); }
 .kind { font-size: 14px; }
@@ -258,18 +257,16 @@ h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 
 .removed, .added { padding: 0 6px; border-radius: 3px; }
 .removed { background: var(--del); }
 .added { background: var(--add); }
-/* What each record of a patch declares: a line for each, as wide as what it says. The line is a declared value, so its outline and its
-   color are set with an unconfirmed label's, under the status labels above. The team in it is drawn as a team is everywhere else. */
-.declarations { display: grid; justify-items: start; gap: 6px; }
-.declared { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 5px 8px; border-width: 1px; border-radius: 5px; font: 500 12.5px/1.4 var(--mono); }
-.declared .org { color: var(--ink); }
+/* What each record of a patch declares: a line for each, set as a re-check's line is. It is a team's own statement and no status, so it
+   has no outline, which on this page a status has. */
+.declared { position: relative; }
 /* A value goes to the next line whole when it does not fit beside the word, as a host does in its sentence. */
-.declared code { display: inline-block; padding: 0; background: none; font-size: 1em; font-weight: 600; }
+.declared code { display: inline-block; padding: 0; background: none; font-size: 0.93em; }
 /* The word and its value are one label, so one outline goes round both when the label is focused. */
 .declared [tabindex] { display: inline-block; }
 /* A narrow line breaks, and its value can then stand under the word. So the word's meaning hangs from the line and not from the word, clear of the value. */
 .declared .tip { top: 100%; margin-top: 7px; }
-.recheck { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; font-size: 14px; }
+.declared, .recheck { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; font-size: 14px; }
 .foot { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 13.5px; color: var(--muted); }
 
 /* ---------- recipes ---------- */
