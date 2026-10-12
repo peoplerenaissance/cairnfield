@@ -43,6 +43,43 @@ Four rules hold for every record.
 
 `protocol/schemas/<type>.json` holds each shape. The closed lists of values are under [Appendix J](#appendix-j-the-closed-vocabularies).
 
+## Criteria and observations
+
+A criterion is a promise a team wants a component to keep. A finding counts against the promise that its cited lines break.
+
+| Criterion | The promise |
+| --- | --- |
+| `safe-to-read` | Loading the component's text into an agent's context is safe. |
+| `safe-to-run-sandboxed` | Running the component with no credentials and no network access is safe. |
+| `safe-to-run-with-access` | Running the component with the permissions and network access it asks for is safe. |
+| `works-as-documented` | The component does what its documentation says. It stands apart from the three above and covers ordinary bugs. |
+
+The first three are in order, the most basic first, and each implies the ones before it (R5). A finding counts against the criterion it names and against each later one of the three.
+
+An observation is what a finding says its cited lines do. The page of a component commit says it as one sentence about the component.
+
+| Observation | The cited lines | The page says |
+| --- | --- | --- |
+| `sends-data-to-host` | send data to the host | This component sends data to *host*. |
+| `fetches-instructions-from-host` | fetch text from the host that an agent then follows | This component fetches instructions for an agent from *host*. |
+| `loads-resource-from-host` | load code or another resource from the host | This component loads code or another resource from *host*. |
+| `network-access-any-host` | allow or ask for network access to any host | This component allows network access to any host. |
+| `environment-access-all-variables` | allow or ask for every environment variable | This component allows access to every environment variable. |
+| `reads-outside-workspace` | read files outside the workspace | This component reads files outside the workspace. |
+| `writes-outside-workspace` | write files outside the workspace | This component writes files outside the workspace. |
+| `runs-shell-command` | run a shell command | This component runs a shell command. |
+| `runs-with-permissions-bypassed` | run something with permission checks switched off | This component runs something with permission checks switched off. |
+| `runs-install-script` | run a script when the component is installed | This component runs a script when it is installed. |
+| `hidden-instruction` | hold an instruction to an agent that a person reading the component would not see or expect | This component contains a hidden instruction for an agent. |
+| `overrides-host-instructions` | tell an agent to set aside the instructions of its host or its user | This component tells an agent to set aside the instructions of its host or its user. |
+| `requests-broad-credential-scope` | ask for a credential that reaches more than the documented feature needs | This component asks for a credential that reaches more than its documented feature needs. |
+| `stores-credential-in-plain-text` | store a credential in plain text | This component stores a credential in plain text. |
+| `installs-unpinned-dependency` | install a dependency with no pinned version | This component installs a dependency with no pinned version. |
+| `documented-control-not-read` | act without reading a setting that the documentation says controls them | This component acts without reading a setting that its documentation says controls it. |
+| `fails-on-documented-input` | fail on an input the documentation says works | This component fails on an input that its documentation says works. |
+
+The sentence is the finding's. The page names the organizations that report it on the line under it, and says in the section's own words that a finding is a team's report and no verdict of the index.
+
 ## Validation
 
 Validation has two layers. A failure is a reason from a closed list, never a sentence.
@@ -162,11 +199,19 @@ The library also holds the rule that reads criteria against a lens, `countsAgain
 
 **R14.** The index serves two pages: its own, at `/`, and one per component commit, at `/components/<commit>`.
 
-The index's own page says in one paragraph what an index is and what it is not. Under it the page lists the components the index holds, in the order they were first registered. A failed component that is registered again keeps its place. Each has its Git URL, its branch, its commit as a link to that commit's page, and its import state.
+The index's own page says in one paragraph what an index is and what it is not: a part of Cairnfield that collects findings, patches and recipes and reports them together, that holds nothing original and gives no verdict, and that no team builds from. Under it the page lists the components the index holds. The versions of one repo stand together under its Git URL, and in it the versions of one branch. A repo stands where its first version was registered, and so does a branch, and the versions of a branch stand in the order they were registered. A failed component that is registered again keeps its place. Each version is a row with its commit, which is a link to that commit's page on the index, and its import state. A mark beside a repo's Git URL leads out to the repo when the URL is an HTTPS address. An address of the form `/?repo=<Git URL>` narrows the page to the versions of that repo, and the page says that it is narrowed. The page of a component commit links there, so a reader gets from one version of a repo to its others. The page narrows the list itself: `GET /view` still takes no query. It shows a Git URL only as the list holds it, and never what the address names. Each import state is a label, and the page shows what the label means when a reader points at it or focuses it.
 
-The page of a component commit says in one line what it is. It shows live claims, work that is being checked, findings by criterion, patches, recipes and rejected work, in that order.
+The page of a component commit says in two sentences what it gathers, and that the index gives no verdict of its own. It shows live claims, work that is being checked, findings by criterion, patches, recipes and rejected work, in that order. Under its heading each section says in plain words what it holds.
 
-Both pages link to the project's site and to its repo, and the page of a component commit links to the index's own page.
+A finding is shown as what it says of the component, in one sentence, then its file and lines, then the organizations that report it. Each criterion heads its findings in one block with the promise it stands for, and its name is a link to [Criteria and observations](#criteria-and-observations) in this document. That is the one address the page holds that no record names.
+
+Order carries weight on the page. Under a criterion the findings that more organizations report come first. Patches of one group, the groups themselves and recipes are ordered the same way, by the organizations behind each. Entries with as many keep the order of the view. A counter-finding moves nothing, as it changes no count.
+
+A label whose meaning is not plain shows that meaning while a reader points at it or focuses it: a criterion, confirmed and unconfirmed, a patch's kind, pending, a rejection reason, and the hash of a recipe. An organization is shown by its node's address without `https://`, with a small stone in its tone, and the link under it carries the whole address. The tone tells organizations apart and says nothing else. A node address that is not HTTPS is shown whole and is no link.
+
+Each page's bar is a trail: the project's name leads to the project's site, and on the page of a component commit the next part leads to the index's own page. The last part names the page that is open.
+
+Both pages end with the same footer. It credits the people behind the software, says that anyone can run an index and that the credits say nothing of who runs this one, and links to the project's site, its repo, its README and this document.
 
 Each state has words of its own, and none reads as an all-clear.
 
@@ -184,7 +229,7 @@ Until the index holds its own copy, the page of a component commit shows no coun
 | The index holds no component | "No component registered" |
 | The index is importing a component's copy | "importing" |
 | The import failed | "import failed" |
-| The copy is ready | "imported", and never "ready" |
+| The copy is ready | "copy held", and never "ready" |
 
 **R15.** A claim says that work has started. The page shows live claims only. The index shows a claim as closed when a finding or a patch record from the same node cites it. A record from another node closes nothing. A claim expires a set time after the index received it.
 
@@ -297,7 +342,7 @@ The index neither fetches nor stores a record of a component that is not registe
 
 **KTD13.** The index keeps the last commit it read per node, and the commit at which it read each record. It detects no history rewrite: a view's `historyRewritten` field is always false. A rebuild drops every record and reads every node again. It does not rebuild claim state. A claim first seen in a rebuild counts as expired.
 
-**KTD14.** A page's script draws only what its data endpoint holds, and reads that endpoint every 2 seconds: the view on the page of a component commit, and the list at `GET /view` on the index's own page. People and agents then see the same data. Each page is served with a content security policy that allows no script or style written into the page and loads files from its own origin only. Every value from a record or a registration is set as text. A link made from such a value leaves the index only for an HTTPS address.
+**KTD14.** A page's script draws only what its data endpoint holds, and reads that endpoint every 2 seconds: the view on the page of a component commit, and the list at `GET /view` on the index's own page. People and agents then see the same data. Each page is served with a content security policy that allows no script or style written into the page and loads files from its own origin only: its scripts, its stylesheet, its fonts and its icon. Every value from a record or a registration is set as text. A link made from such a value leaves the index only for an HTTPS address. The words a page adds are its own: each is fixed in the page's code, keyed by a value of a closed list, and none comes from a record.
 
 A page's own fixed text and links are written in the repo, in the page's HTML file, outside the element its script draws in. They are what R14 names: what an index is and is not, the line that says what the page of a component commit is, and the links to the site, the repo and the index's own page. They come from no record, a reader with scripts off still sees them, and they tell a reader nothing to do.
 

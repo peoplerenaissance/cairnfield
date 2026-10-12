@@ -7,7 +7,7 @@
     "types": ["@cloudflare/vitest-pool-workers/types"]
   },
   "include": ["src", "test", "worker-configuration.d.ts"],
-  // The page's script runs in a browser. `src/page/tsconfig.json` checks it there, with
-  // `render.ts`, which the tests also call in the Workers runtime.
-  "exclude": ["src/page/poll.ts"]
+  // The page's script and the map it draws run in a browser. `src/page/tsconfig.json`
+  // checks them there, with `render.ts`, which the tests also call in the Workers runtime.
+  "exclude": ["src/page/poll.ts", "src/page/map.ts"]
 }
