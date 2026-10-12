@@ -40,6 +40,7 @@ import {
 } from "./fields.ts";
 import type { ContractFields, Infer, ObjectKind, ShapeKind } from "./fields.ts";
 import {
+  MAX_FETCH_COUNT,
   MAX_LINE,
   MAX_LISTING_ENTRIES,
   MAX_PATCH_FINDINGS,
@@ -113,6 +114,14 @@ export type NodePatch = Infer<typeof NODE_PATCH>;
 export const REPO_TOKEN = shape({ remote: url(), token: token(), expires: count() });
 export type RepoToken = Infer<typeof REPO_TOKEN>;
 
+/**
+ * How often the fork of a component was fetched over Git, as its node counted it (R45).
+ * The node states the number and nothing checks it. A fork with no counted fetch has no
+ * count, and its node answers `not-found`, so a count is never zero.
+ */
+export const NODE_FETCHES = shape({ component: gitHash(), fetches: int(1, MAX_FETCH_COUNT) });
+export type NodeFetches = Infer<typeof NODE_FETCHES>;
+
 export const NODE_ERRORS = ["bad-request", "unauthorized", "not-found", "not-ready", "refused"] as const;
 export const NODE_REFUSAL = shape({ error: oneOf(NODE_ERRORS) });
 
@@ -151,6 +160,7 @@ export const NODE_ROUTES = {
     response: { media: "application/octet-stream" },
   },
   readToken: { method: "GET", path: "read-token", query: { component: gitHash() }, response: REPO_TOKEN },
+  fetches: { method: "GET", path: "fetches", query: { component: gitHash() }, response: NODE_FETCHES },
   importCopy: {
     method: "POST",
     path: "admin/import",
@@ -317,10 +327,18 @@ const VIEW_PATCH = shape({
 });
 
 /**
+ * What a node states of itself in a view, which the index cannot compute (KTD42):
+ * its count of the fetches of its fork of the view's component (R45). A node with no
+ * count has no `declared` at all, so the count here is never zero.
+ */
+const DECLARED = shape({ fetches: int(1, MAX_FETCH_COUNT) });
+
+/**
  * The view of one component commit: everything the page shows except component text (R13).
  * `gitUrl` is the Git URL the component was registered with (KTD12). `lag` is the index
  * lag in milliseconds (Appendix H). `organizations` counts registered nodes (KTD8).
- * Rejected work is four values only (KTD31).
+ * Rejected work is four values only (KTD31). A node's `declared` holds what the node
+ * states of itself, apart from everything the index worked out (KTD42).
  */
 export const VIEW = shape({
   version: version(),
@@ -331,7 +349,13 @@ export const VIEW = shape({
   lag: count(),
   organizations: count(),
   nodes: listOf(
-    shape({ node: nodeUrl(), processed: optional(gitHash()), simulated: boolean(), historyRewritten: boolean() }),
+    shape({
+      node: nodeUrl(),
+      processed: optional(gitHash()),
+      simulated: boolean(),
+      historyRewritten: boolean(),
+      declared: optional(DECLARED),
+    }),
     MAX_VIEW_ENTRIES,
   ),
   claims: listOf(shape({ ...published(CLAIM), state: oneOf(CLAIM_STATES) }), MAX_VIEW_ENTRIES),

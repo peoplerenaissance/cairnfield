@@ -10,49 +10,79 @@
   // A call to another Worker in the same account goes to its public URL (KTD28).
   "compatibility_flags": ["global_fetch_strictly_public"],
   // The team's own Artifacts namespace. One namespace per node keeps one team's pushes
-  // from starting another team's Workflow (KTD9).
+  // and fetches from starting another team's Workflows (KTD9).
   "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-node" }],
-  // The one read token kept per fork, in a Durable Object named after the fork (KTD7).
+  // The one read token kept per fork, and the fork's fetch count, in a Durable Object
+  // named after the fork (KTD7, KTD43).
   "durable_objects": { "bindings": [{ "name": "READ_TOKENS", "class_name": "ReadTokens" }] },
   // Every environment takes this over. The class keeps its state in SQLite storage.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ReadTokens"] }],
-  // A Workflow name is unique in the account.
-  "workflows": [{ "name": "cairnfield-node-on-push", "binding": "ON_PUSH", "class_name": "OnPush" }],
-  // The shape Wrangler accepts for a push trigger. The Artifacts guide shows another one.
-  // A push to any repo of the namespace starts the Workflow.
+  // A Workflow name is unique in the account. The first sends the index a notice of a
+  // push (R7). The second counts the fetches of each fork (R45).
+  "workflows": [
+    { "name": "cairnfield-node-on-push", "binding": "ON_PUSH", "class_name": "OnPush" },
+    { "name": "cairnfield-node-on-fetch", "binding": "ON_FETCH", "class_name": "OnFetch" }
+  ],
+  // The shape Wrangler accepts for an event trigger. The Artifacts guide shows another
+  // one. A push to any repo of the namespace starts the first Workflow. A fetch or a clone
+  // of any repo of the namespace starts the second. It takes both types, because a fetch
+  // into a repo that holds nothing was seen to send the clone event (KTD43).
   "triggers": {
     "events": [
       {
         "type": "cf.artifacts.repo.pushed",
         "filter": { "namespace": "cairnfield-node" },
         "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-on-push" }]
+      },
+      {
+        "type": "cf.artifacts.repo.fetched",
+        "filter": { "namespace": "cairnfield-node" },
+        "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-on-fetch" }]
+      },
+      {
+        "type": "cf.artifacts.repo.cloned",
+        "filter": { "namespace": "cairnfield-node" },
+        "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-on-fetch" }]
       }
     ]
   },
   // NODE_URL is the node's own base URL, in the one spelling the protocol accepts (KTD8).
   // It is the origin the Worker answers at, with no path: this Worker serves its routes
-  // from the root of its host. The deploy scripts refuse to run without it, and the
+  // from the root of its host. The deploy scripts refuse to run without it, and a
   // Workflow sends no notice for an address it cannot use.
   // INDEX_URL is the index address: an HTTPS URL with no slash at its end and nothing
-  // after its path. The Workflow sends no notice to an address in another form. It may be
+  // after its path. A Workflow sends no notice to an address in another form. It may be
   // left out: a node with none sends no notice (KTD40). Both are set at deploy time. The admin key is a
   // secret, never a variable: see `.dev.vars.example`.
   "vars": { "NODE_URL": "", "INDEX_URL": "" },
   // An environment inherits none of the bindings, variables or Workflows above, so each
-  // one states its own, with its own namespace, Workflow and trigger. Its Durable Object
-  // belongs to its own Worker, so the two demo nodes share no kept token.
+  // one states its own, with its own namespace, Workflows and triggers. Its Durable Object
+  // belongs to its own Worker, so the two demo nodes share no kept token and no count.
   "env": {
     "team-a": {
       "name": "cairnfield-node-team-a",
       "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-team-a" }],
       "durable_objects": { "bindings": [{ "name": "READ_TOKENS", "class_name": "ReadTokens" }] },
-      "workflows": [{ "name": "cairnfield-node-team-a-on-push", "binding": "ON_PUSH", "class_name": "OnPush" }],
+      "workflows": [
+        { "name": "cairnfield-node-team-a-on-push", "binding": "ON_PUSH", "class_name": "OnPush" },
+        { "name": "cairnfield-node-team-a-on-fetch", "binding": "ON_FETCH", "class_name": "OnFetch" }
+      ],
       "triggers": {
         "events": [
           {
             "type": "cf.artifacts.repo.pushed",
             "filter": { "namespace": "cairnfield-team-a" },
             "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-a-on-push" }]
+          },
+          {
+            "type": "cf.artifacts.repo.fetched",
+            "filter": { "namespace": "cairnfield-team-a" },
+            "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-a-on-fetch" }]
+          },
+          {
+            "type": "cf.artifacts.repo.cloned",
+            "filter": { "namespace": "cairnfield-team-a" },
+            "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-a-on-fetch" }]
           }
         ]
       },
@@ -62,13 +92,26 @@
       "name": "cairnfield-node-team-b",
       "artifacts": [{ "binding": "ARTIFACTS", "namespace": "cairnfield-team-b" }],
       "durable_objects": { "bindings": [{ "name": "READ_TOKENS", "class_name": "ReadTokens" }] },
-      "workflows": [{ "name": "cairnfield-node-team-b-on-push", "binding": "ON_PUSH", "class_name": "OnPush" }],
+      "workflows": [
+        { "name": "cairnfield-node-team-b-on-push", "binding": "ON_PUSH", "class_name": "OnPush" },
+        { "name": "cairnfield-node-team-b-on-fetch", "binding": "ON_FETCH", "class_name": "OnFetch" }
+      ],
       "triggers": {
         "events": [
           {
             "type": "cf.artifacts.repo.pushed",
             "filter": { "namespace": "cairnfield-team-b" },
             "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-b-on-push" }]
+          },
+          {
+            "type": "cf.artifacts.repo.fetched",
+            "filter": { "namespace": "cairnfield-team-b" },
+            "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-b-on-fetch" }]
+          },
+          {
+            "type": "cf.artifacts.repo.cloned",
+            "filter": { "namespace": "cairnfield-team-b" },
+            "targets": [{ "type": "workflow", "workflow_name": "cairnfield-node-team-b-on-fetch" }]
           }
         ]
       },

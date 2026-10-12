@@ -265,6 +265,29 @@ describe("a view narrowed by a teams query (KTD38)", () => {
     expect(both.findings).toEqual(whole.findings);
   });
 
+  it("shows the count of fetches a listed node declared, and none of a node that is not listed", async () => {
+    const on = bench();
+    const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];
+    nodesBehindFetch(one, other);
+    const component = await on.component();
+    await on.registerNode(NODE_A);
+    await on.registerNode(NODE_B);
+    await one.publish(finding(component));
+    await other.publish(finding(component, { location: { path: SKILL, start: 2, end: 3 } }));
+    one.counted(component, 3);
+    other.counted(component, 7);
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+
+    const whole = await on.view(component);
+    expect(whole.nodes.map(({ node, declared }) => [node, declared])).toEqual([[NODE_A, { fetches: 3 }], [NODE_B, { fetches: 7 }]]);
+
+    const narrowed = await on.view(component, [NODE_B]);
+    expect(narrowed.nodes).toEqual([{ node: NODE_B, processed: other.head, simulated: false, historyRewritten: false, declared: { fetches: 7 } }]);
+    expect(JSON.stringify(narrowed)).not.toContain(NODE_A);
+    expect(conforms(VIEW, narrowed)).toBeUndefined();
+  });
+
   it("has the version of the whole view, which also moves when a claim of a node that is not listed passes its time", async () => {
     const on = bench();
     const [one, other] = [new FakeNode(NODE_A), new FakeNode(NODE_B)];

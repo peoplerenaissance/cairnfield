@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import * as node from "../../node/src/contract.ts";
 import { ADMIN_KEY_HEADER, INDEX_ROUTES, NODE_ROUTES, TEAM_BRANCH } from "../src/contracts.ts";
 import { DELETED_BLOB, DELETED_MODE } from "../src/enums.ts";
-import { isIndexUrl, isNodeUrl } from "../src/limits.ts";
+import { MAX_FETCH_COUNT, isIndexUrl, isNodeUrl } from "../src/limits.ts";
 import { GOOD_NODE_URLS, GOOD_URLS, NODE_URLS_OFF_PATTERN, URLS_NOT_SERIALIZED, URLS_OFF_PATTERN } from "./fixtures.ts";
 
 describe("the node's copy of the contract", () => {
@@ -35,6 +35,10 @@ describe("the node's copy of the contract", () => {
 
   it("names the same branch of the team repo, which the command pushes records to", () => {
     expect(node.TEAM_BRANCH).toBe(TEAM_BRANCH);
+  });
+
+  it("holds the same limit for a fork's fetch count, which is where the node stops counting", () => {
+    expect(node.MAX_FETCH_COUNT).toBe(MAX_FETCH_COUNT);
   });
 
   it("gives the library's verdict on an index address", () => {

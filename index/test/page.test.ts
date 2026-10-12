@@ -85,15 +85,36 @@ const tagsOf = (root: Drawing | undefined): string[] => withClass(root, "tag").m
 /** What the word "declared" means before the model of a patch record. The page shows it while the word and the model are pointed at or focused. */
 const DECLARED = "This team's record states which model, if any, wrote the patch. The index cannot check that, and has not.";
 
-/** The lines under an element that say what a team's record declares, each as its texts: the team, the word, the value and what the word means. */
+/** What the word "declared" means before a node's count of fetches. The page shows it while the word and the count are pointed at or focused. */
+const DECLARED_COUNT = "This team's node states how often its fork was fetched. It does not say by whom. The index cannot check the number, and has not.";
+
+/** The three things the page says of every count, in the line under the heading of its section. */
+const OF_A_COUNT = [
+  "Each team's node states its own number, and the index cannot check it.",
+  "The number counts the fetches of that fork since its node began to count them, and the team's own commands add to it.",
+  "A team that is not listed here has no count in this view, which is not a count of zero.",
+];
+/** That line whole: what a fetch is, and then the three. */
+const FETCHES = ["A fetch is one download over Git of a team's fork: the team's own repository of this version, where it keeps its patches.", ...OF_A_COUNT].join(" ");
+
+/** The lines under an element that say what a team declares, each as its texts: the team, the word, the value and what the word means. */
 const declaredOf = (root: Drawing | undefined): string[][] => withClass(root, "declared").map(texts);
 
-/** What the stylesheet sets for one selector, in every rule that names it alone or in a list: each property with its value. */
-function styledAs(styles: string, selector: string): string[][] {
+/** The rules of the stylesheet, each as its selectors and what it sets: every property with its value. */
+function rulesOf(styles: string): { selectors: string[]; set: string[][] }[] {
   const rules = [...styles.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)];
-  const named = rules.filter(([, selectors = ""]) => selectors.split(",").some((one) => one.trim() === selector));
-  return named.flatMap(([, , set = ""]) => set.split(";").flatMap((one) => (one.includes(":") ? [[one.slice(0, one.indexOf(":")).trim(), one.slice(one.indexOf(":") + 1).trim()]] : [])));
+  return rules.map(([, selectors = "", set = ""]) => ({
+    selectors: selectors.split(",").map((one) => one.trim()),
+    set: set.split(";").flatMap((one) => (one.includes(":") ? [[one.slice(0, one.indexOf(":")).trim(), one.slice(one.indexOf(":") + 1).trim()]] : [])),
+  }));
 }
+
+/** What the stylesheet sets for one selector, in every rule that names it alone or in a list: each property with its value. */
+const styledAs = (styles: string, selector: string): string[][] => rulesOf(styles).filter(({ selectors }) => selectors.includes(selector)).flatMap(({ set }) => set);
+
+/** The rules of the stylesheet that reach an element of a class or anything inside one: each rule with the class in one of its selectors. */
+const rulesNaming = (styles: string, name: string): { selectors: string[]; set: string[][] }[] =>
+  rulesOf(styles).filter(({ selectors }) => selectors.some((one) => new RegExp(`\\.${name}(?![\\w-])`).test(one)));
 
 /** The counts at the head of a page, each as its number and the word for what it counts. */
 const countsOf = (root: Drawing | undefined): string[][] =>
@@ -228,15 +249,17 @@ describe("a version with little to show (R14)", () => {
 });
 
 describe("the sections of a page (R14)", () => {
-  it("come in the origin's order: live claims, findings, patches, recipes, rejected work", async () => {
+  it("come in the origin's order, with each team's fetches after the recipes: live claims, findings, patches, recipes, fetches, rejected work", async () => {
     const { on, one, component } = await twoNodes();
     await one.publish(finding(component, { location: { path: README, start: 400, end: 410 } }));
+    // The node has counted fetches of its fork, so the page has a count to list.
+    one.counted(component, 2);
     await synced(on, NODE_A);
 
     const page = await pageOf(on, component);
     const order = elements(page).flatMap((element) => (element.tag === "section" ? (element.attributes["id"] ?? []) : []));
-    expect(order).toEqual(["claims", "findings", "patches", "recipes", "rejected"]);
-    expect(withTag(page, "h2").map(textOf)).toEqual(["Live claims", "Findings", "Patches", "Recipes", "Rejected work"]);
+    expect(order).toEqual(["claims", "findings", "patches", "recipes", "fetches", "rejected"]);
+    expect(withTag(page, "h2").map(textOf)).toEqual(["Live claims", "Findings", "Patches", "Recipes", "Fetches", "Rejected work"]);
   });
 
   it("heads the page with the component's Git URL, its commit and counts of organizations, findings and patches", async () => {
@@ -716,6 +739,165 @@ describe("recipes (KTD5)", () => {
     const on = bench();
     const component = await on.component();
     expect(textOf(byId(await pageOf(on, component), "recipes"))).toContain("No recipes published");
+  });
+});
+
+describe("each team's fetches (R14, R45, KTD42)", () => {
+  /**
+   * The view of the small component after two teams each published a finding on it, and
+   * each team's node said how many fetches of its fork it has counted. With no number a
+   * node has counted none. The index asks a node only about a component its listing names.
+   */
+  async function served(ofOne?: number, ofOther?: number): Promise<{ place: Place; view: View }> {
+    const { on, one, other, component } = await twoNodes();
+    await one.publish(finding(component));
+    await other.publish(finding(component, onReadme(12)));
+    one.counted(component, ofOne);
+    other.counted(component, ofOther);
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+    return { place: placeAt(`/components/${component}`), view: await on.view(component) };
+  }
+
+  /** The section of a page that lists the counts. */
+  const sectionOf = (place: Place, view: unknown): Drawing | undefined => byId(firstDrawing(place, view), "fetches");
+
+  it("lists each node whose entry in the view holds a count: the node, the word 'declared', its number as a text of its own and the word for it, which is 'fetch' for one", async () => {
+    const { place, view } = await served(1, 4);
+    // The view holds each count in its node's entry, as a value the node declared.
+    expect(view.nodes.map(({ node, declared }) => [node, declared])).toEqual([
+      [NODE_A, { fetches: 1 }],
+      [NODE_B, { fetches: 4 }],
+    ]);
+
+    const section = sectionOf(place, view);
+    expect(withTag(section, "h2").map(textOf)).toEqual(["Fetches"]);
+    // A line for each node, in the order of the view. A number is one text and its word another: one fetch, and four fetches.
+    const lines = [
+      [asShown(NODE_A), "declared: ", "1", " fetch", DECLARED_COUNT],
+      [asShown(NODE_B), "declared: ", "4", " fetches", DECLARED_COUNT],
+    ];
+    expect(declaredOf(section)).toEqual(lines);
+    // Each node is drawn as an organization is anywhere on the page: without its scheme, as a link that carries its whole address.
+    expect(withClass(section, "org").map((name) => [textOf(name), linksOf(name)])).toEqual([
+      [asShown(NODE_A), [NODE_A]],
+      [asShown(NODE_B), [NODE_B]],
+    ]);
+    // Every text of the section is a node of the view, a count of the view or one of the page's own words: its heading, the line
+    // under the heading, the word before a number, the word after it and what the word "declared" means there.
+    expect(texts(section)).toEqual(["Fetches", FETCHES, ...lines.flat()]);
+    // No element carries anything but a class, a target, the address of a link and the mark of a label that can be focused.
+    for (const element of elements(section)) {
+      for (const name of Object.keys(element.attributes)) expect(["class", "id", "href", "tabindex"]).toContain(name);
+    }
+  });
+
+  it("draws no section and no word of a fetch for a view that holds no count", async () => {
+    const without = await served();
+    expect(without.view.nodes.map(({ declared }) => declared)).toEqual([undefined, undefined]);
+    const page = firstDrawing(without.place, without.view);
+    // The page is the one it was before a view could hold a count: the same sections, and no word of a fetch.
+    expect(withTag(page, "section").map((section) => section.attributes["id"])).toEqual(["claims", "findings", "patches", "recipes"]);
+    expect(textOf(page)).not.toMatch(/fetch|declared/i);
+  });
+
+  it("lists only the node that has a count when the other has none, and never draws a missing count as a number", async () => {
+    // Covers the plan's AE1 on the page: the second team's node has counted no fetch of its fork.
+    const { place, view } = await served(3);
+    expect(view.nodes.map(({ node, declared }) => [node, declared])).toEqual([
+      [NODE_A, { fetches: 3 }],
+      [NODE_B, undefined],
+    ]);
+
+    const section = sectionOf(place, view);
+    expect(declaredOf(section)).toEqual([[asShown(NODE_A), "declared: ", "3", " fetches", DECLARED_COUNT]]);
+    // A missing count is not a count of zero: the other node has no line, and the section names it nowhere.
+    expect(textOf(section)).not.toContain(asShown(NODE_B));
+    expect(texts(section)).not.toContain("0");
+  });
+
+  it("says three things of a count in the one line under its heading: whose number it is, what it counts, and what a missing line means", async () => {
+    const { place, view } = await served(1, 4);
+    const [line, ...more] = withClass(sectionOf(place, view), "intro");
+    expect(more).toEqual([]);
+    // The line is one text, so it is the page's own words whole and holds no value of the view.
+    const [said = "", ...rest] = texts(line);
+    expect(rest).toEqual([]);
+    for (const statement of OF_A_COUNT) expect(said).toContain(statement);
+  });
+
+  it("gives a count's line the class of a declared line and no status label, and the stylesheet gives no part of such a line an outline of any kind", async () => {
+    const { place, view } = await served(3);
+    const section = sectionOf(place, view);
+    const [line, ...more] = withClass(section, "declared");
+    expect(more).toEqual([]);
+    // The line is set as the model of a patch record is: it has that line's class and no other.
+    expect(line?.attributes["class"]).toBe("declared");
+    // Nothing in the section is a status label.
+    expect(withClass(section, "tag")).toEqual([]);
+    // The word, the number and its word are one label with its meaning beside it. The label is the one part of the line that can be focused, so the meaning shows without a pointer too.
+    expect(withClass(line, "tip").map(textOf)).toEqual([DECLARED_COUNT]);
+    expect(elements(line).filter((element) => element.attributes["tabindex"] !== undefined).map((element) => [textOf(element), element.attributes["tabindex"]])).toEqual([["declared: 3 fetches", "0"]]);
+
+    // An outline is a status on this page, and a count is a node's statement and no status. So no rule of the stylesheet that
+    // reaches a declared line, anything inside one or the list the lines stand in sets a border, an outline or a shadow.
+    const styles = env.PAGE_FILES["styles.css"] ?? "";
+    const list = elements(section).find((element) => line !== undefined && element.children.includes(line));
+    const reaching = ["declared", ...(list ? classesOf(list) : [])].filter((name) => name !== "").flatMap((name) => rulesNaming(styles, name));
+    expect(reaching).not.toEqual([]);
+    for (const { selectors, set } of reaching) expect([selectors, set.filter(([property = ""]) => /^(?:border|outline|box-shadow)/.test(property))]).toEqual([selectors, []]);
+  });
+
+  it("says nothing of a count that reads as an all-clear or as an approval", async () => {
+    const { place, view } = await served(1, 4);
+    const said = textOf(sectionOf(place, view));
+    expect(said).toContain("declared: 4 fetches");
+    // The two words the page's other tests keep off it: a version is never called clean, and nothing is called ready.
+    expect(said).not.toMatch(/clean|ready/i);
+    // A count is no confirmation and no verdict, so the section holds no word that would read as either.
+    expect(said).not.toMatch(/confirm|safe|approv|trust|verif/i);
+  });
+
+  it("shows a node URL that is not HTTPS as text beside its count, and gives it no link", async () => {
+    const { place, view } = await served(1, 4);
+    // An HTTPS node URL is a link to the node.
+    expect(linksOf(sectionOf(place, view))).toEqual([NODE_A, NODE_B]);
+
+    for (const spelling of ["http://node.team-a.example", "javascript:alert(1)//node.team-a.example", "//node.team-a.example", "node.team-a.example"]) {
+      const section = sectionOf(place, replaced(view, NODE_A, spelling));
+      // The address is shown whole, scheme and all, and its count still stands beside it.
+      expect(declaredOf(section)).toEqual([
+        [spelling, "declared: ", "1", " fetch", DECLARED_COUNT],
+        [asShown(NODE_B), "declared: ", "4", " fetches", DECLARED_COUNT],
+      ]);
+      // The one link of the section is the other node's.
+      expect(withTag(section, "a").map((link) => [textOf(link), link.attributes["href"]])).toEqual([[asShown(NODE_B), NODE_B]]);
+    }
+  });
+
+  it("shows a node URL that holds markup as text beside its count, and makes the section of the same elements as with a plain one", async () => {
+    const { place, view } = await served(1, 4);
+    // The index takes no such spelling in a registration. The page is handed it as an index that did would serve it.
+    const nodeUrl = 'https://node.team-a.example/"><script>alert(1)</script><b class="tag">';
+    const plain = sectionOf(place, view);
+    const hostile = sectionOf(place, replaced(view, NODE_A, nodeUrl));
+    expect(plain).toBeDefined();
+
+    // The address is one text of the section, whole and unchanged, and its count stands beside it.
+    expect(declaredOf(hostile)[0]).toEqual([asShown(nodeUrl), "declared: ", "1", " fetch", DECLARED_COUNT]);
+    // The section is made of the same elements as with a plain address: the value became no element and no name of an attribute.
+    const shape = (root: Drawing | undefined): unknown[] => elements(root).map((element) => [element.tag, Object.keys(element.attributes)]);
+    expect(shape(hostile)).toEqual(shape(plain));
+    expect(withTag(hostile, "script")).toEqual([]);
+    expect(withTag(hostile, "b")).toEqual([]);
+    expect(withClass(hostile, "tag")).toEqual([]);
+    // The address reaches an attribute only as the target of its own link, and no class is made from it.
+    for (const element of elements(hostile)) {
+      for (const [name, value] of Object.entries(element.attributes)) {
+        if (name === "href") expect([nodeUrl, NODE_B]).toContain(value);
+        else expect(value).not.toMatch(/[<>"]/);
+      }
+    }
   });
 });
 

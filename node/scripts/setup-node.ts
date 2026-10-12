@@ -1,6 +1,6 @@
 // What `npm run setup` does: it deploys a team node (R30). It is the way a team sets its
 // node up, because Cloudflare's one-click button is not known to set up Artifacts, the
-// Workflow and the push trigger. `setup.ts` runs it on this machine's Wrangler.
+// Workflows and the event triggers. `setup.ts` runs it on this machine's Wrangler.
 //
 //   npm run setup -- [--url <base-url>] [--domain <hostname>] [--index <index-address>]
 //
@@ -149,6 +149,8 @@ const CREATED = [
   "the Artifacts namespace cairnfield-node",
   "the Workflow cairnfield-node-on-push",
   "the trigger that starts that Workflow on each push to that namespace",
+  "the Workflow cairnfield-node-on-fetch",
+  "the two triggers that start that Workflow on each fetch and each clone from that namespace",
 ];
 
 /** The arguments of one deploy of the node, as `npm run deploy` gives them. */

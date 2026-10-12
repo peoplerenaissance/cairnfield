@@ -21,6 +21,8 @@ export const MAX_RECORDS_PER_COMPONENT = 500;
 export const MAX_BLOB_BYTES = 256 * 1024;
 /** A fetch from another team's fork brings in at most 16 MB of objects. */
 export const MAX_FETCH_BYTES = 16 * 1024 * 1024;
+/** A node's count of the fetches of one fork is at most this (R45). The plan sets no bound, so this is a first value. */
+export const MAX_FETCH_COUNT = 1_000_000_000;
 
 /** A repo or fork name has at most 100 characters. The plan sets no length, so this is a first value. */
 export const MAX_REPO_NAME_LENGTH = 100;

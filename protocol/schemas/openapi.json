@@ -646,6 +646,20 @@
                           },
                           "historyRewritten": {
                             "type": "boolean"
+                          },
+                          "declared": {
+                            "type": "object",
+                            "properties": {
+                              "fetches": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 1000000000
+                              }
+                            },
+                            "required": [
+                              "fetches"
+                            ],
+                            "additionalProperties": false
                           }
                         },
                         "required": [

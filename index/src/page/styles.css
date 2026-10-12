@@ -7,8 +7,8 @@
    An outline carries meaning. Solid is confirmed or checked. Dashed is unconfirmed: a
    finding or a patch with one organization behind it, a record still being checked, a
    tree hash that is published and not checked. Nothing here is dotted. Every status has
-   a text label, and the color only repeats it. A value that a team's record declares is
-   a statement and no status, so its line has no outline. */
+   a text label, and the color only repeats it. A value that a team declares, in a record
+   or through its node, is a statement and no status, so its line has no outline. */
 
 @font-face { font-family: "Routed Gothic"; src: url("fonts/routed-gothic.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Hanken Grotesk"; src: url("fonts/hanken-grotesk.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; }
@@ -257,8 +257,8 @@ h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 
 .removed, .added { padding: 0 6px; border-radius: 3px; }
 .removed { background: var(--del); }
 .added { background: var(--add); }
-/* What each record of a patch declares: a line for each, set as a re-check's line is. It is a team's own statement and no status, so it
-   has no outline, which on this page a status has. */
+/* What a team declares: the model each record of a patch names, and a node's count of fetches. A line for each, set as a re-check's line
+   is. It is a team's own statement and no status, so it has no outline, which on this page a status has. */
 .declared { position: relative; }
 /* A value goes to the next line whole when it does not fit beside the word, as a host does in its sentence. */
 .declared code { display: inline-block; padding: 0; background: none; font-size: 0.93em; }
@@ -277,6 +277,10 @@ h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 
 .used b { font: 400 26px/1 var(--body); color: var(--ink); margin-right: 2px; }
 .tree { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font: 500 12.5px/1.5 var(--mono); }
 .taken { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-top: 12px; border-top: 1px solid var(--line-soft); font: 400 12.5px/1.6 var(--mono); color: var(--muted); }
+
+/* ---------- fetches: a declared line for each node that states a count ---------- */
+/* The lines are the section's entries, so they stand a little apart. Nothing parts them but that space: a declared line has no outline. */
+#fetches .declarations { display: grid; gap: 8px; }
 
 /* ---------- narrow screens: one column, and the patches of a group stacked ---------- */
 @media (max-width: 1099px) {

@@ -120,7 +120,8 @@ async function createFork(env: Env, { component }: ForkRequest): Promise<Respons
     // A copy that finished without its commit gives a fork that never holds it.
     if ((await copy.readCommit(component)) === null) return refusal("not-found");
     // A read token kept under this name belongs to a fork that was deleted, and died with
-    // it. It is forgotten before the fork is made, so a call that fails here changes nothing.
+    // it. The count kept there is of that fork's fetches (KTD43). Both are forgotten before
+    // the fork is made, so a call that fails here changes nothing.
     await env.READ_TOKENS.get(env.READ_TOKENS.idFromName(name)).forget();
     // A fork copies only the default branch unless told otherwise, and a copy can report
     // a default branch it does not have (KTD36).

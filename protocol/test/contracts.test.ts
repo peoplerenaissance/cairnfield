@@ -7,6 +7,7 @@ import {
   COMPONENT_LIST,
   INDEX_REFUSAL,
   INDEX_ROUTES,
+  NODE_FETCHES,
   NODE_LISTING,
   NODE_PATCH,
   NODE_ROUTES,
@@ -23,10 +24,10 @@ import {
 } from "../src/contracts.ts";
 import type { Projection, Route, View } from "../src/contracts.ts";
 import { DELETED_BLOB, DELETED_MODE } from "../src/enums.ts";
-import { object, sha256, shape, text, url } from "../src/fields.ts";
+import { gitHash, object, sha256, shape, text, url } from "../src/fields.ts";
 import type { ContractKind } from "../src/fields.ts";
 import { jsonSchemaOf } from "../src/json-schema.ts";
-import { MAX_LISTING_ENTRIES } from "../src/limits.ts";
+import { MAX_FETCH_COUNT, MAX_LISTING_ENTRIES } from "../src/limits.ts";
 import { matchGroups } from "../src/match.ts";
 import { RECORD_SHAPES } from "../src/schemas.ts";
 import { conforms } from "../src/validate.ts";
@@ -144,6 +145,40 @@ describe("node contract (KTD7, KTD10)", () => {
     expect(reasonOf(REPO_TOKEN, { ...body, token: "" })).toBe("unknown-value");
   });
 
+  describe("a fork's fetch count (R45)", () => {
+    const counted = { component: COMPONENT, fetches: 3 };
+
+    it("has a public route of its own, which takes a component", () => {
+      expect(NODE_ROUTES.fetches).toEqual({
+        method: "GET",
+        path: "fetches",
+        query: { component: gitHash() },
+        response: NODE_FETCHES,
+      });
+    });
+
+    it("names its component and is a whole number from 1 to the limit", () => {
+      expect(reasonOf(NODE_FETCHES, counted)).toBe("ok");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: 1 })).toBe("ok");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: MAX_FETCH_COUNT })).toBe("ok");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: MAX_FETCH_COUNT + 1 })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: 2.5 })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: "3" })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { ...counted, component: "main" })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { fetches: 3 })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { component: COMPONENT })).toBe("unknown-value");
+    });
+
+    it("is never zero, because a fork with no counted fetch has no count", () => {
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: 0 })).toBe("unknown-value");
+    });
+
+    it("is refused with a member the contract does not name", () => {
+      expect(reasonOf(NODE_FETCHES, { ...counted, readers: [NODE_B] })).toBe("unknown-field");
+      expect(reasonOf(NODE_FETCHES, { ...counted, note: "fetched by many teams" })).toBe("unknown-field");
+    });
+  });
+
   it("sends the admin key in a header on every admin route and on no public route", () => {
     for (const [id, route] of Object.entries<Route>(NODE_ROUTES)) {
       expect(route.key, id).toBe(route.path.startsWith("admin/") ? ADMIN_KEY_HEADER : undefined);
@@ -239,6 +274,34 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
 
   it("accepts a view", () => {
     expect(conforms(VIEW, view)).toBeUndefined();
+  });
+
+  describe("what a node declared, in its entry of a view (KTD42)", () => {
+    const [first, second] = view.nodes;
+    const declaring = (declared: unknown) => ({ ...view, nodes: [{ ...first, declared }, second] });
+
+    it("takes a node's count of fetches under `declared`, from 1 to the limit, and an entry with nothing declared", () => {
+      expect(reasonOf(VIEW, declaring({ fetches: 3 }))).toBe("ok");
+      expect(reasonOf(VIEW, declaring({ fetches: 1 }))).toBe("ok");
+      expect(reasonOf(VIEW, declaring({ fetches: MAX_FETCH_COUNT }))).toBe("ok");
+      expect(first).not.toHaveProperty("declared");
+      expect(reasonOf(VIEW, view)).toBe("ok");
+    });
+
+    it("refuses a count of zero, a count over the limit, a fraction and a count held as text", () => {
+      expect(reasonOf(VIEW, declaring({ fetches: 0 }))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: MAX_FETCH_COUNT + 1 }))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: 2.5 }))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: "3" }))).toBe("unknown-value");
+    });
+
+    it("refuses `declared` with no count, with another member, and a count that stands outside it", () => {
+      expect(reasonOf(VIEW, declaring({}))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: 3, readers: [NODE_B] }))).toBe("unknown-field");
+      expect(reasonOf(VIEW, declaring({ fetches: 3, note: "fetched by many teams" }))).toBe("unknown-field");
+      // A count beside the computed members would read as one of them.
+      expect(reasonOf(VIEW, { ...view, nodes: [{ ...first, fetches: 3 }, second] })).toBe("unknown-field");
+    });
   });
 
   it("gives view entries the shape the match rule reads", () => {
