@@ -493,8 +493,8 @@ describe("patches (R16)", () => {
     expect(more).toEqual([]);
     // Each model stands beside the team whose record names it. It is the record's value whole: an enumerated value has its hyphens turned to spaces, and a model does not.
     const lines = [
-      [asShown(NODE_A), "declared ", "claude-sonnet-5-5", DECLARED],
-      [asShown(NODE_B), "declared ", "none", DECLARED],
+      [asShown(NODE_A), "declared: ", "claude-sonnet-5-5", DECLARED],
+      [asShown(NODE_B), "declared: ", "none", DECLARED],
     ];
     expect(declaredOf(entry)).toEqual(lines);
     // The lines stand in the order of the teams' addresses, as the teams above them do, whatever the order of the records in the view.
@@ -517,12 +517,12 @@ describe("patches (R16)", () => {
     expect(more).toEqual([]);
     // Both lines name the one team. The view gives the two records in the order of their IDs, so the lines are compared in an order of the test's own.
     expect(declaredOf(entry).sort()).toEqual([
-      [asShown(NODE_A), "declared ", "claude-sonnet-5-5", DECLARED],
-      [asShown(NODE_A), "declared ", "other", DECLARED],
+      [asShown(NODE_A), "declared: ", "claude-sonnet-5-5", DECLARED],
+      [asShown(NODE_A), "declared: ", "other", DECLARED],
     ]);
   });
 
-  it("gives a declared line a class of its own and no status label, and the stylesheet draws that class with a dashed outline and never a solid one", async () => {
+  it("gives a declared line a class of its own and no status label, and the stylesheet gives that class no outline of any kind", async () => {
     const { on, one, component } = await twoNodes();
     await publishPatch(one, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
     await synced(on, NODE_A);
@@ -536,12 +536,13 @@ describe("patches (R16)", () => {
     expect(tagsOf(entry)).toEqual(["removes only", "unconfirmed"]);
     // The word and the model are one label with its meaning beside it. The label is the one part of the line that can be focused, so the meaning shows without a pointer too.
     expect(withClass(line, "tip").map(textOf)).toEqual([DECLARED]);
-    expect(elements(line).filter((element) => element.attributes["tabindex"] !== undefined).map((element) => [textOf(element), element.attributes["tabindex"]])).toEqual([["declared none", "0"]]);
+    expect(elements(line).filter((element) => element.attributes["tabindex"] !== undefined).map((element) => [textOf(element), element.attributes["tabindex"]])).toEqual([["declared: none", "0"]]);
 
-    // An outline carries meaning. A team states a declared value and the index cannot check it, so its outline is dashed, as an unconfirmed label's is. Solid is for what is confirmed or checked.
-    const outline = styledAs(env.PAGE_FILES["styles.css"] ?? "", ".declared").filter(([property = ""]) => property.startsWith("border"));
-    expect(outline.filter(([, value = ""]) => /\bdashed\b/.test(value))).not.toEqual([]);
-    expect(outline.filter(([, value = ""]) => /\b(?:solid|dotted|double)\b/.test(value))).toEqual([]);
+    // An outline is a status on this page: solid is confirmed or checked, and dashed is unconfirmed. What a record declares is a statement
+    // and no status, so its line has no outline of any kind. An unconfirmed patch can gain a second organization, and no check of the index reaches a declared value.
+    const set = styledAs(env.PAGE_FILES["styles.css"] ?? "", ".declared");
+    expect(set).not.toEqual([]);
+    expect(set.filter(([property = ""]) => /^(?:border|outline|box-shadow)/.test(property))).toEqual([]);
   });
 
   it("draws the model of a patch that was carried to a later commit, on the page of that commit", async () => {
@@ -563,7 +564,7 @@ describe("patches (R16)", () => {
     const [entry, ...more] = withClass(byId(await pageOf(on, later), "patches"), "patch");
     expect(more).toEqual([]);
     expect(entry?.attributes["id"]).toBe(`patch-${await idOf(SKILL_TEXT, SKILL_FIXED)}`);
-    expect(declaredOf(entry)).toEqual([[asShown(NODE_A), "declared ", "claude-haiku-4-5-20251001", DECLARED]]);
+    expect(declaredOf(entry)).toEqual([[asShown(NODE_A), "declared: ", "claude-haiku-4-5-20251001", DECLARED]]);
   });
 
   it("links a patch once to each finding its records name, when they name two, and in one order on every read", async () => {
@@ -658,7 +659,7 @@ describe("patches (R16)", () => {
     expect(textOf(entry)).toContain(README);
     expect(textOf(entry)).toContain("line 12−1+1");
     // A record whose model is `none` says so on the page, as it does in the record.
-    expect(declaredOf(entry)).toEqual([[asShown(NODE_A), "declared ", "none", DECLARED]]);
+    expect(declaredOf(entry)).toEqual([[asShown(NODE_A), "declared: ", "none", DECLARED]]);
     expect(linksOf(entry)).toContain(`#finding-${made.finding}`);
     // The link leads to that finding's entry, which stands in the findings section.
     expect(elements(byId(page, "findings"))).toContain(byId(page, `finding-${made.finding}`));
@@ -1597,11 +1598,11 @@ describe("the demo on the page (R27)", () => {
     expect(textOf(byId(page, `patch-${patches.variables}`))).toContain(asShown(NODE_B));
     // Each patch shows the model its record declares, beside the team that published the record: both teams' records of the shared patch, and the one record of each of the other two.
     expect(declaredOf(shared)).toEqual([
-      [asShown(NODE_A), "declared ", "none", DECLARED],
-      [asShown(NODE_B), "declared ", "none", DECLARED],
+      [asShown(NODE_A), "declared: ", "none", DECLARED],
+      [asShown(NODE_B), "declared: ", "none", DECLARED],
     ]);
-    expect(declaredOf(byId(page, `patch-${patches.hosts}`))).toEqual([[asShown(NODE_A), "declared ", "claude-sonnet-5-5", DECLARED]]);
-    expect(declaredOf(byId(page, `patch-${patches.variables}`))).toEqual([[asShown(NODE_B), "declared ", "claude-sonnet-5-5", DECLARED]]);
+    expect(declaredOf(byId(page, `patch-${patches.hosts}`))).toEqual([[asShown(NODE_A), "declared: ", "claude-sonnet-5-5", DECLARED]]);
+    expect(declaredOf(byId(page, `patch-${patches.variables}`))).toEqual([[asShown(NODE_B), "declared: ", "claude-sonnet-5-5", DECLARED]]);
     // No other part of the page says what a record declares.
     expect(declaredOf(page)).toHaveLength(4);
 
@@ -1661,7 +1662,7 @@ describe("the demo on the page (R27)", () => {
       "Written by: ",
       "−",
       "+",
-      "declared ",
+      "declared: ",
       "patch ",
       "for ",
       "Recipes",

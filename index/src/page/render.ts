@@ -527,14 +527,15 @@ function patch(reading: Reading, entry: PatchEntry): Drawing {
         ),
       ),
     ),
-    // What each record of the patch declares, a line for each: its team, then the word and the model as one label (R14). The teams
-    // stand in the order of the row above. A model is drawn as the record holds it: with its hyphens as spaces it would read as another name.
+    // What each record of the patch declares, a line for each: its team, then the word and the model as one label (R14). The line is set
+    // as a re-check's is, with no outline: a declared value is a statement and no status. The teams stand in the order of the row above.
+    // A model is drawn as the record holds it: with its hyphens as spaces it would read as another name.
     el(
       "ul",
       { class: "declarations" },
       authors
         .flatMap((author) => entry.records.filter(({ node }) => node === author))
-        .map(({ node, record }) => el("li", { class: "declared" }, organization(reading, node), explained(focusable("", "declared ", code(record.model)), DECLARED))),
+        .map(({ node, record }) => el("li", { class: "declared" }, organization(reading, node), explained(focusable("", "declared: ", code(record.model)), DECLARED))),
     ),
     entry.rechecks.length === 0
       ? undefined
