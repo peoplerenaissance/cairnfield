@@ -1,6 +1,7 @@
 // The request and response shapes of the node contract and the index routes (KTD28), so
 // each side can be built against the other's contract. The route paths are choices of
-// this library; the plan names only `/.well-known/api-catalog`.
+// this library; the plan names only `/.well-known/api-catalog`. The shape of the note on
+// a patch commit is here too, though Git carries a note and no route does.
 //
 // `node/` cannot import this library (KTD28), so it carries its own copy of the node
 // shapes, and the U4 contract check catches drift (Appendix H).
@@ -9,6 +10,7 @@ import {
   CRITERIA,
   DELETED_MODE,
   ENTRY_MODES,
+  MODELS,
   OBSERVATIONS,
   PATCH_KINDS,
   RECORD_TYPES,
@@ -23,10 +25,12 @@ import {
   listOf,
   name,
   nodeUrl,
+  object,
   oneOf,
   optional,
   path,
   recordFile,
+  setOf,
   sha256,
   shape,
   text,
@@ -39,6 +43,7 @@ import {
   MAX_FETCH_COUNT,
   MAX_LINE,
   MAX_LISTING_ENTRIES,
+  MAX_PATCH_FINDINGS,
   MAX_PATCH_LINES,
   MAX_PATCH_REPLACEMENTS,
 } from "./limits.ts";
@@ -179,6 +184,30 @@ export const NODE_ROUTES = {
     response: REPO_TOKEN,
   },
 } as const satisfies { readonly [id: string]: Route };
+
+// The note on a patch commit (R46, KTD44). No route serves it: `patch` pushes it to the
+// team's fork, and a reader fetches it with Git and the fork's read token.
+
+/** The ref of a fork that holds the notes on its patch commits. */
+export const NOTES_REF = "refs/notes/cairnfield";
+
+/**
+ * What a team declares about how one patch commit was made: the findings its patch
+ * record names, the model, the SHA-256 of the recording's canonical JSON and, when the
+ * recording names one, the SHA-256 of the prompt the agent ran under. A note is no
+ * record: its team can write it again, and nothing checks it. Its fields are record
+ * kinds all the same, so the note `patch` writes holds no free text (R2). A note that a
+ * reader fetches is any bytes its team pushed, until the reader holds it to this shape.
+ */
+export const PATCH_NOTE = object({
+  version: version(),
+  commit: gitHash(),
+  findings: setOf(sha256(), 1, MAX_PATCH_FINDINGS),
+  model: oneOf(MODELS),
+  recording: sha256(),
+  prompt: optional(sha256()),
+});
+export type PatchNote = Infer<typeof PATCH_NOTE>;
 
 // Index routes. Every JSON response carries the schema version (KTD35), and none
 // carries text addressed to a reader (R34). The one route that serves component text

@@ -36,7 +36,7 @@ try {
   const outcome = await outcomeOf(async () => {
     const key = keyFrom(io, MODEL_KEY);
     const { home, listing, finding } = await openFixture(io, resolve(fixture), root);
-    const drafted = await writeEdits(io, home, listing, finding, { key, name: DEFAULT_MODEL });
+    const { drafted } = await writeEdits(io, home, listing, finding, { key, name: DEFAULT_MODEL });
     if (!drafted.ok) return failure(EXIT.invalid, "edits-refused", { reason: drafted.reason });
     const { kind, size, paths } = drafted.facts;
     return done({ accepted: true, kind, size, paths, edits: drafted.edits });
