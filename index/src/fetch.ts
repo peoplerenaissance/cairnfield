@@ -2,14 +2,19 @@
 // one node, runs under a deadline, follows no redirect and stops at a size limit (KTD6).
 // What comes back is hostile until it has been checked.
 
-import { MAX_BLOB_BYTES, MAX_LISTING_ENTRIES, MAX_RECORD_BYTES, NODE_PATCH, NODE_REFUSAL, NODE_ROUTES, conforms, isGitHash } from "@cairnfield/protocol";
-import type { NodePatch } from "@cairnfield/protocol";
+import { MAX_BLOB_BYTES, MAX_LISTING_ENTRIES, MAX_RECORD_BYTES, NODE_FETCHES, NODE_PATCH, NODE_REFUSAL, NODE_ROUTES, conforms, isGitHash } from "@cairnfield/protocol";
+import type { NodeFetches, NodePatch } from "@cairnfield/protocol";
 
 const DEADLINE_MS = 10_000;
 /** A node's listing is read up to this size: the most entries it may hold, with room for each. */
 const MAX_LISTING_BYTES = MAX_LISTING_ENTRIES * 512;
 /** A patch commit's changed paths are read up to the same size: a node lists as many paths at most. */
 const MAX_PATCH_BYTES = MAX_LISTING_BYTES;
+/** A node's count of fetches is read up to this size: the room one entry of a listing is given. The answer is one hash and one number. */
+const MAX_FETCHES_BYTES = 512;
+
+/** A sync reads from a node this many at a time: as many connections as one invocation holds open at once. */
+export const FETCH_AHEAD = 6;
 
 /** Why a read from a node gave nothing the index can use. A code, never a sentence. */
 export const READ_FAILURES = ["unreachable", "redirected", "too-large", "bad-answer"] as const;
@@ -74,6 +79,11 @@ export function jsonOf(bytes: Uint8Array): unknown {
   }
 }
 
+/** Whether a node refused a request as `not-found`, in the shape the contract gives a refusal. */
+function isNotFound(status: number, body: unknown): boolean {
+  return status === 404 && !conforms(NODE_REFUSAL, body) && (body as { error: unknown }).error === "not-found";
+}
+
 /** The head of a node's team repo with the paths it lists. A node with no team repo yet has no head. */
 export type Listing = { readonly ok: true; readonly head?: string; readonly paths: readonly unknown[] } | Failed;
 
@@ -89,8 +99,7 @@ export async function readListing(node: string): Promise<Listing> {
   const body = jsonOf(answer.bytes);
   if (answer.status !== 200) {
     // A node whose team repo is not there yet says so. It has nothing to read.
-    const none = answer.status === 404 && !conforms(NODE_REFUSAL, body) && (body as { error: unknown }).error === "not-found";
-    return none ? { ok: true, paths: [] } : failed("bad-answer");
+    return isNotFound(answer.status, body) ? { ok: true, paths: [] } : failed("bad-answer");
   }
   if (typeof body !== "object" || body === null) return failed("bad-answer");
   const { head, records } = body as { readonly head?: unknown; readonly records?: unknown };
@@ -148,4 +157,26 @@ export async function readForkBlob(node: string, component: string, blob: string
   const query = new URLSearchParams({ component, blob });
   const answer = await read(`${node}/${NODE_ROUTES.blob.path}?${query}`, MAX_BLOB_BYTES);
   return answer.ok && answer.status === 200 ? answer.bytes : undefined;
+}
+
+/** What a node says of the fetches of its fork of a component: its count, or that it has counted none. */
+export type Fetches = { readonly counted: true; readonly fetches: number } | { readonly counted: false };
+
+/**
+ * Reads a node's count of the fetches of its fork of a component (R45, KTD43). A node
+ * that has counted no fetch of the fork refuses as `not-found`, and so does a node from
+ * before the route. Returns nothing for any other answer: the node cannot be reached, or
+ * the answer is not in the contract's shape for the component that was asked for. The
+ * number is the node's own statement. It is held to its form here, and nothing checks
+ * its truth.
+ */
+export async function readFetches(node: string, component: string): Promise<Fetches | undefined> {
+  const query = new URLSearchParams({ component });
+  const answer = await read(`${node}/${NODE_ROUTES.fetches.path}?${query}`, MAX_FETCHES_BYTES);
+  if (!answer.ok || answer.bytes.length > MAX_FETCHES_BYTES) return undefined;
+  const body = jsonOf(answer.bytes);
+  if (isNotFound(answer.status, body)) return { counted: false };
+  if (answer.status !== 200 || conforms(NODE_FETCHES, body)) return undefined;
+  const served = body as NodeFetches;
+  return served.component === component ? { counted: true, fetches: served.fetches } : undefined;
 }

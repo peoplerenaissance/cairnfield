@@ -9,7 +9,8 @@ Cairnfield assumes that some contributors are hostile, and that any component un
 - A component's files are hostile text. An agent reads them as data.
 - A record or a patch from another node is hostile until the team's own checks have passed on it.
 - A node is storage. It validates nothing, and only its own team trusts it. The page a node serves at its own address is that team's own list. Nothing on it was checked, and no index and no command reads it.
-- An index is untrusted. It can omit or misreport work. It cannot make the command take a patch that fails the command's own checks.
+- A node's count of the fetches of its fork is that node's own statement (R45). The index holds the number to its form and carries it in a view under `declared`, in that node's entry and no other (KTD42). Nothing checks its truth.
+- An index is untrusted. It can omit or misreport work, and a count a node declared. It cannot make the command take a patch that fails the command's own checks. `view` prints a declared count as the index gave it. No command checks one against its node, and none acts on one.
 - A person gives the verdict. No part of Cairnfield issues one.
 
 ## The four defenses the prototype builds
@@ -46,8 +47,8 @@ The rest of the design is built in part or not at all. The sections below say wh
 
 An agent rewrites or deletes another team's findings.
 
-- **The design.** Each team's repos sit in the team's own account, with tokens scoped to one repo. The shared view is computed and never written to.
-- **Builds.** Each node has its own Artifacts namespace. A token opens one repo. A write token comes only from a node's admin routes, which need that node's key. The index only reads a node, and holds no key and no token of one. A record is named by the hash of its content, and the index and the command each reject a file whose content does not match its name.
+- **The design.** Each team's repos sit in the team's own account, with tokens scoped to one repo. The shared view is computed and never written to. One value in it is stated and not computed, and is marked as such: a node's count of the fetches of its own fork, under `declared` (KTD42).
+- **Builds.** Each node has its own Artifacts namespace. A token opens one repo. A write token comes only from a node's admin routes, which need that node's key. The index only reads a node, and holds no key and no token of one. A record is named by the hash of its content, and the index and the command each reject a file whose content does not match its name. What a node declares stands in that node's own entry of a view and in no other, and changes no finding, no patch and no count of organizations.
 - **Does not show.** Separate accounts. The demo's nodes share one Cloudflare account, each with its own namespace.
 
 ### Rewritten history

@@ -1,14 +1,17 @@
 // The view of one component commit (R10, R13), built when it is read: findings in match
 // groups with their confirmations, patches side by side with theirs, claims with their
 // state, recipes, pending and rejected work, the component's Git URL and import state
-// and each node's last processed commit.
+// and each node's last processed commit, with what the node declared.
 //
-// Nothing here is declared by an author. Groups and counts come from the protocol's own
-// rules over the valid records, and a patch's ID, kind, size and changed lines from the
-// check of its commit (KTD5). A reference is resolved here and not when a record is
-// stored, because a record can cite one on a node the index reads later (Appendix H).
-// The findings a patch record names are resolved a first time when its commit is
-// checked, which needs the lines they cite, and again here.
+// Nothing here is declared by an author, with one exception. Groups and counts come from
+// the protocol's own rules over the valid records, and a patch's ID, kind, size and
+// changed lines from the check of its commit (KTD5). A reference is resolved here and
+// not when a record is stored, because a record can cite one on a node the index reads
+// later (Appendix H). The findings a patch record names are resolved a first time when
+// its commit is checked, which needs the lines they cite, and again here.
+// The exception is what a node states of itself and the index cannot compute: its count
+// of the fetches of its fork (R45). It stands under `declared` in the node's entry and
+// nowhere else, so a reader can tell it from a value the index worked out (KTD42).
 // The view holds data and no prose, and rejected work is four values (KTD31).
 
 import { SCHEMA_VERSION, bySource, compare, isConfirmed, matchGroups, patchConfirmations, patchGroups } from "@cairnfield/protocol";
@@ -134,8 +137,8 @@ export async function viewOf(env: Env, component: string, teams: readonly string
   const lastToPass = now - claimTtlMs(env);
   // The listed nodes go in as one value, so a long list meets no limit on the values of a statement.
   const only = teams === undefined ? null : JSON.stringify(teams);
-  // One batch, so the component, the nodes, the records and what was computed for the patch records are read as they stood together.
-  const [found, registered, stored, computed, passed] = (await db.batch([
+  // One batch, so the component, the nodes, the records, what was computed for the patch records and what the nodes declared are read as they stood together.
+  const [found, registered, stored, computed, passed, counted] = (await db.batch([
     db.prepare("SELECT url, state, view_version FROM components WHERE component = ?").bind(component),
     db.prepare("SELECT url, processed, noticed_at, absorbed_at FROM nodes ORDER BY url"),
     db
@@ -149,7 +152,16 @@ export async function viewOf(env: Env, component: string, teams: readonly string
       .bind(component, only),
     // Counted over every node, listed or not.
     db.prepare("SELECT COUNT(*) AS claims FROM records WHERE component = ?1 AND type = 'claim' AND state = 'valid' AND received_at <= ?2").bind(component, lastToPass),
-  ])) as [D1Result<Pick<Component, "url" | "state" | "view_version">>, D1Result<NodeRow>, D1Result<Row>, D1Result<ComputedPatch>, D1Result<{ claims: number }>];
+    // What a node says of the fetches of its fork is read for the listed nodes only, like its records.
+    db.prepare("SELECT node, fetches FROM fetch_counts WHERE component = ?1 AND (?2 IS NULL OR node IN (SELECT value FROM json_each(?2)))").bind(component, only),
+  ])) as [
+    D1Result<Pick<Component, "url" | "state" | "view_version">>,
+    D1Result<NodeRow>,
+    D1Result<Row>,
+    D1Result<ComputedPatch>,
+    D1Result<{ claims: number }>,
+    D1Result<{ node: string; fetches: number }>,
+  ];
   const [held] = found.results;
   if (!held) return undefined;
   const listed = teams === undefined ? undefined : new Set(teams);
@@ -215,6 +227,8 @@ export async function viewOf(env: Env, component: string, teams: readonly string
   const recipes = [...byTree].sort(([a], [b]) => compare(a, b)).map(([tree, records]) => ({ tree, records, nodes: nodesOf(records) }));
 
   const nodes = registered.results.filter(({ url }) => listed === undefined || listed.has(url));
+  // What each node declared: its count of the fetches of its fork of this component (KTD42).
+  const fetchesOf = new Map(counted.results.map(({ node, fetches }) => [node, fetches]));
   // The index lag: the time since the oldest notice that is not yet processed arrived (Appendix H).
   const waiting = registered.results.flatMap(({ noticed_at, absorbed_at }) => [noticed_at, absorbed_at]).filter((at) => at !== null);
   // A claim that passes its time changes the view with no write, so the version counts
@@ -229,7 +243,17 @@ export async function viewOf(env: Env, component: string, teams: readonly string
     viewVersion: held.view_version + timedOut,
     lag: waiting.length === 0 ? 0 : Math.max(0, now - Math.min(...waiting)),
     organizations: nodes.length,
-    nodes: nodes.map(({ url, processed }) => ({ node: url, ...(processed === null ? {} : { processed }), simulated: false, historyRewritten: false })),
+    nodes: nodes.map(({ url, processed }) => {
+      const fetches = fetchesOf.get(url);
+      return {
+        node: url,
+        ...(processed === null ? {} : { processed }),
+        simulated: false,
+        historyRewritten: false,
+        // A node with no count has no `declared`: a missing count is not a count of zero (R45).
+        ...(fetches === undefined ? {} : { declared: { fetches } }),
+      };
+    }),
     claims,
     findings,
     hosts: [...hosts].map(([host, count]) => ({ host, count })).sort((a, b) => compare(a.host, b.host)),

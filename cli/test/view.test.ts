@@ -203,6 +203,23 @@ describe("view", () => {
     expect(output["recipes"]).toEqual([]);
   });
 
+  it("prints the count of fetches a node declared as the index gave it, and none of a node the lens does not name", async () => {
+    const declared = (node: string, fetches: number) => ({ ...organization(node), declared: { fetches } });
+    // Team B's node has no count: a fork with no counted fetch has none.
+    on.index.views.set(COMPONENT, { ...(await served()), nodes: [declared(NODE, 3), organization(OTHER_NODE), declared(THIRD_NODE, 9)] });
+
+    // The lens names no other team.
+    const alone = await on.run("view", COMPONENT);
+    expect(alone.code).toBe(EXIT.ok);
+    expect(conforms(VIEW, alone.output)).toBeUndefined();
+    expect(alone.output["nodes"]).toEqual([declared(NODE, 3)]);
+    expect(JSON.stringify(alone.output)).not.toContain(THIRD_NODE);
+
+    on.configure({ node: NODE, index: INDEX, lens: "lenses/team-a-names-b.json" });
+    const named = await on.run("view", COMPONENT);
+    expect(named.output["nodes"]).toEqual([declared(NODE, 3), organization(OTHER_NODE)]);
+  });
+
   it("takes a group apart when the finding that held it together came from a node the lens does not name", async () => {
     on.configure({ node: NODE, index: INDEX, lens: "lenses/team-a-names-b.json" });
     const at = (start: number, end: number) => ({ ...ANY_HOST, location: { path: "plugin.json", start, end } });

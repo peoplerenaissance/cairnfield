@@ -298,10 +298,18 @@ const VIEW_PATCH = shape({
 });
 
 /**
+ * What a node states of itself in a view, which the index cannot compute (KTD42):
+ * its count of the fetches of its fork of the view's component (R45). A node with no
+ * count has no `declared` at all, so the count here is never zero.
+ */
+const DECLARED = shape({ fetches: int(1, MAX_FETCH_COUNT) });
+
+/**
  * The view of one component commit: everything the page shows except component text (R13).
  * `gitUrl` is the Git URL the component was registered with (KTD12). `lag` is the index
  * lag in milliseconds (Appendix H). `organizations` counts registered nodes (KTD8).
- * Rejected work is four values only (KTD31).
+ * Rejected work is four values only (KTD31). A node's `declared` holds what the node
+ * states of itself, apart from everything the index worked out (KTD42).
  */
 export const VIEW = shape({
   version: version(),
@@ -312,7 +320,13 @@ export const VIEW = shape({
   lag: count(),
   organizations: count(),
   nodes: listOf(
-    shape({ node: nodeUrl(), processed: optional(gitHash()), simulated: boolean(), historyRewritten: boolean() }),
+    shape({
+      node: nodeUrl(),
+      processed: optional(gitHash()),
+      simulated: boolean(),
+      historyRewritten: boolean(),
+      declared: optional(DECLARED),
+    }),
     MAX_VIEW_ENTRIES,
   ),
   claims: listOf(shape({ ...published(CLAIM), state: oneOf(CLAIM_STATES) }), MAX_VIEW_ENTRIES),

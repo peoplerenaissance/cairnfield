@@ -274,6 +274,34 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
     expect(conforms(VIEW, view)).toBeUndefined();
   });
 
+  describe("what a node declared, in its entry of a view (KTD42)", () => {
+    const [first, second] = view.nodes;
+    const declaring = (declared: unknown) => ({ ...view, nodes: [{ ...first, declared }, second] });
+
+    it("takes a node's count of fetches under `declared`, from 1 to the limit, and an entry with nothing declared", () => {
+      expect(reasonOf(VIEW, declaring({ fetches: 3 }))).toBe("ok");
+      expect(reasonOf(VIEW, declaring({ fetches: 1 }))).toBe("ok");
+      expect(reasonOf(VIEW, declaring({ fetches: MAX_FETCH_COUNT }))).toBe("ok");
+      expect(first).not.toHaveProperty("declared");
+      expect(reasonOf(VIEW, view)).toBe("ok");
+    });
+
+    it("refuses a count of zero, a count over the limit, a fraction and a count held as text", () => {
+      expect(reasonOf(VIEW, declaring({ fetches: 0 }))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: MAX_FETCH_COUNT + 1 }))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: 2.5 }))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: "3" }))).toBe("unknown-value");
+    });
+
+    it("refuses `declared` with no count, with another member, and a count that stands outside it", () => {
+      expect(reasonOf(VIEW, declaring({}))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: 3, readers: [NODE_B] }))).toBe("unknown-field");
+      expect(reasonOf(VIEW, declaring({ fetches: 3, note: "fetched by many teams" }))).toBe("unknown-field");
+      // A count beside the computed members would read as one of them.
+      expect(reasonOf(VIEW, { ...view, nodes: [{ ...first, fetches: 3 }, second] })).toBe("unknown-field");
+    });
+  });
+
   it("gives view entries the shape the match rule reads", () => {
     const groups = matchGroups(view.findings.flatMap((group) => [...group.findings, ...group.rechecks]), [
       { path: "skills/summarize/SKILL.md", mode: "100644", blob: "ab".repeat(20) },
