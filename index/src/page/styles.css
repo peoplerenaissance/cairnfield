@@ -123,8 +123,12 @@ h2 { font: 400 26px/1.1 var(--display); letter-spacing: 0.005em; margin: 0; }
 .org { font: 600 12.5px/1.4 var(--mono); overflow-wrap: anywhere; }
 .org::before { content: ""; display: inline-block; width: 15px; height: 8px; margin-right: 7px; border-radius: 58% 42% 52% 48% / 62% 56% 44% 38%; background: var(--c, var(--muted)); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .17); }
 .by, .orgs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
-/* After the word for what they did, the organizations wrap among themselves, so a second line of them starts under the first. */
-.by:has(> .did) { flex-wrap: nowrap; gap: 8px; }
+/* After the word for what they did, the organizations wrap among themselves, so a second line of them starts under the first. They
+   stand beside the word where that leaves the longest part of a name a line of its own, and under the word where it does not. So a
+   name breaks after a hyphen, and inside a part only when that part is longer than the whole row. */
+.by:has(> .did) { gap: 4px 8px; min-width: 0; }
+.by > .orgs { flex: 1 1 0; max-width: 100%; }
+.orgs > .org { max-width: 100%; overflow-wrap: break-word; }
 .did { flex: none; font-size: 13px; color: var(--muted); }
 .tone-0 { --c: var(--slate); }
 .tone-1 { --c: var(--sandstone); }
