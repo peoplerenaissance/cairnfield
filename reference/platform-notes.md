@@ -199,12 +199,12 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 
 **Observed on Oct 12, 2026, on a deployed node.** Five requests for a node's page were sent together, 35 seconds after the last view of it, so the node kept no page.
 
-- All five answered 200 after 1.54 seconds, each with the same time of drawing. They shared one walk.
+- All five answered 200 between 1.5397 and 1.5411 seconds after they were sent, each with the same time of drawing. The page gives that time to the second. This fits one walk that all five waited on, and does not show it: several isolates that each walked would give the same second.
 - A request five seconds later got the same page, with that time.
 - The page carried its policy with the hash of its one style, `cache-control: no-store`, `x-robots-tag: noindex, nofollow`, `referrer-policy: no-referrer` and `nosniff`. A request with a query answered 400.
 - In a browser the style applied under the policy, at 1280 and at 390 pixels wide, with no message in the console. A team's name on the index's page led to that team's page.
 
-**Not known.** What the hand-off to `waitUntil` adds on a deployed Worker: no reader left during a walk in this check. Whether the five requests reached one isolate or more.
+**Not known.** Whether the five requests reached one isolate and shared one walk, or reached several that each walked: nothing in the check counted the node's reads of Artifacts. What the hand-off to `waitUntil` adds on a deployed Worker: no reader left during a walk in this check.
 
 ## Platform limits
 

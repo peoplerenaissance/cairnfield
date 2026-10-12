@@ -51,7 +51,7 @@ Run the command as `npx --no cairnfield`. `npm install` links the command inside
 
 This path takes the demo plugin, `fellbeck-sync`, from `pin` to a checked copy. It uses one demo team's saved findings and the recording of one patch run, so it calls no model and needs no model key. It needs no index and no other team.
 
-The test named AE18 in `cli/test/verify.test.ts` plays this path from `pin` to `verify` against a stand-in for the node. The [status table](#status-as-of-october-11-2026) says which steps have run on a deployed node.
+The test named AE18 in `cli/test/verify.test.ts` plays this path from `pin` to `verify` against a stand-in for the node. The [status table](#status-as-of-october-12-2026) says which steps have run on a deployed node.
 
 1. Deploy a node and set its admin key, as [Deploy a node](#deploy-a-node) says.
 
@@ -299,7 +299,7 @@ The demo's index draws the page of the demo plugin's first commit here:
 
 https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58
 
-The page reads the index's view every two seconds and draws nothing else: live claims, findings by criterion, patches side by side, recipes, and pending and rejected work. The view itself is JSON, at the same address with `/view` added. The page shows what the index holds when you open it. The [status table](#status-as-of-october-11-2026) says what has run on that index.
+The page reads the index's view every two seconds and draws nothing else: live claims, findings by criterion, patches side by side, recipes, and pending and rejected work. The view itself is JSON, at the same address with `/view` added. The page shows what the index holds when you open it. The [status table](#status-as-of-october-12-2026) says what has run on that index.
 
 ## Limits and threat model
 
@@ -348,7 +348,7 @@ Some limits belong to the design and not to the prototype. Every node is public,
 
 The disclosure policy is the last part of [`reference/threat-model.md`](reference/threat-model.md#disclosure-policy). This repo holds no finding about a real product and takes none. Every plugin, host, team and organization in its fixtures and demos is invented. For a finding about a real component, and for a flaw in Cairnfield itself, the rule is the same: tell the maintainer first, and delay publishing. A published record is public at once and is never edited or deleted. [`SECURITY.md`](SECURITY.md) says how to report a flaw in Cairnfield in private.
 
-## Status, as of October 11, 2026
+## Status, as of October 12, 2026
 
 This table describes today.
 
