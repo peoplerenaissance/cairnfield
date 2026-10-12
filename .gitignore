@@ -21,6 +21,9 @@ worker-configuration.d.ts
 # Planning documents. Private, and never part of this repo
 /docs/
 
+# Local state of Claude Code: its worktrees and its session files
+.claude/
+
 # Build and test output
 dist/
 coverage/
