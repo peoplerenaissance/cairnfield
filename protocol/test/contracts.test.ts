@@ -10,7 +10,9 @@ import {
   NODE_LISTING,
   NODE_PATCH,
   NODE_ROUTES,
+  NOTES_REF,
   NOTICE,
+  PATCH_NOTE,
   PROJECTION,
   REGISTER_COMPONENT_REQUEST,
   REGISTER_NODE_REQUEST,
@@ -428,6 +430,43 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
     }
     const notice: Route = INDEX_ROUTES.notice;
     expect(notice.key).toBeUndefined();
+  });
+});
+
+describe("the note on a patch commit (R46, KTD44)", () => {
+  const note = { version: "1", commit: PATCH_COMMIT, findings: [sha("a")], model: "claude-sonnet-5-5", recording: sha("b") };
+
+  it("is kept at one ref of a fork, which a reader fetches by this name", () => {
+    expect(NOTES_REF).toBe("refs/notes/cairnfield");
+  });
+
+  it("names the commit, its findings, the model and the recording, and the prompt when the recording names one", () => {
+    expect(reasonOf(PATCH_NOTE, note)).toBe("ok");
+    expect(reasonOf(PATCH_NOTE, { ...note, prompt: sha("c") })).toBe("ok");
+    expect(reasonOf(PATCH_NOTE, { ...note, model: "none" })).toBe("ok");
+    expect(reasonOf(PATCH_NOTE, { ...note, findings: [sha("a"), sha("d")] })).toBe("ok");
+    for (const field of ["commit", "findings", "model", "recording"]) {
+      const { [field]: _taken, ...rest } = note as { readonly [field: string]: unknown };
+      expect(reasonOf(PATCH_NOTE, rest), field).toBe("unknown-value");
+    }
+    const { version: _none, ...unversioned } = note;
+    expect(reasonOf(PATCH_NOTE, unversioned)).toBe("unsupported-version");
+  });
+
+  it("refuses a field of its own, such as a count of tool calls, and a value that is no hash and no listed model", () => {
+    expect(reasonOf(PATCH_NOTE, { ...note, toolCalls: 12 })).toBe("unknown-field");
+    expect(reasonOf(PATCH_NOTE, { ...note, model: "a model of our own" })).toBe("unknown-value");
+    expect(reasonOf(PATCH_NOTE, { ...note, prompt: "Read this file first." })).toBe("unknown-value");
+    expect(reasonOf(PATCH_NOTE, { ...note, recording: PATCH_COMMIT })).toBe("unknown-value");
+    expect(reasonOf(PATCH_NOTE, { ...note, commit: "main" })).toBe("unknown-value");
+    // The findings are a set, as a patch record's are: sorted, with at least one.
+    expect(reasonOf(PATCH_NOTE, { ...note, findings: [sha("d"), sha("a")] })).toBe("unknown-value");
+    expect(reasonOf(PATCH_NOTE, { ...note, findings: [] })).toBe("unknown-value");
+  });
+
+  it("holds only record kinds, so no field of it can hold free text", () => {
+    for (const kind of kindsIn(PATCH_NOTE)) expect(RECORD_KINDS).toContain(kind.kind);
+    expect(fieldNamesIn(PATCH_NOTE).sort()).toEqual(["commit", "findings", "model", "prompt", "recording", "version"]);
   });
 });
 

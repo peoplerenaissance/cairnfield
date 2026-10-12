@@ -1,7 +1,8 @@
 // Recordings (KTD18, R20): the patch agent's saved edits. A live run saves the edits that
-// passed the patch checks, with the number of the claim it published and the model that
-// wrote them. A replay reads them in place of the model call and goes on through the same
-// commit, check and publish path, so it repeats every record ID of the live run.
+// passed the patch checks, with the number of the claim it published, the model that
+// wrote them and the hash of the prompt that model ran under. A replay reads them in
+// place of the model call and goes on through the same commit, check and publish path, so
+// it repeats every record ID of the live run, and the note on its commit (R46).
 //
 // A recording is kept by team label, component commit and finding ID. It holds no node
 // URL, so a reader's own deployment finds the same one.
@@ -21,6 +22,8 @@ const RECORDING = field.shape({
   /** The number of the claim the live run published (Appendix H). */
   claim: field.int(0, MAX_CLAIM_NUMBER),
   model: field.oneOf(MODELS),
+  /** The SHA-256 of the prompt the model ran under. A live run saves it, and a recording made before it did has none (KTD44). */
+  prompt: field.optional(field.sha256()),
   edits: EDITS,
 });
 export type Recording = Infer<typeof RECORDING>;
@@ -61,6 +64,8 @@ export async function readRecording(file: string, component: string, finding: st
   const read = recording as Recording;
   // A recording answers for the finding it was made for and no other.
   if (read.component !== component || read.finding !== finding) return stop(EXIT.failed, "bad-recording");
+  // No model wrote a recording with the model `none`, so none ran under a prompt (KTD44).
+  if (read.model === "none" && read.prompt !== undefined) return stop(EXIT.failed, "bad-recording");
   return read;
 }
 

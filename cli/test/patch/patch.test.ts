@@ -2,14 +2,16 @@
 // command turns it into a checked commit and a patch record, live or from a recording
 // (R15, R18, R20, R24). The model is a fake behind `fetch`, so no test reaches one.
 
+import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { recordId } from "@cairnfield/protocol";
+import { TEAM_BRANCH, recordId } from "@cairnfield/protocol";
 import { readRecording, saveRecording } from "../../src/agents/replay.ts";
 import { EXIT } from "../../src/outcome.ts";
 import {
   ADMIN_KEY,
+  FIXTURES,
   INDEX,
   MODEL_API,
   MODEL_KEY,
@@ -35,6 +37,8 @@ import type { Bench } from "../support.ts";
 // hidden instruction on line 41 of the skill file.
 const ANY_HOST = "72b5c551a1e4d6e2a878068dfd3dc3eceac11ed32d56e0110d54dcc67fd83ba9";
 const HIDDEN = "981ae3aa8aadd84d9f44c609c4302727d91b4d381b92c124d7216879aa665b08";
+/** The SHA-256 of the patch prompt's file, as `shasum -a 256` gives it. */
+const PROMPT = createHash("sha256").update(readFileSync(new URL("../../src/agents/prompts/patch.md", import.meta.url))).digest("hex");
 /** A finding that only Team B saved. */
 const THEIRS = "f8f4d273cee270d729eaa06f6868645a6e88335ce4953b8840f4bd55e8279614";
 
@@ -43,6 +47,18 @@ const NAME_THE_HOST = { edits: [{ path: "plugin.json", start: 12, end: 12, lines
 /** The same fix, and a change to a line the finding does not cite. */
 const WIDER = { edits: [{ path: "plugin.json", start: 12, end: 13, lines: [NAMED_HOST, '    "env": { "read": [] }'] }] };
 const DROP_THE_LINE = { edits: [{ path: "skills/sync/SKILL.md", start: 41, end: 41, lines: [] }] };
+
+/**
+ * What a replay of Team A's saved recording for the any-host rule gave before `patch`
+ * attached a note: the commit, the patch record's ID, the patch ID and the claim's ID.
+ * They were read from a run of the command as it was then.
+ */
+const BEFORE_NOTES = {
+  commit: "589e26c9cff9fb0f9d9f5bac16a1990c7bdab8f1",
+  patch: "cb13f304544babed266701e839eb64a63c010de10634eedb7b16b1a625d6773a",
+  patchId: "e0cf2d2b270d0582e06f0f228435e8669c734a2321844cd990c7ccadfa7aab45",
+  claim: "04e033b23c36022391b4efe70217b2c7789a41a36a629d00142e996b138d49be",
+};
 
 // A test here runs several commands against real Git, and some run them on two deployments.
 vi.setConfig({ testTimeout: 30_000 });
@@ -139,13 +155,14 @@ describe("patch", () => {
     expect(recordsOf(on, "claim")).toEqual([`records/${first}/claim/${claim}.json`]);
     expect(recordsOf(on, "patch")).toEqual([`records/${first}/patch/${patch}.json`]);
 
-    // The recording holds the edits, the claim's number and the model.
+    // The recording holds the edits, the claim's number, the model and the hash of the prompt the model ran under.
     expect(JSON.parse(readFileSync(join(on.home, recording(first, ANY_HOST)), "utf8"))).toEqual({
       version: "1",
       component: first,
       finding: ANY_HOST,
       claim: 31,
       model: "claude-sonnet-5-5",
+      prompt: PROMPT,
       edits: NAME_THE_HOST.edits,
     });
   });
@@ -211,6 +228,25 @@ describe("patch", () => {
     expect(other.model.requests).toHaveLength(0);
     expect(patchRefs(other, first)).toEqual(patchRefs(on, first));
     expect(published(other)).toEqual(published(on));
+  });
+
+  it("gives the commit and the patch record it gave before a patch commit had a note (R46)", async () => {
+    // Team A's saved recording for the any-host rule, on the demo plugin's frozen first commit.
+    const first = await team(on, { recordings: `${FIXTURES}recordings` });
+
+    const outcome = await on.run("patch", first, "--finding", ANY_HOST, "--replay");
+
+    expect(outcome).toMatchObject({ code: EXIT.ok, output: { commit: BEFORE_NOTES.commit, patch: BEFORE_NOTES.patch, patchId: BEFORE_NOTES.patchId } });
+    // The record holds the seven fields it held, and no other.
+    expect(JSON.parse(git(on.repo("team"), ["show", `${TEAM_BRANCH}:records/${first}/patch/${BEFORE_NOTES.patch}.json`]))).toEqual({
+      version: "1",
+      type: "patch",
+      component: first,
+      commit: BEFORE_NOTES.commit,
+      findings: [ANY_HOST],
+      claim: BEFORE_NOTES.claim,
+      model: "claude-sonnet-5-5",
+    });
   });
 
   it("fails a replay that has no recording, and makes no call", async () => {
@@ -428,6 +464,8 @@ describe("patch", () => {
     ["another finding", (good: object): object => ({ ...good, finding: HIDDEN })],
     ["another component", (good: object): object => ({ ...good, component: "2e".repeat(20) })],
     ["another schema version", (good: object): object => ({ ...good, version: "2" })],
+    ["a prompt that is no hash", (good: object): object => ({ ...good, prompt: "Read this file first." })],
+    ["the model `none` and a prompt, which no model ran under", (good: object): object => ({ ...good, model: "none", prompt: PROMPT })],
     [
       "edits of the right form that are larger than a recording can be",
       (good: object): object => ({
@@ -453,7 +491,7 @@ describe("patch", () => {
     expect(JSON.stringify(edits).length).toBeGreaterThan(30_000);
     expect(JSON.stringify(edits).length).toBeLessThanOrEqual(32_000);
     const file = join(on.home, "recording.json");
-    const saved = { version: "1" as const, component: "2e".repeat(20), finding: "a".repeat(64), claim: 4_294_967_295, model: "claude-sonnet-5-5" as const, edits };
+    const saved = { version: "1" as const, component: "2e".repeat(20), finding: "a".repeat(64), claim: 4_294_967_295, model: "claude-sonnet-5-5" as const, prompt: "f".repeat(64), edits };
 
     await saveRecording(file, saved);
 
