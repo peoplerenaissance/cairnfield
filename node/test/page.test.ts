@@ -39,6 +39,8 @@ const BAD_REQUEST = { status: 400, body: { error: "bad-request" } };
 
 // The page's own words. Each is written out here as a reader reads it.
 
+/** The bar: the project's name, and what this page is of it. */
+const BAR = ["Cairnfield", "node"];
 const TITLE = "Cairnfield team node";
 const ABOUT = [
   "This page is this team's own list of the records it has published. Nothing on it was checked: a node validates no record, and this page reads none.",
@@ -73,7 +75,10 @@ interface Page {
   readonly headings: readonly string[];
   /** Each second-level heading, with the links that stand between it and the next one. */
   readonly components: readonly { readonly heading: string; readonly records: readonly Link[] }[];
+  /** Each link under the bar. */
   readonly links: readonly Link[];
+  /** Each link in the bar. */
+  readonly bar: readonly Link[];
   /** The text of each `time` element. */
   readonly times: readonly string[];
   /** The title and every text of the body, each as a reader reads it. */
@@ -95,6 +100,7 @@ async function read(response: Response | Promise<Response>): Promise<Page> {
   const headings: string[] = [];
   const components: { heading: string; records: Link[] }[] = [];
   const links: Link[] = [];
+  const bar: Link[] = [];
   const times: string[] = [];
   const texts: string[] = [];
   let text = "";
@@ -120,7 +126,14 @@ async function read(response: Response | Promise<Response>): Promise<Page> {
         if (component) component.heading += chunk.text;
       },
     })
-    .on("a", {
+    .on("header a", {
+      element: (element) => void bar.push({ href: plain(element.getAttribute("href") ?? ""), text: "" }),
+      text(chunk) {
+        const link = bar.at(-1);
+        if (link) link.text += chunk.text;
+      },
+    })
+    .on("main a", {
       element(element) {
         const link = { href: plain(element.getAttribute("href") ?? ""), text: "" };
         links.push(link);
@@ -140,7 +153,7 @@ async function read(response: Response | Promise<Response>): Promise<Page> {
       },
     });
   await parser.transform(new Response(html)).text();
-  for (const link of links) link.text = tidy(link.text);
+  for (const link of [...links, ...bar]) link.text = tidy(link.text);
   return {
     status: served.status,
     headers: served.headers,
@@ -150,6 +163,7 @@ async function read(response: Response | Promise<Response>): Promise<Page> {
     headings: headings.map(tidy),
     components: components.map(({ heading, records }) => ({ heading: tidy(heading), records })),
     links,
+    bar,
     times: times.map(tidy),
     texts: [...title, ...texts].map(tidy).filter((one) => one !== ""),
   };
@@ -244,6 +258,56 @@ describe("the node's page", () => {
     ]);
   });
 
+  it("marks the first record of each type of a component and no other, and keeps the type in the text of every link", async () => {
+    const records = [CLAIM, pathOf(COMPONENT, "finding", idOf("3")), FINDING, pathOf(COMPONENT, "finding", idOf("d")), PATCH];
+    const { node } = await published(filesAt([...records, pathOf(EARLIER, "patch", idOf("e"))]));
+    const page = await read(node.get(""));
+
+    // The page shows a type beside the first of its records. A component's first record is the first of its type, whatever the component before it ended with.
+    const marks = page.elements.filter(({ tag }) => tag === "li").map(({ attributes }) => attributes["class"] ?? "");
+    expect(marks).toEqual(["first", "", "first", "first", "", ""]);
+    expect(page.links.map(({ text }) => text)).toEqual([
+      `patch ${idOf("c")}`,
+      `patch ${idOf("e")}`,
+      `claim ${idOf("a")}`,
+      `finding ${idOf("3")}`,
+      `finding ${idOf("b")}`,
+      `finding ${idOf("d")}`,
+    ]);
+  });
+
+  it("holds no list of facts when it has neither an address nor a head to draw", async () => {
+    const node = await freshNode(new FakeArtifacts(), { ADMIN_KEY, NODE_URL: "" });
+    const page = await read(node.get(""));
+
+    expect(page.status).toBe(200);
+    expect(page.elements.filter(({ tag }) => ["dl", "dt", "dd"].includes(tag))).toEqual([]);
+    expect(page.texts).toContain(NOTHING_YET);
+  });
+
+  it("holds one link that is no record's: the project's name in the bar, which leads to the project's site", async () => {
+    const site = [{ href: "https://cairnfield.net", text: "Cairnfield" }];
+    const { artifacts, node } = await published(filesAt([CLAIM, FINDING, PATCH]));
+    const page = await read(node.get(""));
+    expect(page.bar).toEqual(site);
+    expect(page.elements.filter(({ tag }) => tag === "a")).toHaveLength(page.links.length + 1);
+
+    // A page with no record, and the answer of a node that cannot read its repo, hold that link and no other.
+    const empty = await read((await freshNode(new FakeArtifacts())).get(""));
+    vi.setSystemTime(START + 31 * SECOND);
+    artifacts.getFailures = 1;
+    const kept = await read(node.get(""));
+    const failing = new FakeArtifacts();
+    failing.getFailures = 1;
+    const failed = await read((await freshNode(failing)).get(""));
+    expect([empty.status, kept.status, failed.status]).toEqual([200, 200, 503]);
+    for (const other of [empty, failed]) {
+      expect(other.bar).toEqual(site);
+      expect(other.elements.filter(({ tag }) => tag === "a")).toHaveLength(1);
+    }
+    expect(kept.html).toBe(page.html);
+  });
+
   it("covers AE19: draws no file under the records folder whose name holds markup or is no record path, and has the same elements as without them", async () => {
     const records = filesAt([CLAIM, FINDING, PATCH]);
     const others: Files = {
@@ -296,7 +360,7 @@ describe("the node's page", () => {
     const artifacts = new FakeArtifacts();
     const node = await freshNode(artifacts);
     const time = new Date(START).toISOString().replace(".000Z", "Z");
-    const nothingYet = [TITLE, ...ABOUT, ADDRESS, DRAWN, NOTHING_YET].sort();
+    const nothingYet = [...BAR, TITLE, ...ABOUT, ADDRESS, DRAWN, NOTHING_YET].sort();
     /** The page a request draws once the kept one has run out. */
     const next = async (): Promise<Page> => {
       vi.setSystemTime(Date.now() + 31 * SECOND);
@@ -321,7 +385,7 @@ describe("the node's page", () => {
     const head = await artifacts.push(team, "main", { "README.md": "The records of team A\n" });
     const noFolder = await next();
     expect(noFolder.status).toBe(200);
-    expect(wordsOf(noFolder, [BASE, head, ...noFolder.times])).toEqual([TITLE, ...ABOUT, ADDRESS, HEAD, DRAWN, NO_RECORD].sort());
+    expect(wordsOf(noFolder, [BASE, head, ...noFolder.times])).toEqual([...BAR, TITLE, ...ABOUT, ADDRESS, HEAD, DRAWN, NO_RECORD].sort());
     expect(noFolder.texts).toContain(head);
 
     for (const page of [noRepo, beingMade, noPush, noFolder]) {
@@ -450,7 +514,7 @@ describe("the node's page", () => {
     const failed = await read(node.get(""));
 
     expect(failed.status).toBe(503);
-    expect(wordsOf(failed, [BASE, ...failed.times])).toEqual([TITLE, ...ABOUT, ADDRESS, DRAWN, UNREADABLE].sort());
+    expect(wordsOf(failed, [BASE, ...failed.times])).toEqual([...BAR, TITLE, ...ABOUT, ADDRESS, DRAWN, UNREADABLE].sort());
     expect(drawnAt(failed)).toBe(START);
     expect(failed.links).toEqual([]);
 
@@ -504,7 +568,7 @@ describe("the node's page", () => {
 
     const values = [...commits, ...ids, idOf("a"), "claim", "finding", head, BASE, ...page.times, "2", "3"];
     // Each of the page's own words says what a thing on the page is. None tells a reader to do anything.
-    const words = [TITLE, ...ABOUT, ADDRESS, HEAD, DRAWN, "Component", RECORDS_LEFT, COMPONENTS_LEFT, ALL_RECORDS];
+    const words = [...BAR, TITLE, ...ABOUT, ADDRESS, HEAD, DRAWN, "Component", RECORDS_LEFT, COMPONENTS_LEFT, ALL_RECORDS];
     expect(wordsOf(page, values)).toEqual([...words].sort());
     expect(drawnAt(page)).toBe(START);
     expect(page.links).toHaveLength(50 + 19);

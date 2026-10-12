@@ -13,7 +13,7 @@ import type { RecordPath } from "./contract.ts";
 import type { Env } from "./env.ts";
 import { recordFiles } from "./tree.ts";
 
-/** The most components the page draws, and the most records of one component. A page then holds at most 1,000 links. */
+/** The most components the page draws, and the most records of one component. A page then holds at most 1,000 record links. */
 const MOST_COMPONENTS = 20;
 const MOST_RECORDS = 50;
 
@@ -23,11 +23,16 @@ const MOST_RECORDS = 50;
  */
 const KEPT_FOR = 30_000;
 
+/** The project's site. The project's name in the bar leads there, as it does on the index's pages, and it is the page's one link that is no record's. */
+const SITE = "https://cairnfield.net";
+
 /**
  * Every word the page says of its own. Each says what a thing on the page is, and none
  * tells a reader to do anything (R47).
  */
 const WORDS = {
+  project: "Cairnfield",
+  here: "node",
   title: "Cairnfield team node",
   about: [
     "This page is this team's own list of the records it has published. Nothing on it was checked: a node validates no record, and this page reads none.",
@@ -45,39 +50,97 @@ const WORDS = {
   allRecords: "The node's records route lists every record.",
 } as const;
 
-// The page's one style. The colors and the spacing are those of the index's pages, with
-// the faces a reader's own system has, because the page loads no file. An outline carries
-// the meaning it has there: dashed is unconfirmed, and nothing on this page was checked.
-// On a narrow screen a record's type stands above its ID, so the ID has the whole line.
+/** One contour line of a hill: how far it stands from the hill's top, and how far across and down it is moved. */
+type Contour = readonly [away: number, across: number, down: number];
+
+/**
+ * The contour lines of one hill of the map, as the shadows of one shape. A shadow follows
+ * the shape it is cast by, so each line is two shadows: one in the line's color, and over
+ * it one in the ground's color that covers all of the first but its rim. The top itself is
+ * line 1, and every fifth line is an index line, drawn heavier, as the index's map has it.
+ */
+function hill(lines: readonly Contour[]): string {
+  const rings = lines.flatMap(([away, across, down], at) => {
+    const [color, weight] = (at + 2) % 5 === 0 ? ["var(--contour-5)", 1.5] : ["var(--contour)", 1];
+    return [`${across}px ${down}px 0 ${away}px var(--fog)`, `${across}px ${down}px 0 ${away + weight}px ${color}`];
+  });
+  return ["inset 0 0 0 1px var(--contour)", ...rings].join(", ");
+}
+
+// Two hills. The lines of each stand at uneven distances and drift to one side, as the lines of a slope do.
+const HILL = hill([
+  [40, -5, 3], [88, -12, 9], [128, -15, 14], [198, -26, 20], [272, -36, 31], [326, -41, 37], [418, -55, 48], [520, -66, 62], [588, -71, 68], [706, -85, 80],
+]);
+const FAR_HILL = hill([[54, 6, -4], [98, 10, -9], [176, 21, -16], [244, 29, -26], [296, 33, -31]]);
+
+// The page's one style. The colors, the spacing and the parts are those of the index's
+// pages: the bar, the band under it, a team's stone before its address, and a block for
+// each component as the index has one for each repo. The page loads no file, so each face
+// is the index's only for a reader whose system has it, and after it stands a face that
+// systems come with. The map behind the page is drawn here too, by `hill`, and it is
+// decoration: it stays still, and it says nothing.
+//
+// An outline carries the meaning it has on the index: dashed is unconfirmed, and nothing
+// on this page was checked. A type names itself once, beside its records. The word stays
+// in each link for a reader who does not see the page. On a narrow screen it stands over them.
 const STYLE = `
-:root { --fog: #EDF0EE; --paper: #FAFBF9; --ink: #1E2A2E; --muted: #5B6B70; --line: #C9D1CC; --line-soft: #DDE3DF; --slate: #5E6C76; --body: "Helvetica Neue", Arial, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace; --gutter: clamp(16px, 4vw, 48px); }
+:root { --fog: #EDF0EE; --paper: #FAFBF9; --band: #F1F4F2; --ink: #1E2A2E; --muted: #5B6B70; --line: #C9D1CC; --line-soft: #DDE3DF; --slate: #5E6C76; --note: #FFF6D6; --note-line: #E8D79A; --contour: #DAE0DC; --contour-5: #C6CFCA; --display: "Routed Gothic", Bahnschrift, "DIN Alternate", "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif; --body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif; --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; --gutter: clamp(16px, 4vw, 48px); }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--fog); color: var(--ink); font: 400 16px/1.5 var(--body); }
-main { max-width: calc(900px + 2 * var(--gutter)); margin-inline: auto; padding: clamp(36px, 7vw, 76px) var(--gutter) clamp(48px, 7vw, 80px); }
-h1 { font: 400 clamp(30px, 4.6vw, 46px)/1.08 var(--body); letter-spacing: -0.01em; margin: 0 0 20px; }
 p { margin: 0; }
-.about { max-width: 43em; font-size: clamp(16px, 1.55vw, 18px); text-wrap: pretty; }
-.about + .about { margin-top: 10px; font-size: 15px; color: var(--muted); }
-dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 20px; margin: 28px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
-dt { color: var(--muted); }
-dd { margin: 0; }
-dd, code, .type { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
-section { margin-top: 20px; padding: 20px 22px 22px; background: var(--paper); border: 1px dashed #9AA6A3; border-radius: 10px; }
-h2 { font: 400 14px/1.5 var(--body); color: var(--muted); margin: 0 0 10px; }
-h2 code { display: block; font-size: 15px; font-weight: 600; color: var(--ink); }
 ul { list-style: none; margin: 0; padding: 0; }
-li { border-top: 1px solid var(--line-soft); }
-a { display: flex; flex-wrap: wrap; gap: 0 16px; padding: 9px 0; color: inherit; text-decoration: none; }
-.type { flex: 0 0 10em; font-weight: 600; color: var(--muted); }
-a code { flex: 1 1 20ch; min-width: 0; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
-a:hover code { text-decoration-color: var(--ink); }
+body::before, body::after { content: ""; position: fixed; z-index: -1; pointer-events: none; }
+body::before { top: 148px; right: 13%; width: 132px; height: 76px; rotate: -16deg; border-radius: 58% 42% 52% 48% / 62% 56% 44% 38%; box-shadow: ${HILL}; }
+body::after { left: -70px; bottom: -50px; width: 210px; height: 124px; rotate: 21deg; border-radius: 46% 54% 44% 56% / 55% 62% 38% 45%; box-shadow: ${FAR_HILL}; }
+.wrap { max-width: calc(1280px + 2 * var(--gutter)); margin-inline: auto; padding-inline: var(--gutter); }
+.bar { position: sticky; top: 0; z-index: 1; background: rgba(250, 251, 249, .94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+.bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; min-height: 52px; padding-block: 8px; }
+.trail { display: flex; align-items: baseline; gap: 10px; font: 500 13px/1 var(--mono); }
+.mark { font: 400 24px/1 var(--display); letter-spacing: -0.01em; color: inherit; text-decoration: none; }
+.here::before { content: "/"; margin-right: 10px; color: #9AA6A3; }
+.status { margin-left: auto; font: 500 12px/1.4 var(--mono); color: var(--muted); }
+.hero { background: rgba(250, 251, 249, .62); border-bottom: 1px solid var(--line); }
+.hero .wrap { padding-block: clamp(40px, 7vw, 76px) clamp(32px, 5vw, 52px); }
+h1 { font: 400 clamp(34px, 4.6vw, 54px)/1.08 var(--display); letter-spacing: 0.005em; margin: 0 0 20px; }
+.lead { max-width: 43em; font-size: clamp(17px, 1.55vw, 20px); text-wrap: pretty; }
+dl { display: flex; flex-wrap: wrap; gap: 18px 56px; margin: clamp(26px, 3.4vw, 40px) 0 0; }
+dt { margin-bottom: 8px; font: 500 12px/1 var(--mono); color: var(--muted); }
+dd { margin: 0; font: 500 13px/1.5 var(--mono); overflow-wrap: anywhere; }
+.org { font-weight: 600; }
+.org::before { content: ""; display: inline-block; width: 15px; height: 8px; margin-right: 7px; border-radius: 58% 42% 52% 48% / 62% 56% 44% 38%; background: var(--muted); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .17); }
+.list { padding-block: clamp(28px, 4vw, 44px) clamp(48px, 7vw, 80px); }
+.about { max-width: 62em; font-size: 15px; color: var(--muted); text-wrap: pretty; }
+.components { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(624px, 100%), 1fr)); gap: 20px; align-items: start; margin-top: 24px; }
+section { min-width: 0; max-width: 760px; background: var(--paper); border: 1px dashed #9AA6A3; border-radius: 10px; }
+h2 { margin: 0; padding: 12px 16px; background: var(--band); border-bottom: 1px solid var(--line-soft); border-radius: 9px 9px 0 0; font: 500 12.5px/1.4 var(--mono); color: var(--muted); }
+h2 code { display: block; margin-top: 2px; font: 600 clamp(11.5px, 3.3vw, 14px)/1.4 var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+li a { display: grid; grid-template-columns: 130px minmax(0, 1fr); color: inherit; text-decoration: none; font: 400 12px/1.5 var(--mono); }
+.type { padding: 10px 0 10px 16px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+li a code { grid-column: 2; padding: 10px 16px 10px 10px; border-top: 1px solid var(--line-soft); overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+li.first { border-top: 1px solid var(--line-soft); }
+li.first code, li:first-child { border-top: 0; }
+li:not(.first) .type { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+li a:hover code { background: var(--band); text-decoration-color: var(--ink); }
+li:last-child a, li:last-child code { border-radius: 0 0 9px 9px; }
 a:focus-visible { outline: 3px solid var(--slate); outline-offset: 2px; }
-.none { margin-top: 24px; }
+li a:focus-visible { outline-offset: -3px; border-radius: 6px; }
+.none { max-width: 760px; margin-top: 24px; padding: 16px 20px; border-radius: 10px; background: var(--paper); }
+.none.failed { background: var(--note); border: 1px solid var(--note-line); }
 .left { margin-top: 20px; font-size: 15px; color: var(--muted); }
-section .left { margin-top: 0; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 14px; }
+section .left { margin: 0; padding: 12px 16px; border-top: 1px solid var(--line-soft); font-size: 13.5px; }
 .left span { display: inline-block; margin-right: 14px; }
 .left b { font-weight: 600; color: var(--ink); }
-@media (max-width: 560px) { .type { flex-basis: 100%; } h2 code { font-size: 12.5px; } }
+@media (max-width: 1099px) { body::after { display: none; } }
+@media (max-width: 719px) {
+  .bar .wrap { column-gap: 14px; }
+  .mark { font-size: 21px; }
+  .here { display: none; }
+  li a { grid-template-columns: minmax(0, 1fr); }
+  .type { padding: 12px 14px 0; }
+  li a code { grid-column: 1; padding: 8px 14px 10px; }
+  li.first code { padding-top: 4px; }
+  h2, section .left { padding-inline: 14px; }
+}
 `;
 
 /**
@@ -116,10 +179,12 @@ function left(words: string, count: number): string[] {
 
 /** One component with its records, each a link to that record's file at the head. */
 function component(head: string, commit: string, records: readonly RecordPath[]): string[] {
-  const links = records.slice(0, MOST_RECORDS).map(({ path, type, id }) => {
+  const links = records.slice(0, MOST_RECORDS).map(({ path, type, id }, at) => {
     // The link is relative, so it leads to the `file` route of the node the page came from.
     const href = `${PATHS.file}?commit=${head}&path=${path}`;
-    return `<li><a href="${escaped(href)}"><span class="type">${escaped(type)}</span> <code>${escaped(id)}</code></a></li>`;
+    // The records come in the order of their types, so the first of a type is the one where the type shows.
+    const first = records[at - 1]?.type === type ? "" : ' class="first"';
+    return `<li${first}><a href="${escaped(href)}"><span class="type">${escaped(type)}</span> <code>${escaped(id)}</code></a></li>`;
   });
   return [
     "<section>",
@@ -164,18 +229,21 @@ async function listed(store: Store): Promise<Listed> {
     records.sort((a, b) => ascending(a.type, b.type) || ascending(a.id, b.id));
     return component(held.head, commit, records);
   });
-  return { head: held.head, lines: [...sections, ...left(WORDS.componentsLeft, commits.length - MOST_COMPONENTS)] };
+  const blocks = ['<div class="components">', ...sections, "</div>"];
+  return { head: held.head, lines: [...blocks, ...left(WORDS.componentsLeft, commits.length - MOST_COMPONENTS)] };
 }
 
-/** One fact about the page: the words for what a value is, and the value as HTML. */
-function fact(words: string, value: string): string {
-  return `<dt>${escaped(words)}</dt><dd>${value}</dd>`;
+/** One fact about the node: the words for what a value is, and the value. The node's address stands after the team's stone. */
+function fact(words: string, value: string, stone = false): string {
+  return `<div><dt>${escaped(words)}</dt><dd${stone ? ' class="org"' : ""}>${escaped(value)}</dd></div>`;
 }
 
 /** The whole document: the page's own words, the node's address, the head and the time of the walk, and then what the walk gave. */
 function documentOf(address: string | undefined, at: number, { head, lines }: Listed): string {
   // The time is that of the walk, to the second, so a reader of a kept page can tell its age.
   const time = new Date(at).toISOString().replace(/\.\d+Z$/, "Z");
+  const [lead, about] = WORDS.about;
+  const facts = [...(address === undefined ? [] : [fact(WORDS.address, address, true)]), ...(head === undefined ? [] : [fact(WORDS.head, head)])];
   return [
     "<!doctype html>",
     '<html lang="en">',
@@ -186,15 +254,25 @@ function documentOf(address: string | undefined, at: number, { head, lines }: Li
     `<style>${STYLE}</style>`,
     "</head>",
     "<body>",
+    // The bar is the index's: the project's name, which leads to the project's site, what this page is of it, and when the walk was made.
+    '<header class="bar">',
+    '<div class="wrap">',
+    `<p class="trail"><a class="mark" href="${escaped(SITE)}">${escaped(WORDS.project)}</a> <span class="here">${escaped(WORDS.here)}</span></p>`,
+    `<p class="status">${escaped(WORDS.drawn)} <time>${escaped(time)}</time></p>`,
+    "</div>",
+    "</header>",
     "<main>",
+    '<div class="hero">',
+    '<div class="wrap">',
     `<h1>${escaped(WORDS.title)}</h1>`,
-    ...WORDS.about.map((words) => `<p class="about">${escaped(words)}</p>`),
-    "<dl>",
-    ...(address === undefined ? [] : [fact(WORDS.address, escaped(address))]),
-    ...(head === undefined ? [] : [fact(WORDS.head, escaped(head))]),
-    fact(WORDS.drawn, `<time>${escaped(time)}</time>`),
-    "</dl>",
+    `<p class="lead">${escaped(lead)}</p>`,
+    ...(facts.length === 0 ? [] : ["<dl>", ...facts, "</dl>"]),
+    "</div>",
+    "</div>",
+    '<div class="wrap list">',
+    `<p class="about">${escaped(about)}</p>`,
     ...lines,
+    "</div>",
     "</main>",
     "</body>",
     "</html>",
@@ -232,7 +310,7 @@ async function drawn(env: Env, at: number): Promise<Page> {
     // was drawn. With none, the answer says in fixed words that the repo could not be read.
     // Either is kept as any page is, so a failing Artifacts is asked once in that time.
     if (lastRead) return lastRead.page;
-    const lines = [`<p class="none">${escaped(WORDS.unreadable)}</p>`];
+    const lines = [`<p class="none failed">${escaped(WORDS.unreadable)}</p>`];
     return { status: 503, html: documentOf(address, at, { head: undefined, lines }) };
   }
 }
