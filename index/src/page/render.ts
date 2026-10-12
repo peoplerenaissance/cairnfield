@@ -220,6 +220,9 @@ const ABOUT = {
   findings: "A finding is something a team's review reports seeing in this version, at the lines it names. It is that team's report, and no verdict of this index. The ones more organizations report stand first, and two organizations make a finding confirmed.",
   patches: "A patch is a fix one team wrote for a finding, and it changes only the lines that finding names. Patches for the same lines stand side by side, the ones more organizations stand behind first.",
   recipes: "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more organizations published come first.",
+  // What a fetch is, and three things of every count (R45): whose number it is, what it counts, and that a missing count is not a count of zero.
+  fetches:
+    "A fetch is one download over Git of a team's fork: the team's own repository of this version, where it keeps its patches. Each team's node states its own number, and the index cannot check it. The number counts the fetches of that fork since the fork was made, and the team's own commands add to it. A team that is not listed here has no count in this view, which is not a count of zero.",
   rejected: "The index refused these records, because each failed one of its checks. A refused record counts for nothing on this page.",
 } as const;
 
@@ -248,8 +251,15 @@ const KIND: { readonly [K in PatchKind]: string } = {
 
 const PENDING = "The index has this record and has not finished checking it.";
 const NOT_CHECKED = "The team published this hash of its copy's files. The index has not built the copy, so it has not checked the hash.";
-/** What "declared" means before the model of a patch record: the team states the value, and no check of the index reaches it (R14). */
-const DECLARED = "This team's record states which model, if any, wrote the patch. The index cannot check that, and has not.";
+/**
+ * What "declared" means before a value, by what the value is: the model of a patch record,
+ * and a node's count of the fetches of its fork (KTD42). A team states the value, and no
+ * check of the index reaches it (R14).
+ */
+const DECLARED = {
+  model: "This team's record states which model, if any, wrote the patch. The index cannot check that, and has not.",
+  fetches: "This team's node states how often its fork was fetched. It does not say by whom. The index cannot check the number, and has not.",
+} as const;
 
 /** Why the index refuses a record, by the reason it stores (KTD31). Each says what the check found. */
 const REFUSED: { readonly [R in RejectionReason]: string } = {
@@ -535,7 +545,7 @@ function patch(reading: Reading, entry: PatchEntry): Drawing {
       { class: "declarations" },
       authors
         .flatMap((author) => entry.records.filter(({ node }) => node === author))
-        .map(({ node, record }) => el("li", { class: "declared" }, organization(reading, node), explained(focusable("", "declared: ", code(record.model)), DECLARED))),
+        .map(({ node, record }) => el("li", { class: "declared" }, organization(reading, node), explained(focusable("", "declared: ", code(record.model)), DECLARED.model))),
     ),
     entry.rechecks.length === 0
       ? undefined
@@ -600,6 +610,32 @@ function recipes(reading: Reading): Drawing {
   return section({ id: "recipes", title: "Recipes", about: ABOUT.recipes }, el("ul", { class: "recipes" }, shown));
 }
 
+/**
+ * Each node's count of the fetches of its fork of this component (R45), for the nodes
+ * whose entry in the view holds one. A node states its count and the index cannot check
+ * it (KTD42). So a count is drawn as the model of a patch record is: a line with its
+ * team, then the word "declared" and the value, and no outline (R14). A node with no
+ * count has no line, and a view with no count has no section: a missing count is not a
+ * count of zero.
+ */
+function fetches(reading: Reading): Drawing | undefined {
+  // The lines keep the order of the view: a number that a node states moves nothing.
+  const stated = reading.view.nodes.flatMap(({ node, declared }) => (declared?.fetches === undefined ? [] : [{ node, count: declared.fetches }]));
+  if (stated.length === 0) return undefined;
+  return section(
+    { id: "fetches", title: "Fetches", about: ABOUT.fetches },
+    el(
+      "ul",
+      { class: "declarations" },
+      // The number is a text of its own, and the word after it is the page's.
+      stated.map(({ node, count }) => {
+        const [number, word] = counted(count, " fetch", " fetches");
+        return el("li", { class: "declared" }, organization(reading, node), explained(focusable("", "declared: ", code(number), word), DECLARED.fetches));
+      }),
+    ),
+  );
+}
+
 /** Rejected work is its contributor, its type, its hash and its reason, and nothing more (KTD31). */
 function rejected(reading: Reading): Drawing | undefined {
   const refused = reading.view.rejected;
@@ -622,10 +658,10 @@ function viewed(place: ComponentPlace, view: View): Drawing {
         organizations(reading, view.nodes.map(({ node }) => node)),
       )
     : undefined;
-  // Until the index holds its own copy it has checked nothing against it, so the page shows no section of checked work.
+  // Until the index holds its own copy it has checked nothing against it, so the page shows no section of checked work, and no fetches with them.
   const work =
     view.state === "ready"
-      ? el("div", { class: "work" }, el("div", { class: "part" }, claims(reading), pending(reading), findings(reading)), el("div", { class: "part" }, patches(reading), recipes(reading), rejected(reading)))
+      ? el("div", { class: "work" }, el("div", { class: "part" }, claims(reading), pending(reading), findings(reading)), el("div", { class: "part" }, patches(reading), recipes(reading), fetches(reading), rejected(reading)))
       : [el("section", { id: "state" }, el("h2", {}, NOT_READY[view.state]), el("span", { class: view.state === "failed" ? "tag rej" : "tag un" }, view.state)), pending(reading), rejected(reading)];
   return el("div", { class: "view" }, narrowed, header(view), work);
 }
