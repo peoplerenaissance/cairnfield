@@ -1,19 +1,27 @@
-// The page of one component commit (R14): what it shows after each read of the data
-// endpoint (KTD14). Every function here is pure, so the tests call them with no browser:
-// from the page's address to the view it reads, from an answer of the endpoint to what
-// was read, and from that and what the page held to what it draws now.
+// The index's two pages (R14): its own, which lists its components, and the page of one
+// component commit. This file holds what each shows after a read of its data endpoint
+// (KTD14). Every function here is pure, so the tests call them with no browser: from the
+// page's address to what it reads there, from an answer of the endpoint to what was read,
+// and from that and what the page held to what it draws now.
 //
-// The page is drawn as a tree of elements. A value of the view is only ever a text of
-// that tree, the target of a link, or part of the name that a finding's or a patch's
-// entry is linked by. It is never an element, the name of an attribute or a class, and
-// `poll.ts` sets a text as text. Each text is one value of the view or words of the
-// page's own, so every one can be traced to a field of the endpoint (R13). The page says
-// what the index holds, and tells a reader nothing to do (R35).
+// A page is drawn as a tree of elements. A value of the view or of the list is only ever
+// a text of that tree, the target of a link, the commit in the address of a component's
+// page on this index, or part of the name that a finding's or a patch's entry is linked
+// by. It is never an element, the name of an attribute or a class, and `poll.ts` sets a
+// text as text. Each text is one value of the endpoint or words of the page's own, so
+// every one can be traced to a field of the endpoint (R13). A page says what the index
+// holds, and tells a reader nothing to do (R35).
+//
+// The words and links that a page holds whatever was read are not drawn here. They are
+// written in the page's HTML file, outside the element this drawing goes into.
 //
 // The browser runs this file as it is built, with nothing bundled in, so it takes only
 // types from the protocol library.
 
-import type { Criterion, View } from "@cairnfield/protocol";
+import type { COMPONENT_LIST, Criterion, Infer, View } from "@cairnfield/protocol";
+
+/** The list of an index's components, as the index serves it. */
+type ComponentList = Infer<typeof COMPONENT_LIST>;
 
 /** One element of the page. A child that is a string is a text. */
 export interface Drawing {
@@ -22,8 +30,9 @@ export interface Drawing {
   readonly children: readonly (Drawing | string)[];
 }
 
-/** What the page at one address shows: a component, and the view of it that the page reads. */
-export interface Place {
+/** The page of a component: the component, and the view of it that the page reads. */
+interface ComponentPlace {
+  readonly kind: "component";
   readonly component: string;
   /** The path and query of the data endpoint. A `teams` query of the address is passed on (KTD38). */
   readonly viewPath: string;
@@ -31,13 +40,28 @@ export interface Place {
   readonly narrowed: boolean;
 }
 
-/** What one read of the endpoint gave: a view, word that the commit is not registered, word that the index does not take the teams of the address, or none of them. */
-export type Read = { readonly kind: "view"; readonly view: View } | { readonly kind: "unknown" } | { readonly kind: "refused" } | { readonly kind: "failed" };
+/** The index's own page, which reads the list of the index's components. */
+interface IndexPlace {
+  readonly kind: "index";
+  /** The path of the list. It takes no query, so nothing of the address is passed on. */
+  readonly viewPath: string;
+}
+
+/** What the page at one address shows, and the data endpoint it reads there. */
+export type Place = IndexPlace | ComponentPlace;
+
+/** What one read of the endpoint gave: a view, the list of the index's components, word that the commit is not registered, word that the index does not take the teams of the address, or none of them. */
+export type Read =
+  | { readonly kind: "view"; readonly view: View }
+  | { readonly kind: "list"; readonly list: ComponentList }
+  | { readonly kind: "unknown" }
+  | { readonly kind: "refused" }
+  | { readonly kind: "failed" };
 
 /** What the page holds between two reads. */
 export interface Held {
-  /** The version of the view the last read that worked gave, `unknown` for a commit that is not registered or `refused` for teams the index does not take, and when. Nothing before the first one. */
-  readonly last?: { readonly version: number | "unknown" | "refused"; readonly at: number };
+  /** What the last read that worked gave, and when: the version of a view, the list as one text, `unknown` for a commit that is not registered or `refused` for teams the index does not take. Nothing before the first one. */
+  readonly last?: { readonly version: number | string; readonly at: number };
   /** Whether the read after it failed. */
   readonly failed: boolean;
 }
@@ -86,7 +110,7 @@ const code = (value: string): Drawing => el("code", {}, value);
 /** A number of things, with the word for them. */
 const counted = (count: number, one: string, many: string): [string, string] => [String(count), count === 1 ? one : many];
 
-/** Whether a value is an HTTPS address. Every link out of the page is one (KTD14). */
+/** Whether a value is an HTTPS address. Every link that leaves the index is one (KTD14). */
 function isHttps(value: string): boolean {
   return URL.canParse(value) && new URL(value).protocol === "https:";
 }
@@ -97,21 +121,24 @@ const address = (url: string): Drawing | string => (isHttps(url) ? el("a", { hre
 // A page of the address `/components/<commit>`. The commit is in its full form, the only one a component has (R8).
 const PAGE_PATH = /^\/components\/([0-9a-f]{40})$/;
 
-/** What the page at an address shows, or nothing for an address that is no component's page. */
+/** What the page at an address shows, or nothing for an address where no page stands. */
 export function placeOf(pathname: string, search: string): Place | undefined {
+  // The index's own page. The list refuses every query, so none is passed on.
+  if (pathname === "/") return { kind: "index", viewPath: "/view" };
   const component = PAGE_PATH.exec(pathname)?.[1];
   if (component === undefined) return undefined;
   // Only the teams are passed on. The endpoint refuses a query it does not know.
   const teams = new URLSearchParams(search).getAll("teams");
   const query = teams.map((team) => `teams=${encodeURIComponent(team)}`).join("&");
-  return { component, narrowed: teams.length > 0, viewPath: `/components/${component}/view${query === "" ? "" : `?${query}`}` };
+  return { kind: "component", component, narrowed: teams.length > 0, viewPath: `/components/${component}/view${query === "" ? "" : `?${query}`}` };
 }
 
 /**
  * What a body of the endpoint says. A refusal is a code of the protocol. `not-found`
  * names a commit that is not registered. `bad-request` names a query the endpoint does
  * not take, and the page passes on only the teams of its address (KTD38). A refusal with
- * any other code says nothing the page can show.
+ * any other code says nothing the page can show. Any other body is told by its shape: a
+ * view carries its version, and the list carries the components.
  */
 export function readOf(body: unknown): Read {
   if (typeof body !== "object" || body === null) return { kind: "failed" };
@@ -119,7 +146,8 @@ export function readOf(body: unknown): Read {
     if (body.error === "not-found") return { kind: "unknown" };
     return body.error === "bad-request" ? { kind: "refused" } : { kind: "failed" };
   }
-  return "viewVersion" in body ? { kind: "view", view: body as View } : { kind: "failed" };
+  if ("viewVersion" in body) return { kind: "view", view: body as View };
+  return "components" in body ? { kind: "list", list: body as ComponentList } : { kind: "failed" };
 }
 
 // The criteria in the order of the protocol's list, weakest first. The object must name
@@ -406,7 +434,7 @@ function rejected(reading: Reading): Drawing | undefined {
 const NOT_READY = { importing: "The index is still importing this version", failed: "The index could not import this version" } as const;
 
 /** The page of a registered component. */
-function viewed(place: Place, view: View): Drawing {
+function viewed(place: ComponentPlace, view: View): Drawing {
   const reading = readingOf(view);
   const narrowed = place.narrowed
     ? el(
@@ -429,9 +457,49 @@ function viewed(place: Place, view: View): Drawing {
 const NO_VIEW = { unknown: "No reviews published for this version", refused: "The index does not take the teams in this address" } as const;
 
 /** The page of an address the index serves no view for: its label, and the commit the address names. */
-function unviewed(place: Place, kind: keyof typeof NO_VIEW): Drawing {
+function unviewed(place: ComponentPlace, kind: keyof typeof NO_VIEW): Drawing {
   return el("div", { class: "view" }, el("section", { id: "state" }, el("h2", {}, NO_VIEW[kind]), el("p", { class: "commit" }, "commit ", code(place.component))));
 }
+
+type Listed = ComponentList["components"][number];
+
+/**
+ * The import state of a listed component, in words, with the class of its label. The
+ * index stores an imported copy as `ready`, which would read as an all-clear (R14). The object
+ * must name every state, so the type check fails when that list changes.
+ */
+const IMPORT: { readonly [S in Listed["state"]]: { readonly label: string; readonly tag: string } } = {
+  ready: { label: "imported", tag: "tag" },
+  importing: { label: "importing", tag: "tag un" },
+  failed: { label: "import failed", tag: "tag rej" },
+};
+
+/** One component of the list: the repo and the branch it was imported from, its commit as a link to its page on this index, and its import state. */
+function listedRow({ component, url, branch, state }: Listed): Drawing {
+  const { label, tag } = IMPORT[state];
+  return el(
+    "li",
+    { class: "row" },
+    el("span", { class: "repo" }, address(url)),
+    el("span", { class: "branch" }, "branch ", code(branch)),
+    el("a", { href: `/components/${component}` }, "commit ", code(short(component))),
+    el("span", { class: tag }, label),
+  );
+}
+
+/** The index's own page: every component the index holds, in the order of the list, which is the order they were registered in. */
+function listed({ components }: ComponentList): Drawing {
+  // An index with no component says so in words of its own. A count of nought is not drawn, as on a component's page (R14).
+  const shown = components.length === 0 ? empty("No component registered") : [el("span", { class: "count" }, String(components.length)), el("ul", { class: "rows" }, components.map(listedRow))];
+  return el("div", { class: "view" }, section("components", "Components", shown));
+}
+
+/**
+ * The list as one text. The list carries no version, so the page holds this between two
+ * reads to tell whether the list changed. Each component gives its four values in one
+ * order, so two answers that say the same are one text.
+ */
+const keyOf = ({ components }: ComponentList): string => JSON.stringify(components.map(({ component, url, branch, state }) => [component, url, branch, state]));
 
 /** A time of the page's own clock, in UTC, so it reads the same wherever the page is open. */
 function time(at: number): Drawing {
@@ -446,19 +514,34 @@ function status(held: Held): Drawing {
 }
 
 /**
+ * What a read gives the page at a place: what the page holds it by between two reads,
+ * and its drawing. Nothing for a read that failed, and nothing for an answer of the
+ * other page's endpoint. The index's own page shows the list and no other answer: it
+ * names no commit and passes on no teams, so a refusal says nothing it can show.
+ */
+function shownAt(place: Place, read: Read): { readonly version: number | string; readonly body: () => Drawing } | undefined {
+  if (place.kind === "index") return read.kind === "list" ? { version: keyOf(read.list), body: () => listed(read.list) } : undefined;
+  if (read.kind === "view") return { version: read.view.viewVersion, body: () => viewed(place, read.view) };
+  return read.kind === "unknown" || read.kind === "refused" ? { version: read.kind, body: () => unviewed(place, read.kind) } : undefined;
+}
+
+/**
  * What the page shows after one read. A read that failed leaves what is on screen and
- * says when that was read. A view is drawn again only when its version changed (KTD11):
- * the version moves with every change the view can show, a claim that passes its time
- * included. An answer that is no view is a state of its own, drawn once: a commit that
- * is not registered, and teams the index does not take.
+ * says when that was read. So does an answer that is not this page's: a view on the
+ * index's own page, or the list on the page of a component. A view is drawn again only
+ * when its version changed (KTD11): the version moves with every change the view can
+ * show, a claim that passes its time included. The list is drawn again only when what it
+ * says changed. An answer that is no view is a state of its own on the page of a
+ * component, drawn once: a commit that is not registered, and teams the index does not
+ * take.
  */
 export function draw(place: Place, held: Held, read: Read, now: number): Drawn {
-  if (read.kind === "failed") {
+  const shown = shownAt(place, read);
+  if (shown === undefined) {
     const after: Held = { ...held, failed: true };
     return { held: after, status: status(after) };
   }
-  const version = read.kind === "view" ? read.view.viewVersion : read.kind;
-  const after: Held = { last: { version, at: now }, failed: false };
-  if (held.last !== undefined && held.last.version === version) return { held: after, status: status(after) };
-  return { held: after, status: status(after), body: read.kind === "view" ? viewed(place, read.view) : unviewed(place, read.kind) };
+  const after: Held = { last: { version: shown.version, at: now }, failed: false };
+  if (held.last !== undefined && held.last.version === shown.version) return { held: after, status: status(after) };
+  return { held: after, status: status(after), body: shown.body() };
 }

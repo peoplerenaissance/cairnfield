@@ -4,6 +4,7 @@ import {
   ADMIN_TOKEN_REQUEST,
   API_CATALOG,
   CITED_LINES,
+  COMPONENT_LIST,
   INDEX_REFUSAL,
   INDEX_ROUTES,
   NODE_LISTING,
@@ -345,6 +346,22 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
       "unknown-value",
     );
     expect(reasonOf(REGISTER_COMPONENT_REQUEST, { ...body, commit: "HEAD" })).toBe("unknown-value");
+  });
+
+  it("lists the registered components at a path of its own, with no query", () => {
+    expect(INDEX_ROUTES.list).toEqual({ method: "GET", path: "/view", response: COMPONENT_LIST });
+    const listed = {
+      component: COMPONENT,
+      url: "https://git.fellbeck-tools.example/demo-plugin.git",
+      branch: "main",
+      state: "ready",
+    };
+    const list = (...components: unknown[]) => ({ version: "1", components });
+    expect(reasonOf(COMPONENT_LIST, list())).toBe("ok");
+    expect(reasonOf(COMPONENT_LIST, list(listed, { ...listed, component: PATCH_COMMIT, state: "failed" }))).toBe("ok");
+    expect(reasonOf(COMPONENT_LIST, list({ ...listed, state: "clean" }))).toBe("unknown-value");
+    expect(reasonOf(COMPONENT_LIST, list({ ...listed, note: "start with this one" }))).toBe("unknown-field");
+    expect(reasonOf(COMPONENT_LIST, { components: [listed] })).toBe("unsupported-version");
   });
 
   it("takes a notice that names one node and nothing else", () => {

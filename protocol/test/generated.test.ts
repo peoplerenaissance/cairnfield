@@ -343,6 +343,25 @@ describe("OpenAPI description of the index routes (R34)", () => {
     expect(accepts(schema, { ...body, version: "2" }, description)).toBe(false);
   });
 
+  it("describes the list of components as the one call of its path, with no parameter and no key", () => {
+    const list = paths["/view"];
+    expect(Object.keys(list ?? {})).toEqual(["get"]);
+    expect(valuesOf(list, "parameters")).toEqual([]);
+    expect(valuesOf(list, "security")).toEqual([]);
+    const [schema] = valuesOf(valuesOf(list, "responses"), "schema");
+    const listed = {
+      component: finding().component,
+      url: "https://git.fellbeck-tools.example/demo-plugin.git",
+      branch: "main",
+      state: "importing",
+    };
+    const body = { version: SCHEMA_VERSION, components: [listed] };
+    expect(accepts(schema, body, description)).toBe(true);
+    expect(accepts(schema, { ...body, components: [] }, description)).toBe(true);
+    expect(accepts(schema, { ...body, hint: "start with the first" }, description)).toBe(false);
+    expect(accepts(schema, { ...body, components: [{ ...listed, state: "clean" }] }, description)).toBe(false);
+  });
+
   it("gives a URL field the library's verdict, for every rule a pattern can state", () => {
     const [schema] = valuesOf(valuesOf(paths["/components"]?.["post"], "requestBody"), "schema");
     const verdictOf = (value: string): boolean => {

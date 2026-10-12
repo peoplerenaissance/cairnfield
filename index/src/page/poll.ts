@@ -1,6 +1,7 @@
-// The script of the page. It reads the view of the component in the page's address every
-// two seconds (KTD14) and puts on the page what `render.ts` draws for each answer. It adds
-// no data of its own: the page shows the endpoint's JSON and the time it was read.
+// The script of both pages. Every two seconds it reads the data endpoint of the page's
+// address (KTD14), the view of a component or the list of the index's components, and puts
+// on the page what `render.ts` draws for each answer. It adds no data of its own: a page
+// shows the endpoint's JSON and the time it was read.
 //
 // A drawing becomes the document through `createElement` and `createTextNode` alone, so
 // a value from a record or a registration is set as text and never parsed as markup.
@@ -8,7 +9,7 @@
 import { NOTHING_READ, draw, placeOf, readOf } from "./render.ts";
 import type { Drawing, Drawn } from "./render.ts";
 
-/** The page reads the view this often (KTD14). */
+/** A page reads its endpoint this often (KTD14). */
 const POLL_MS = 2000;
 /** One read may take this long. A read that has not ended by then counts as failed, so an answer that never comes cannot stop the reading. */
 const READ_MS = 10_000;
@@ -40,7 +41,7 @@ if (place !== undefined && view !== null) {
       const response = await fetch(place.viewPath, { cache: "no-store", signal: AbortSignal.timeout(READ_MS) });
       show(draw(place, held, readOf(await response.json()), Date.now()));
     } catch {
-      // No answer, an answer past its time, an answer that is no JSON, or a view that could not be drawn: the last view stays.
+      // No answer, an answer past its time, an answer that is no JSON, or one that could not be drawn: the last drawing stays.
       show(draw(place, held, { kind: "failed" }, Date.now()));
     } finally {
       // The next read is set whatever came of this one, so the page never stops reading without a word.

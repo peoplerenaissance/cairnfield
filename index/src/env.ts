@@ -9,7 +9,7 @@ export interface Env {
   readonly DB: D1Database;
   /** The queue that carries push notices, the checks on a copy that is importing and the looks at a patch record's commit (KTD11). */
   readonly SYNC: Pick<Queue<Message>, "send" | "sendBatch">;
-  /** The static assets of the Worker: the files of the page, as `npm run build` wrote them (KTD14). */
+  /** The static assets of the Worker: the files of the pages, as `npm run build` wrote them (KTD14). */
   readonly ASSETS: Pick<Fetcher, "fetch">;
   /** The Git URLs this index may import, with a space between two (KTD30). */
   readonly GIT_URLS: string;

@@ -1,8 +1,9 @@
-// The public page (R14, R15, R16): what the page of one component commit shows. The page
-// reads only the data endpoint (KTD14). So each test asks the index for a view as the
-// page's script does, and hands the answer to the functions that script calls. They give
-// the page as a tree of elements, which the script turns into the document. No test runs
-// a browser.
+// The public pages (R14, R15, R16): what the page of one component commit shows, and what
+// the index's own page shows. A page's script reads only a data endpoint (KTD14). So each
+// test asks the index for a view or for its list as the script does, and hands the answer
+// to the functions that script calls. They give the page as a tree of elements, which the
+// script turns into the document. The words and links a page holds apart from that are
+// written in its HTML file, and a test reads them there. No test runs a browser.
 
 import { VIEW, conforms, recordId } from "@cairnfield/protocol";
 import type { View } from "@cairnfield/protocol";
@@ -10,7 +11,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { NOTHING_READ, draw, placeOf, readOf } from "../src/page/render.ts";
 import type { Drawing, Drawn, Held, Place } from "../src/page/render.ts";
-import { BRANCH, FILES, HOST, INDEX, NODE_A, NODE_B, NODE_C, README, README_TEXT, SKILL, SKILL_FIXED, SKILL_TEXT, START, UPSTREAM, bench, claim, clockAt, demoPlugin, edited, finding, fixture, fixturesUnder, freshIndexForEachTest, idOf, onReadme, patchRecord, publishPatch, synced } from "./bench.ts";
+import { BRANCH, FILES, HOST, INDEX, NODE_A, NODE_B, NODE_C, README, README_TEXT, SKILL, SKILL_FIXED, SKILL_TEXT, OTHER_UPSTREAM, START, UPSTREAM, bench, claim, clockAt, demoPlugin, edited, finding, fixture, fixturesUnder, freshIndexForEachTest, idOf, onReadme, patchRecord, publishPatch, synced, threeComponents } from "./bench.ts";
 import type { Bench } from "./bench.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
 
@@ -28,7 +29,14 @@ function placeAt(address: string): Place {
   return place;
 }
 
-/** One read by the page at an address: the script asks the index for the view its address names, and draws the answer. */
+/** A page as its first read draws it. The body is handed over as the index would serve it. */
+function firstDrawing(place: Place, served: unknown): Drawing {
+  const { body } = draw(place, NOTHING_READ, readOf(JSON.parse(JSON.stringify(served))), START);
+  if (!body) throw new Error("the first read drew no page");
+  return body;
+}
+
+/** One read by the page at an address: the script asks the index for what its address names, a view or the list, and draws the answer. */
 async function read(on: Bench, address: string, held: Held = NOTHING_READ, now: number = START): Promise<Drawn> {
   const place = placeAt(address);
   const { body } = await on.call("GET", place.viewPath);
@@ -601,7 +609,7 @@ describe("a page narrowed by a teams query (KTD38)", () => {
     await synced(on, NODE_B);
 
     const address = `/components/${component}?teams=${encodeURIComponent(NODE_A)}`;
-    expect(placeAt(address)).toEqual({ component, narrowed: true, viewPath: `/components/${component}/view?teams=${encodeURIComponent(NODE_A)}` });
+    expect(placeAt(address)).toEqual({ kind: "component", component, narrowed: true, viewPath: `/components/${component}/view?teams=${encodeURIComponent(NODE_A)}` });
     const narrowed = await pageOf(on, component, `?teams=${encodeURIComponent(NODE_A)}`);
     expect(textOf(narrowed)).not.toContain(NODE_B);
     expect(textOf(narrowed)).toContain(NODE_A);
@@ -613,7 +621,7 @@ describe("a page narrowed by a teams query (KTD38)", () => {
     expect(textOf(notice)).toContain(NODE_A);
 
     // The whole view shows both teams, and says nothing of the kind.
-    expect(placeAt(`/components/${component}`)).toEqual({ component, narrowed: false, viewPath: `/components/${component}/view` });
+    expect(placeAt(`/components/${component}`)).toEqual({ kind: "component", component, narrowed: false, viewPath: `/components/${component}/view` });
     const whole = await pageOf(on, component);
     expect(textOf(whole)).toContain(NODE_B);
     expect(withClass(byId(whole, "findings"), "finding")).toHaveLength(2);
@@ -666,11 +674,205 @@ describe("a page narrowed by a teams query (KTD38)", () => {
     for (const error of ["unauthorized", "not-allowed", "limit-reached", "already-registered"]) expect([error, readOf({ version: "1", error })]).toEqual([error, { kind: "failed" }]);
   });
 
-  it("stands at the address of a component and at no other", () => {
+  it("stands at the address of a component, and at no other but the index's own", () => {
     expect(placeOf("/components/not-a-commit", "")).toBeUndefined();
     expect(placeOf(`/components/${"1F".repeat(20)}`, "")).toBeUndefined();
     expect(placeOf(`/components/${"1f".repeat(20)}/view`, "")).toBeUndefined();
-    expect(placeOf("/", "")).toBeUndefined();
+    // The list is data. No page stands at its address.
+    expect(placeOf("/view", "")).toBeUndefined();
+  });
+});
+
+describe("the index's own page (R14, KTD14)", () => {
+  /** The page of a list as its first read draws it. The list is handed over as the index would serve it. */
+  const drawnFrom = (components: readonly unknown[]): Drawing => firstDrawing(placeAt("/"), { version: "1", components });
+
+  /** The labels a row puts before a value. */
+  const LABELS = ["branch ", "commit "];
+
+  it("stands at the index's own address, where it reads the list and passes on no query", () => {
+    expect(placeOf("/", "")).toEqual({ kind: "index", viewPath: "/view" });
+    // The list takes no query, so none of the address reaches it: not the teams a component's page passes on, and no other.
+    expect(placeOf("/", "?teams=x")).toEqual({ kind: "index", viewPath: "/view" });
+    expect(placeOf("/", `?teams=${encodeURIComponent(NODE_A)}&shown=all`)).toEqual({ kind: "index", viewPath: "/view" });
+  });
+
+  it("lists the components in the order they were registered, under 'Components' with their count: each with its Git URL, its branch, its commit as a link to its page and its import state in words", async () => {
+    const { on, components } = await threeComponents();
+    expect(await on.call("GET", "/view")).toEqual({ status: 200, body: { version: "1", components } });
+
+    const { body, status } = await read(on, "/");
+    expect(withTag(body, "section").map((section) => section.attributes["id"])).toEqual(["components"]);
+    const section = byId(body, "components");
+    expect(withTag(section, "h2").map(textOf)).toEqual(["Components"]);
+    expect(withClass(section, "count").map(textOf)).toEqual(["3"]);
+
+    // One row for each, with its values in one order. A commit is shown by its first eight characters.
+    const rows = withTag(section, "li");
+    expect(rows.map((row) => texts(row).filter((text) => !LABELS.includes(text)))).toEqual([
+      [UPSTREAM, BRANCH, "c3c3c3c3", "imported"],
+      [OTHER_UPSTREAM, "next", "a1a1a1a1", "importing"],
+      [UPSTREAM, "gone", "b2b2b2b2", "import failed"],
+    ]);
+    expect(rows.map(tagsOf)).toEqual([["imported"], ["importing"], ["import failed"]]);
+    // The outline of a label carries meaning: solid for a copy the index holds, dashed for one it does not hold yet, and the rejected one for an import that failed.
+    expect(rows.map((row) => withClass(row, "tag").map((tag) => tag.attributes["class"]))).toEqual([["tag"], ["tag un"], ["tag rej"]]);
+    // The state is never drawn as the index stores it: "ready" would read as an all-clear.
+    expect(textOf(body)).not.toMatch(/ready/i);
+    expect(textOf(status)).not.toMatch(/ready/i);
+
+    // A row links to its repo, which is an HTTPS address, and to the page of its commit on this index.
+    expect(rows.map(linksOf)).toEqual(components.map(({ component, url }) => [url, `/components/${component}`]));
+    for (const [at, { component }] of components.entries()) {
+      const toPage = withTag(rows[at], "a").filter((link) => link.attributes["href"] === `/components/${component}`);
+      expect(toPage.map(textOf)).toEqual([`commit ${component.slice(0, 8)}`]);
+      // The link carries the commit whole, and a component's page stands there.
+      expect(placeAt(`/components/${component}`)).toMatchObject({ kind: "component", component });
+      expect(textOf(rows[at])).not.toContain(component);
+    }
+
+    // Every text is a value of the list, the count of its components or one of the page's own words. Each word is a label, and none says what to do.
+    const values = new Set(components.flatMap(({ component, url, branch }) => [url, branch, component.slice(0, 8)]));
+    const words = ["Components", "3", ...LABELS, "imported", "importing", "import failed"];
+    expect([...new Set(texts(body).filter((text) => !values.has(text)))].sort()).toEqual([...words].sort());
+    // No element carries anything but a class, a target and the address of a link.
+    for (const element of elements(body)) {
+      for (const name of Object.keys(element.attributes)) expect(["class", "id", "href"]).toContain(name);
+    }
+  });
+
+  it("shows 'No component registered' for an index that holds none, and no row", async () => {
+    const on = bench();
+    expect(await on.call("GET", "/view")).toEqual({ status: 200, body: { version: "1", components: [] } });
+
+    const { body, status } = await read(on, "/");
+    const section = byId(body, "components");
+    expect(withTag(section, "h2").map(textOf)).toEqual(["Components"]);
+    expect(withClass(section, "empty").map(textOf)).toEqual(["No component registered"]);
+    expect(withTag(body, "li")).toEqual([]);
+    expect(linksOf(body)).toEqual([]);
+    // The index was read and it answered: an empty list is no failed read.
+    expect(textOf(status)).toContain("12:00:00 UTC");
+    expect(textOf(status)).not.toMatch(/failed|could not be read/i);
+  });
+
+  it("shows a Git URL and a branch that hold markup as text, and makes no element from either", () => {
+    const component = "1f".repeat(20);
+    // The index takes neither spelling in a registration. The page is handed them as an index that did would serve them.
+    const gitUrl = "https://git.fellbeck-tools.example/<img src=x onerror=alert(1)>.git";
+    const branch = '"><script>alert(1)</script><b class="tag">';
+    const plain = drawnFrom([{ component, url: UPSTREAM, branch: BRANCH, state: "ready" }]);
+    const hostile = drawnFrom([{ component, url: gitUrl, branch, state: "ready" }]);
+
+    // Each is one text of the page, whole and unchanged.
+    expect(texts(hostile).filter((text) => text === gitUrl)).toHaveLength(1);
+    expect(texts(hostile).filter((text) => text === branch)).toHaveLength(1);
+    // The page is made of the same elements as with plain values: no value became an element or the name of an attribute.
+    const shape = (page: Drawing): unknown[] => elements(page).map((element) => [element.tag, Object.keys(element.attributes)]);
+    expect(shape(hostile)).toEqual(shape(plain));
+    expect(withTag(hostile, "img")).toEqual([]);
+    expect(withTag(hostile, "script")).toEqual([]);
+    // The address reaches an attribute only as the target of its own link, and the branch reaches none.
+    for (const element of elements(hostile)) {
+      for (const [name, value] of Object.entries(element.attributes)) {
+        if (name === "href") expect([gitUrl, `/components/${component}`]).toContain(value);
+        else expect(value).not.toMatch(/[<>"]/);
+      }
+    }
+  });
+
+  it("keeps the link of a commit on the index, whatever the list gives as the commit", () => {
+    // The index holds a component only by its full commit hash. The page is handed these as an index that held another value would serve them.
+    for (const component of ["//git.fellbeck-tools.example/x", "javascript:alert(1)", "../../view", "\\\\git.fellbeck-tools.example/x"]) {
+      const page = drawnFrom([{ component, url: UPSTREAM, branch: BRANCH, state: "ready" }]);
+      const [toPage = ""] = linksOf(page).filter((href) => href !== UPSTREAM);
+      expect(toPage).toBe(`/components/${component}`);
+      // Read as a browser reads it, the link leads nowhere but the index.
+      expect(new URL(toPage, INDEX).origin).toBe(INDEX);
+    }
+  });
+
+  it("shows a Git URL that is not HTTPS as text, and as no link", () => {
+    const component = "1f".repeat(20);
+    for (const spelling of ["http://git.fellbeck-tools.example/fellbeck-sync.git", "javascript:alert(1)//git.fellbeck-tools.example", "//git.fellbeck-tools.example/fellbeck-sync.git", "git.fellbeck-tools.example/fellbeck-sync.git"]) {
+      const page = drawnFrom([{ component, url: spelling, branch: BRANCH, state: "ready" }]);
+      expect(texts(page)).toContain(spelling);
+      // The one link of the row is the commit's, to its page on this index.
+      expect(linksOf(page)).toEqual([`/components/${component}`]);
+      for (const link of withTag(page, "a")) expect(textOf(link)).not.toContain(spelling);
+    }
+  });
+
+  it("says each time when the list was read, and draws it again only when it changed", async () => {
+    const on = bench();
+    const commit = await on.artifacts.host(UPSTREAM, BRANCH, FILES);
+    await on.registerComponent({ url: UPSTREAM, branch: BRANCH, commit });
+    await on.deliver();
+
+    const first = await read(on, "/", NOTHING_READ, START);
+    expect(withTag(first.body, "li").map(tagsOf)).toEqual([["importing"]]);
+    expect(textOf(first.status)).toContain("12:00:00 UTC");
+
+    // Two seconds on, the index serves the same list.
+    const second = await read(on, "/", first.held, START + 2000);
+    expect(second.body).toBeUndefined();
+    expect(textOf(second.status)).toContain("12:00:02 UTC");
+
+    // The copy is ready, so the state of the one component changes.
+    on.artifacts.finish();
+    await on.drain();
+    const third = await read(on, "/", second.held, START + 4000);
+    expect(withTag(third.body, "li").map(tagsOf)).toEqual([["imported"]]);
+    expect(textOf(third.status)).toContain("12:00:04 UTC");
+  });
+
+  it("reads the view of a component at the index's address, and the list at a component's, as a failed read that keeps the last drawing", async () => {
+    const on = bench();
+    const component = await on.component();
+    const view = await on.view(component);
+    const { body: list } = await on.call("GET", "/view");
+
+    // The index's own page is handed a view. Nothing is drawn over the list on screen.
+    const listed = await read(on, "/", NOTHING_READ, START);
+    expect(listed.body).toBeDefined();
+    const atIndex = draw(placeAt("/"), listed.held, readOf(view), START + 2000);
+    expect(atIndex.body).toBeUndefined();
+    expect(atIndex.held.last).toEqual(listed.held.last);
+    expect(textOf(atIndex.status)).toMatch(/failed/i);
+    expect(textOf(atIndex.status)).toContain("12:00:00 UTC");
+    expect(textOf(atIndex.status)).not.toContain("12:00:02 UTC");
+
+    // A component's page is handed the list. The view on screen stays.
+    const viewed = await read(on, `/components/${component}`, NOTHING_READ, START);
+    expect(viewed.body).toBeDefined();
+    const atComponent = draw(placeAt(`/components/${component}`), viewed.held, readOf(list), START + 2000);
+    expect(atComponent.body).toBeUndefined();
+    expect(atComponent.held.last).toEqual(viewed.held.last);
+    expect(textOf(atComponent.status)).toMatch(/failed/i);
+    expect(textOf(atComponent.status)).toContain("12:00:00 UTC");
+
+    // A refusal says nothing of the list, whatever its code: the index's own page names no commit and passes on no teams.
+    for (const error of ["not-found", "bad-request", "unauthorized"]) {
+      const refused = draw(placeAt("/"), listed.held, readOf({ version: "1", error }), START + 2000);
+      expect([error, refused.body]).toEqual([error, undefined]);
+      expect(refused.held.last).toEqual(listed.held.last);
+      expect(textOf(refused.status)).toMatch(/failed/i);
+    }
+
+    // The next read of the list shows its own time again, and draws nothing: the list is the one on screen.
+    const again = await read(on, "/", atIndex.held, START + 4000);
+    expect(again.body).toBeUndefined();
+    expect(textOf(again.status)).not.toMatch(/failed/i);
+    expect(textOf(again.status)).toContain("12:00:04 UTC");
+  });
+
+  it("says that the index could not be read when the first read fails, and draws no list", () => {
+    for (const answer of [{ kind: "failed" } as const, readOf({ version: "1", error: "not-found" }), readOf("<html>")]) {
+      const failed = draw(placeAt("/"), NOTHING_READ, answer, START);
+      expect(failed.body).toBeUndefined();
+      expect(failed.held.last).toBeUndefined();
+      expect(textOf(failed.status)).toContain("The index could not be read");
+    }
   });
 });
 
@@ -764,19 +966,13 @@ describe("a value from a record or a registration (KTD14, KTD33)", () => {
     return { place: placeAt(`/components/${component}`), view: await on.view(component) };
   }
 
-  const drawnFrom = (place: Place, view: View): Drawing => {
-    const { body } = draw(place, NOTHING_READ, readOf(JSON.parse(JSON.stringify(view))), START);
-    if (!body) throw new Error("the first read drew no page");
-    return body;
-  };
-
   it("is shown as text when it holds markup: a Git URL and a node URL", async () => {
     const { place, view } = await served();
     // The index takes neither spelling in a registration. The page is handed them as an index that did would serve them.
     const gitUrl = "https://git.fellbeck-tools.example/<img src=x onerror=alert(1)>.git";
     const nodeUrl = 'https://node.team-a.example/"><script>alert(1)</script><b class="org">';
-    const plain = drawnFrom(place, view);
-    const hostile = drawnFrom(place, replaced(replaced(view, UPSTREAM, gitUrl), NODE_A, nodeUrl));
+    const plain = firstDrawing(place, view);
+    const hostile = firstDrawing(place, replaced(replaced(view, UPSTREAM, gitUrl), NODE_A, nodeUrl));
 
     // Each is one text of the page, whole and unchanged.
     expect(texts(hostile)).toContain(gitUrl);
@@ -798,13 +994,13 @@ describe("a value from a record or a registration (KTD14, KTD33)", () => {
 
   it("is no link when it is a node URL that is not HTTPS, and is shown as text", async () => {
     const { place, view } = await served();
-    const plain = drawnFrom(place, view);
+    const plain = firstDrawing(place, view);
     // An HTTPS node URL is a link to the node, and the Git URL a link to the repo.
     expect(linksOf(plain)).toContain(NODE_A);
     expect(linksOf(plain)).toContain(UPSTREAM);
 
     for (const spelling of ["http://node.team-a.example", "javascript:alert(1)//node.team-a.example", "//node.team-a.example", "node.team-a.example"]) {
-      const page = drawnFrom(place, replaced(replaced(view, NODE_A, spelling), UPSTREAM, spelling));
+      const page = firstDrawing(place, replaced(replaced(view, NODE_A, spelling), UPSTREAM, spelling));
       expect(texts(page)).toContain(spelling);
       expect(linksOf(page).filter((href) => !href.startsWith("#"))).toEqual([]);
       for (const link of withTag(page, "a")) expect(textOf(link)).not.toContain(spelling);
@@ -826,11 +1022,41 @@ describe("a value from a record or a registration (KTD14, KTD33)", () => {
   });
 });
 
-describe("the page's address on the index (KTD14)", () => {
+describe("the pages' addresses on the index (KTD14)", () => {
   /** The directives of a content security policy, each with its sources. */
   function policyOf(response: Response): Map<string, string[]> {
     const directives = (response.headers.get("content-security-policy") ?? "").split(";").map((directive) => directive.trim().split(/\s+/));
     return new Map(directives.flatMap(([name, ...sources]) => (name ? [[name.toLowerCase(), sources]] : [])));
+  }
+
+  // The two addresses outside the index that a page links to. Both are written in the page's file.
+  const SITE = "https://cairnfield.net";
+  const REPO = "https://github.com/peoplerenaissance/cairnfield";
+
+  /** The addresses a page's file names: the files it loads, and where its links lead, in the order of the file. */
+  function addressesIn(html: string): { loads: string[]; links: string[] } {
+    const named = [...html.matchAll(/<([a-z]+)\b[^>]*?\s(?:src|href)="([^"]*)"/g)].map(([, tag = "", address = ""]) => ({ tag, address }));
+    // Every `src` and `href` of the file is one of them, however it is written.
+    expect(html.match(/\s(?:src|href)\s*=/g)).toHaveLength(named.length);
+    return {
+      loads: named.filter(({ tag }) => tag !== "a").map(({ address }) => address),
+      links: named.filter(({ tag }) => tag === "a").map(({ address }) => address),
+    };
+  }
+
+  /** The words a page's file holds: each text between two tags, in the order of the file. */
+  const wordsIn = (html: string): string[] => html.split(/<[^>]*>/).map((text) => text.replace(/\s+/g, " ").trim()).filter((text) => text !== "");
+
+  /** A page's file works under the policy: it holds no script, style or handler written into it, and loads only files the index serves itself. */
+  function worksUnderThePolicy(html: string): void {
+    expect(html).toContain('id="status"');
+    expect(html).not.toMatch(/<script(?![^>]*\ssrc=)/i);
+    expect(html).not.toMatch(/<style|\sstyle\s*=|\son[a-z]+\s*=/i);
+    // Its one script is a module: `poll.js` imports `render.js`, and only a module imports.
+    expect(html.match(/<script\b[^>]*>/gi)).toEqual(['<script type="module" src="/page/poll.js">']);
+    expect(addressesIn(html).loads.sort()).toEqual(["/page/poll.js", "/page/styles.css"]);
+    // The script replaces what is under this element on each draw, so the file puts nothing there.
+    expect(html).toContain('<main id="view"></main>');
   }
 
   it("answers the page with a content security policy that allows no inline script", async () => {
@@ -855,15 +1081,75 @@ describe("the page's address on the index (KTD14)", () => {
     // The page works under that policy: it is the file of `src/page/`, with no script, style or handler written into it.
     const html = await response.text();
     expect(html).toBe(env.PAGE_FILES["page.html"]);
-    expect(html).toContain('<main id="view">');
-    expect(html).toContain('id="status"');
-    expect(html).not.toMatch(/<script(?![^>]*\ssrc=)/i);
-    expect(html).not.toMatch(/<style|\sstyle\s*=|\son[a-z]+\s*=/i);
-    // Its one script is a module: `poll.js` imports `render.js`, and only a module imports.
-    expect(html.match(/<script\b[^>]*>/gi)).toEqual(['<script type="module" src="/page/poll.js">']);
-    // What it loads are files the index serves itself.
-    const loaded = [...html.matchAll(/\s(?:src|href)="([^"]*)"/g)].map(([, path = ""]) => path).sort();
-    expect(loaded).toEqual(["/page/poll.js", "/page/styles.css"]);
+    worksUnderThePolicy(html);
+    // Its links lead to the index's own page, the site and the repo, and nowhere else.
+    expect(addressesIn(html).links).toEqual(["/", SITE, REPO]);
+  });
+
+  it("answers the index's own address with its page, under the policy of a component's page", async () => {
+    const on = bench();
+    const component = await on.component();
+
+    const response = await on.get("/");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    const policy = response.headers.get("content-security-policy");
+    expect(policy).toMatch(/default-src 'none'/);
+    expect(policy).toBe((await on.get(`/components/${component}`)).headers.get("content-security-policy"));
+
+    // It is the file of `src/page/`, and it works under that policy as the page of a component does.
+    const html = await response.text();
+    expect(html).toBe(env.PAGE_FILES["root.html"]);
+    worksUnderThePolicy(html);
+    // Its links lead to the site and the repo, and nowhere else.
+    expect(addressesIn(html).links).toEqual([SITE, REPO]);
+    // The query of the address changes nothing: the page passes none of it on.
+    expect(await (await on.get("/?teams=x")).text()).toBe(html);
+  });
+
+  // The words below are each page's own: they are written in its file and come from no
+  // record. They say what the page is and what an index is, and name where two links
+  // lead. None tells a reader to do something (R35). A change to a word shows here.
+  it("says what an index is and what each page is in words of its own, outside the element its script draws in", () => {
+    const [root = "", page = ""] = [env.PAGE_FILES["root.html"], env.PAGE_FILES["page.html"]];
+    const index =
+      "An index is a service that reads the nodes registered with it. For each version of a component it shows every team's findings, patches and recipes together, each checked against the index's own copy of that component. An index holds nothing original and gives no verdict. It is not what a team builds from: each team's command fetches patches from the nodes of the teams that wrote them, and checks them again.";
+    const component = "This page shows one version of one component, as this index holds it.";
+    expect(wordsIn(root)).toEqual([
+      "Cairnfield index",
+      "Cairnfield",
+      "index",
+      "Reading the index",
+      "Cairnfield index",
+      index,
+      "The list of components needs the page's script. The rest of this page does not.",
+      "The Cairnfield site",
+      "The source repository",
+    ]);
+    expect(root).toContain("<h1>Cairnfield index</h1>");
+    expect(root).toContain("<title>Cairnfield index</title>");
+    expect(wordsIn(page)).toEqual([
+      "Cairnfield index: one component version",
+      "Cairnfield",
+      "index",
+      "Index",
+      "Reading the index",
+      component,
+      "This page draws what the index serves as data, and it needs its script to do so.",
+      "The Cairnfield site",
+      "The source repository",
+    ]);
+    // The link in the bar of a component's page is the one that leads to the index's own page.
+    expect(page).toMatch(/<a\b[^>]*\shref="\/"[^>]*>Index<\/a>/);
+    // Each page says what it is before the element its script draws in, and its links to the site and the repo come after it.
+    for (const [html, said] of [[root, index], [page, component]] as const) {
+      const drawn = html.indexOf('<main id="view"></main>');
+      expect(html.indexOf(said)).toBeGreaterThan(html.indexOf('id="status"'));
+      expect(html.indexOf(said)).toBeLessThan(drawn);
+      expect(html.indexOf(`href="${SITE}"`)).toBeGreaterThan(drawn);
+      expect(html.indexOf(`href="${REPO}"`)).toBeGreaterThan(drawn);
+    }
   });
 
   it("serves the page's script and stylesheet with their media types, and never lets a browser guess one", async () => {
@@ -897,11 +1183,13 @@ describe("the page's address on the index (KTD14)", () => {
     expect(await on.call("GET", `/components/${"1F".repeat(20)}`)).toEqual(notFound);
     expect(await on.call("GET", `/components/${"1f".repeat(20)}/`)).toEqual(notFound);
     expect(await on.call("GET", "/page/missing.js")).toEqual(notFound);
-    // The page is served for a component and under no name of its own.
+    // The page is served for a component and under no name of its own, and the index's own page at the index's address alone.
     expect(await on.call("GET", "/page/page.html")).toEqual(notFound);
+    expect(await on.call("GET", "/page/root.html")).toEqual(notFound);
     expect(await on.call("GET", "/page/")).toEqual(notFound);
     expect(await on.call("GET", "/page/..%2Fwrangler.jsonc")).toEqual(notFound);
     expect(await on.call("POST", `/components/${"1f".repeat(20)}`)).toEqual(notFound);
+    expect(await on.call("POST", "/")).toEqual(notFound);
     // The assets binding was asked for the one file it does not hold, and for nothing a path made up.
     expect(on.assets.asked).toEqual(["/page/missing.js"]);
   });
