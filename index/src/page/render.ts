@@ -487,7 +487,7 @@ function listedRow({ component, url, branch, state }: Listed): Drawing {
   );
 }
 
-/** The index's own page: every component the index holds, in the order of the list, which is the order they were registered in. */
+/** The index's own page: every component the index holds, in the order of the list, which is the order they were first registered in. */
 function listed({ components }: ComponentList): Drawing {
   // An index with no component says so in words of its own. A count of nought is not drawn, as on a component's page (R14).
   const shown = components.length === 0 ? empty("No component registered") : [el("span", { class: "count" }, String(components.length)), el("ul", { class: "rows" }, components.map(listedRow))];
