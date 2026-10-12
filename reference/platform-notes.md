@@ -125,7 +125,7 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - A read token then listed that ref with `git ls-remote` and fetched it. The fetched ref was the commit that was pushed. Its tree held one entry, named by the commit the note was on.
 - A push of the notes ref sends a `pushed` event, as the table says. So a node's push Workflow starts on it.
 
-**Not known.** What a fetch that brings nothing new sends. Whether one event can arrive twice. What a subscription for one repo delivers to a queue: the check did not need one and did not try it.
+**Not known.** What a fetch that brings nothing new sends. Whether one event can arrive twice. Whether an import brings a notes ref of the repo it imports into a copy, and so into the forks of that copy. What a subscription for one repo delivers to a queue: the check did not need one and did not try it.
 
 ## Deployed nodes and index
 

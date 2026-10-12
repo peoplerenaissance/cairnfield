@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { INDEX_ROUTES, MAX_RECORD_BYTES, NODE_ROUTES, TEAM_BRANCH, validateRecordFile } from "@cairnfield/protocol";
 import type { FileMode } from "@cairnfield/protocol";
 import type { Home } from "../config.ts";
-import { fetchRef, inputLines, readBlobs, said, withScratch, writeBlobs } from "../git.ts";
+import { MAX_PUSH_TRIES, RETRY_SPREAD_MS, fetchRef, inputLines, readBlobs, said, wasRejected, withScratch, writeBlobs } from "../git.ts";
 import type { Access, Scratch } from "../git.ts";
 import type { Io } from "../io.ts";
 import { checkOutbox } from "../outbox.ts";
@@ -25,10 +25,6 @@ import { verdict } from "./validate.ts";
 const BRANCH = `refs/heads/${TEAM_BRANCH}`;
 /** A record file is a plain file. */
 const RECORD_MODE: FileMode = "100644";
-/** Three runs at once all landed within three tries on Artifacts, so this leaves room. */
-const MAX_TRIES = 6;
-/** A try waits up to this long, times its number, so runs that collide spread out. */
-const RETRY_SPREAD_MS = 400;
 
 /** A record file as Git holds it: its path in the team repo and the blob of its bytes. */
 interface Stored {
@@ -82,11 +78,6 @@ async function notYetIn(scratch: Scratch, commit: string, files: readonly Stored
   return missing;
 }
 
-/** Whether the remote turned the push down because the branch is not where the push expects it. */
-function wasRejected(porcelain: string): boolean {
-  return porcelain.split("\n").some((line) => line.startsWith("!\t"));
-}
-
 interface Landed {
   /** The commit the team branch points to. */
   readonly head: string | undefined;
@@ -117,7 +108,7 @@ async function push(io: Io, scratch: Scratch, access: Access, records: readonly 
       mayFail: true,
     });
     if (pushed.code === 0) return { head: commit, published: added.map(({ path }) => path) };
-    if (!wasRejected(said(pushed)) || attempt === MAX_TRIES) {
+    if (!wasRejected(said(pushed)) || attempt === MAX_PUSH_TRIES) {
       await scratch.report(pushed);
       return stop(EXIT.git, "git-failed", { step: "push" });
     }
