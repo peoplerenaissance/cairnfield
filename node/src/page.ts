@@ -212,23 +212,26 @@ interface Page {
 // promise, so requests that arrive during a walk wait for that walk and start none.
 let kept: { readonly at: number; readonly page: Promise<Page> } | undefined;
 
-// The page of the last walk that ended well. It is kept as a value and not as the promise
-// of its walk, so a walk that fails waits on no walk before it: one that never ended
-// would hold every failed walk after it.
-let lastRead: Page | undefined;
+// The page of the walk that began last, of those that ended well, with the time that walk
+// began. It is kept as a value and not as the promise of its walk, so a walk that fails
+// waits on no walk before it: one that never ended would hold every failed walk after it.
+let lastRead: { readonly at: number; readonly page: Page } | undefined;
 
 /** The page of a walk that begins at `at`. */
 async function drawn(env: Env, at: number): Promise<Page> {
   // The address is drawn only in the one spelling in which it is this Worker's origin (KTD8).
   const address = isNodeOrigin(env.NODE_URL) ? env.NODE_URL : undefined;
   try {
-    lastRead = { status: 200, html: documentOf(address, at, await listed(env.ARTIFACTS)) };
-    return lastRead;
+    const page: Page = { status: 200, html: documentOf(address, at, await listed(env.ARTIFACTS)) };
+    // A walk that lasts longer than a page is kept can end after the walk that began next.
+    // Its page is the older of the two, so it does not take the newer one's place.
+    if (!lastRead || at >= lastRead.at) lastRead = { at, page };
+    return page;
   } catch {
     // Artifacts failed. The last page that came from a walk is served on: it says when it
     // was drawn. With none, the answer says in fixed words that the repo could not be read.
     // Either is kept as any page is, so a failing Artifacts is asked once in that time.
-    if (lastRead) return lastRead;
+    if (lastRead) return lastRead.page;
     const lines = [`<p class="none">${escaped(WORDS.unreadable)}</p>`];
     return { status: 503, html: documentOf(address, at, { head: undefined, lines }) };
   }

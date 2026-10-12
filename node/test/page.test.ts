@@ -390,6 +390,60 @@ describe("the node's page", () => {
     expect(drawnAt(failed)).toBe(START + 31 * SECOND);
   });
 
+  it("serves the page of the later walk when Artifacts fails, though the walk before it ended after it", async () => {
+    // This store holds one walk between its read of the head and its read of the tree, until the test lets it go.
+    let hold: Promise<void> | undefined;
+    let waiting = (): void => {};
+    let letGo = (): void => {};
+    class Holding extends FakeArtifacts {
+      override async get(name: string): Promise<ArtifactsRepo> {
+        const repo = await super.get(name);
+        return {
+          ...repo,
+          log: async (opts) => {
+            const commits = await repo.log(opts);
+            const held = hold;
+            hold = undefined;
+            if (held) {
+              waiting();
+              await held;
+            }
+            return commits;
+          },
+        };
+      }
+    }
+    const { artifacts, node, team, head } = await published(filesAt([CLAIM]), undefined, new Holding());
+    const reached = new Promise<void>((resolve) => {
+      waiting = resolve;
+    });
+    hold = new Promise<void>((resolve) => {
+      letGo = resolve;
+    });
+    const first = read(node.get(""));
+    await reached;
+
+    // The node has kept that walk for its 30 seconds, and the team has pushed. The next walk reads the new head and ends first.
+    vi.setSystemTime(START + 31 * SECOND);
+    const pushed = await artifacts.push(team, "main", filesAt([CLAIM, FINDING]));
+    const later = await read(node.get(""));
+    expect(later.texts).toContain(pushed);
+    expect(drawnAt(later)).toBe(START + 31 * SECOND);
+
+    // The first walk ends now, with the head it read before the push. Whoever waited on it gets its page.
+    letGo();
+    const earlier = await first;
+    expect(earlier.texts).toContain(head);
+    expect(drawnAt(earlier)).toBe(START);
+
+    // The walk after both fails. The page that began later is the one the node serves.
+    vi.setSystemTime(START + 62 * SECOND);
+    artifacts.getFailures = 1;
+    const failed = await read(node.get(""));
+    expect([failed.status, failed.html]).toEqual([200, later.html]);
+    expect(artifacts.getFailures).toBe(0);
+  });
+
   it("answers 503 with fixed words when Artifacts fails and no page is kept, and keeps that answer for 30 seconds", async () => {
     const { artifacts, node, head } = await published(filesAt([CLAIM]));
     artifacts.getFailures = 1;
