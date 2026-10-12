@@ -252,6 +252,8 @@ npm run setup
 
 The script deploys the node on `workers.dev`, or on a hostname of your own. It stops when Wrangler is not logged in, deletes nothing, and never makes, reads or stores the node's admin key. You set that key by hand, and the node refuses every admin call until you do. [`node/README.md`](node/README.md) gives the options, what the script creates, how to set the key and how to check the node.
 
+A node answers its own address with a page that lists the records its team has published, by component. The page is the team's own list: nothing on it was checked, and no index and no command reads it.
+
 The script's tests run it against a stand-in for Wrangler. It has not run on a Cloudflare account yet.
 
 A one-click deploy button waits on platform support. Cloudflare's documentation for the button does not list Artifacts, Workflows or event triggers among what it sets up, and nobody has tested it on a node.
@@ -339,7 +341,7 @@ Some limits belong to the design and not to the prototype. Every node is public,
 - **Naming a team in a lens is a statement of trust.** `assemble` checks that team's patches against the lines their findings cite. The checks bound where a patch changes, not what it writes. The operator reads the diff.
 - **A hostile component can steer the patch agent.** The bundled agent reads a checkout, and text there may lead it to write a harmful patch. The patch checks bound what a patch can change, and the operator reads the full diff before the verdict.
 - **An outside agent must not run in a shell that holds the node's admin key or an index's registration key.** A team's own review agent stops at `validate`, which needs no key. The command cannot enforce where a key is set.
-- **Anonymous requests can spend a node's Artifacts request budget.** A node's `records`, `file`, `patch` and `blob` routes read Artifacts on every request, for anyone. Only the read-token route is bounded. The demo accepts this.
+- **Anonymous requests can spend a node's Artifacts request budget.** A node's `records`, `file`, `patch` and `blob` routes read Artifacts on every request, for anyone. Only the read-token route and the node's own page are bounded: a node keeps its page for 30 seconds, so views of it walk the team repo at most once in that time for each isolate. Each link on that page leads to the `file` route. The demo accepts this.
 
 ### Disclosure policy
 
@@ -356,7 +358,7 @@ This table describes today.
 | Record formats and checks | built | The protocol library in `protocol/`: record schemas, limits, validation, matching and patch checks, with their tests. |
 | Protocol, threat model and platform notes | written | In `reference/`. `protocol.md` states each requirement and decision that a comment in the code cites, under the same ID. `threat-model.md` says for each threat what the prototype builds, and holds the disclosure policy. `platform-notes.md` keeps apart what was seen on the platform and what was only read in its documentation. |
 | Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its two commits are public at https://github.com/peoplerenaissance/fellbeck-sync, so a node can import them. |
-| Team node | built and deployed | The Worker in `node/`: the node contract, the admin routes and the push Workflow. Two demo nodes run on Cloudflare. Each has imported the demo plugin and made its fork, and Artifacts refused a push made with a node's public read token. One of them holds a patch commit and passes the contract check in `scripts/check-node-contract.ts`. |
+| Team node | built and deployed | The Worker in `node/`: the node contract, the admin routes and the push Workflow. Two demo nodes run on Cloudflare. Each has imported the demo plugin and made its fork, and Artifacts refused a push made with a node's public read token. One of them holds a patch commit and passes the contract check in `scripts/check-node-contract.ts`. A node also answers its own address with a page that lists what its team repo holds: each component, and each record by its type and ID with a link to its file on the node. The page is the team's own list, and nothing on it was checked. It draws only the parts of a record's path, the head, the node's address and the time it was drawn. It runs no script, and the node keeps it for 30 seconds. The tests read the page in the Workers runtime. On October 11, 2026, it was opened in a browser from a local address, over the tests' stand-in for Artifacts and with the headers a node sets. The two demo nodes do not serve it yet. |
 | Setup script for a team node | built, not run on an account | `npm run setup` in `node/` deploys a team node on `workers.dev` or on a hostname of the team's own. It checks each address before it deploys anything, stops when Wrangler is not logged in, deletes nothing and never touches the admin key. Its tests run it against a stand-in for Wrangler and a fake node. It has not run on a Cloudflare account yet. |
 | Index | built in part, deployed | The Worker in `index/`: it registers nodes and components with a key, imports its own copy of a component, takes push notices through a queue, reads each node over HTTP and checks every record against its own copy. For a patch record it asks the node for the commit's parent, changed paths and blobs, holds each blob to its hash and runs the patch checks against its own copy. It stores the patch as valid with the ID, kind, size and changed lines it computed, or as rejected with a reason. A commit the node does not serve yet is asked for again for about ten minutes. After that the record stays pending while the node does not serve the commit or a finding it names is not valid. Each later sync of the node looks again at up to 120 of the node's waiting patch records, in turn, so a node with more of them is covered over several syncs. The index also looks again when a finding the record names turns valid. It serves one view per component commit: findings in match groups with their confirmations, patches side by side where their changed lines overlap or adjoin, identical patches as one entry that lists its organizations, claims with their state, recipes, and pending and rejected work. A `teams` query narrows a view to the nodes it lists. Registering a failed component again retries its import with the Git URL and branch the index stored for it. A component whose finished copy does not hold the commit fails again until that copy is deleted by hand. A new URL or branch for a commit is not taken. The index also serves one page per component commit, at `/components/<commit>`. It lists the components it holds at `GET /view`, and serves a page of its own at `/` that reads that list every two seconds and draws each component's Git URL, branch, commit and import state. That page was deployed on October 11, 2026, and lists the demo plugin's two commits. The page reads the view every two seconds and draws nothing else: live claims, findings by criterion with their confirmations and disputes, patches side by side, recipes with a tree hash labelled as published and not checked, and pending and rejected work. A commit nobody registered, a copy still importing, a failed import and a version with no findings each have a label of their own, and none reads as an all-clear. A `teams` query narrows the page as it narrows the view. Every value from a record or a registration is set as text, a link leaves the page only for an HTTPS address, and the page is served with a content security policy that allows no inline script. After a failed read the last view stays, with the time it was read. The page does not show cited lines, a row per host, the index lag or a fold for a long group of patches. The tests use a local database and stand-ins for Artifacts, the queue, the static assets and the nodes, with patch commits made by hand. They call the pages' drawing code with no browser. A demo index is deployed. On it, the findings and patches of two demo teams appeared in the view and on the page: two patches on adjoining lines side by side, one patch that both teams wrote as one confirmed entry, and a patch made by hand rejected as out of scope. Both of its pages were opened in a browser on October 11, 2026, and drew what the index served. |
 | The command | built in part | `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim`, `view`, `patch`, `assemble`, `decide`, `approvals`, `verify` and `carry`. A team working alone needs a node and no index. |
@@ -369,7 +371,7 @@ This table describes today.
 | Scale run | not in the prototype | A simulator would register a few hundred nodes with one index. `sim/` holds a placeholder. |
 | One-click deploy button for the team node | waiting on the platform | To be switched on once Cloudflare's button supports Artifacts, Workflows and push triggers. A setup script deploys the node until then. Nobody has tested the button on the node. |
 | Carrying other teams' work to a new version, domain verification, sealed findings | not in the prototype | Described in the repository. |
-| Deploys from Artifacts through Workers Builds, and a page on each node | not in the prototype | Described under "Ideas that are not built". |
+| Deploys from Artifacts through Workers Builds | not in the prototype | Described under "Ideas that are not built". |
 
 The build plan named three things to cut if time ran short: `carry`, the display of live claims and the demo's rejected patch. None was cut.
 
@@ -408,7 +410,7 @@ The prototype is a slice of a larger design. This is what the slice leaves out.
 - **A check that a blind pass was really blind.**
 - **A local mode with no node.** Records and patch commits would live in a local repo until the team publishes. A team could then start before it has a Workers Paid account.
 
-Three more are under "Ideas that are not built" below.
+Two more are under "Ideas that are not built" below.
 
 ## Ideas that are not built
 
@@ -419,16 +421,12 @@ Cloudflare can deploy a Worker from an Artifacts repository through Workers Buil
 
 We would not deploy from the records repo. A push there would become a deploy, and a token that can write records could then change a Worker.
 
-A third idea needs no build step.
-
-- **A page on each node.** A node already serves its records over HTTP. It could also render a page of its own work on each request, so a reader sees a team's work at the source without the index. The page would be that team's own unchecked view, and no agent would read it.
-
 ## What is here
 
 | Path | Holds |
 | --- | --- |
 | `protocol/` | The protocol library: every record, limit and check, as pure functions with no platform dependency. |
-| `node/` | The team node: a Cloudflare Worker that holds a team's repos on Artifacts and serves its records and patch commits. `node/scripts/` holds the setup script that deploys it. |
+| `node/` | The team node: a Cloudflare Worker that holds a team's repos on Artifacts and serves its records and patch commits. At its own address it serves a page that lists the team's records. `node/scripts/` holds the setup script that deploys it. |
 | `index/` | The index: a Cloudflare Worker that reads registered nodes over HTTP, checks their records against its own copy of each component and serves one view per component commit. It serves data and never instructions. `index/src/page/` holds the two public pages, which draw a view or the list of components for a person. `npm run build` in `index/` writes the pages to `dist/`, and the Worker serves them from there. |
 | `cli/` | The `cairnfield` command: it pins a component, validates the outbox of record files, publishes it to the team's node, writes patches with a bundled agent, builds the team's patched copy, keeps the team's verdicts, checks an installed copy and carries the team's own findings and patches to a newer commit. |
 | `skills/` | The skill file for a team's own review agent: how to write finding records and check them with `validate`. |

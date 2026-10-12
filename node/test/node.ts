@@ -4,7 +4,7 @@
 
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import type { Env } from "../src/env.ts";
 import worker from "../src/index.ts";
 import type { FakeArtifacts } from "./fake-artifacts.ts";
@@ -17,14 +17,21 @@ export const ADMIN_KEY = "test-admin-key";
 
 export interface TestNode {
   get(path: string): Promise<Response>;
+  /** A `POST` to a public path. No public route takes one. */
+  post(path: string): Promise<Response>;
   /** An admin call. It carries the node's key unless another key, or none, is given. */
   admin(path: string, body?: unknown, key?: string | null): Promise<Response>;
 }
 
-/** A node over the fake. Give `{}` as the settings for a node with no admin key set. */
+/**
+ * A node over the fake. Give `{}` as the settings for a node with no admin key set, and
+ * a `NODE_URL` for a node that was deployed with another address than `BASE`. `served`
+ * is the Worker that answers.
+ */
 export function nodeOver(
   artifacts: FakeArtifacts,
-  settings: Pick<Env, "ADMIN_KEY"> = { ADMIN_KEY },
+  settings: Partial<Pick<Env, "ADMIN_KEY" | "NODE_URL">> = { ADMIN_KEY },
+  served: typeof worker = worker,
 ): TestNode {
   const bindings: Env = { ARTIFACTS: artifacts, READ_TOKENS: env.READ_TOKENS, NODE_URL: BASE, ...settings };
   // One request with a context of its own, as the runtime gives each request. The call
@@ -32,13 +39,14 @@ export function nodeOver(
   const fetch = async (request: Request): Promise<Response> => {
     const context = createExecutionContext();
     try {
-      return await worker.fetch(request, bindings, context);
+      return await served.fetch(request, bindings, context);
     } finally {
       await waitOnExecutionContext(context);
     }
   };
   return {
     get: (path) => fetch(new Request(`${BASE}/${path}`)),
+    post: (path) => fetch(new Request(`${BASE}/${path}`, { method: "POST" })),
     admin: (path, body, key = ADMIN_KEY) => {
       const headers = new Headers({ "content-type": "application/json" });
       if (key !== null) headers.set("x-cairnfield-admin-key", key);
@@ -46,6 +54,19 @@ export function nodeOver(
       return fetch(new Request(`${BASE}/admin/${path}`, init));
     },
   };
+}
+
+/**
+ * A node in an isolate of its own, as far as a test can make one: the Worker's modules
+ * are loaded afresh for it, so it holds nothing that another node of the test kept.
+ */
+export async function freshNode(
+  artifacts: FakeArtifacts,
+  settings: Partial<Pick<Env, "ADMIN_KEY" | "NODE_URL">> = { ADMIN_KEY },
+): Promise<TestNode> {
+  vi.resetModules();
+  const fresh = await import("../src/index.ts");
+  return nodeOver(artifacts, settings, fresh.default);
 }
 
 /** The status and the JSON body of a response. */
