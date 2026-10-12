@@ -197,7 +197,14 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - The same run without the hand-off to `waitUntil` gave the same answers. So the local runtime does not show what the hand-off adds.
 - A request after the walk got the kept answer at once.
 
-**Not known.** Whether a deployed Worker does the same, and what the hand-off adds there. No deployed node serves the page yet. Two requests for a node's page, sent together to an isolate that keeps none, would show it.
+**Observed on Oct 12, 2026, on a deployed node.** Five requests for a node's page were sent together, 35 seconds after the last view of it, so the node kept no page.
+
+- All five answered 200 after 1.54 seconds, each with the same time of drawing. They shared one walk.
+- A request five seconds later got the same page, with that time.
+- The page carried its policy with the hash of its one style, `cache-control: no-store`, `x-robots-tag: noindex, nofollow`, `referrer-policy: no-referrer` and `nosniff`. A request with a query answered 400.
+- In a browser the style applied under the policy, at 1280 and at 390 pixels wide, with no message in the console. A team's name on the index's page led to that team's page.
+
+**Not known.** What the hand-off to `waitUntil` adds on a deployed Worker: no reader left during a walk in this check. Whether the five requests reached one isolate or more.
 
 ## Platform limits
 
