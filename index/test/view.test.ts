@@ -1,10 +1,10 @@
 // The data endpoint (R10, R13, R15, R35): the view of one component commit, built when it
 // is read. It holds data and no prose, and every body carries the schema version.
 
-import { ACCEPTED, COMPONENT_STATUS, INDEX_REFUSAL, NODE_REGISTERED, VIEW, conforms, recordId } from "@cairnfield/protocol";
+import { ACCEPTED, COMPONENT_LIST, COMPONENT_STATUS, INDEX_REFUSAL, NODE_REGISTERED, VIEW, conforms, recordId } from "@cairnfield/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { syncNode } from "../src/sync.ts";
-import { BRANCH, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import { BRANCH, FILES, HOST, NODE_A, NODE_B, NODE_C, README, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
 import type { Answer } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
@@ -467,6 +467,59 @@ describe("the view version (KTD11)", () => {
   });
 });
 
+describe("the list of the index's components (KTD12)", () => {
+  it("is empty for an index that holds no component", async () => {
+    const on = bench();
+    expect(await on.call("GET", "/view")).toEqual({ status: 200, body: { version: "1", components: [] } });
+  });
+
+  it("names every component in the order they were registered, each with its Git URL, its branch and the state its view gives", async () => {
+    const other = "https://git.fellbeck-tools.example/another-plugin.git";
+    const on = bench({ GIT_URLS: `${UPSTREAM} ${other}` });
+    // The commits are named so that no order of their hashes is the order they are registered in.
+    const ready = await on.component(FILES, "c3".repeat(20));
+    const importing = await on.artifacts.host(other, "next", { [README]: "# Another plugin\n" }, "a1".repeat(20));
+    await on.registerComponent({ url: other, branch: "next", commit: importing });
+    // The remote holds no such branch, so this import is refused.
+    const failed = "b2".repeat(20);
+    await on.registerComponent({ url: UPSTREAM, branch: "gone", commit: failed });
+    await on.deliver();
+
+    const components = [
+      { component: ready, url: UPSTREAM, branch: BRANCH, state: "ready" },
+      { component: importing, url: other, branch: "next", state: "importing" },
+      { component: failed, url: UPSTREAM, branch: "gone", state: "failed" },
+    ];
+    const listed = await on.call("GET", "/view");
+    expect(listed).toEqual({ status: 200, body: { version: "1", components } });
+    expect(conforms(COMPONENT_LIST, listed.body)).toBeUndefined();
+    for (const { component, state } of components) expect((await on.view(component)).state).toBe(state);
+  });
+
+  it("refuses a query of any kind, the one the view of a component takes among them, and any other method", async () => {
+    const on = bench();
+    await on.component();
+    const refused = { status: 400, body: { version: "1", error: "bad-request" } };
+    expect(await on.call("GET", `/view?teams=${encodeURIComponent(NODE_A)}`)).toEqual(refused);
+    expect(await on.call("GET", `/view?url=${encodeURIComponent(UPSTREAM)}`)).toEqual(refused);
+    expect(await on.call("GET", "/view?teams=x")).toEqual(refused);
+    expect(await on.call("GET", "/view?url=x")).toEqual(refused);
+    expect(await on.call("POST", "/view")).toEqual({ status: 404, body: { version: "1", error: "not-found" } });
+  });
+
+  it("gives a Git URL that holds markup unchanged, as JSON text", async () => {
+    const on = bench();
+    // The index takes this spelling in no registration. The row is written as an index that did would hold it.
+    const gitUrl = "https://git.fellbeck-tools.example/<img src=x onerror=alert(1)>.git";
+    const commit = "1f".repeat(20);
+    await on.env.DB.prepare("INSERT INTO components (component, url, branch, state, registered_at) VALUES (?, ?, ?, 'ready', ?)").bind(commit, gitUrl, BRANCH, START).run();
+
+    const answer = await on.get("/view");
+    expect(answer.headers.get("content-type")).toBe("application/json");
+    expect(await answer.json()).toEqual({ version: "1", components: [{ component: commit, url: gitUrl, branch: BRANCH, state: "ready" }] });
+  });
+});
+
 describe("every answer of the index (R13, R35)", () => {
   it("carries the schema version, in a view and in a refusal", async () => {
     const on = bench();
@@ -518,6 +571,8 @@ describe("every answer of the index (R13, R35)", () => {
     held(await on.call("GET", `/components/${commit}/view?hint=1`), VIEW);
     held(await on.call("POST", "/reset"), ACCEPTED);
     held(await on.call("POST", "/reset", undefined, [RESET_HEADER, RESET_KEY]), ACCEPTED);
+    held(await on.call("GET", "/view"), COMPONENT_LIST);
+    held(await on.call("GET", "/view?hint=1"), COMPONENT_LIST);
     held(await on.call("GET", "/"), ACCEPTED);
   });
 });

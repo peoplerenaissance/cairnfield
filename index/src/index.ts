@@ -1,6 +1,6 @@
 // The index Worker (R9 to R14): it registers nodes and components, takes push notices,
 // reads the nodes over HTTP and serves one validated view per component commit, with a
-// page that draws that view for a person.
+// page that draws that view for a person. It also lists the components it holds.
 //
 // The index serves data and never instructions (R35). Every answer but the page and its
 // files is JSON in a shape of the protocol, with the schema version, and a refusal is a
@@ -8,12 +8,13 @@
 
 import { INDEX_ROUTES, REGISTRATION_KEY_HEADER, RESET_KEY_HEADER, conforms, isCommit } from "@cairnfield/protocol";
 import { PAGE, PAGE_FILE, pageFile } from "./assets.ts";
+import { registeredComponents } from "./components.ts";
 import type { Env } from "./env.ts";
 import { jsonOf, readUpTo } from "./fetch.ts";
 import { consume, notice } from "./queue.ts";
 import type { Message } from "./queue.ts";
 import { carriesKey, registerComponent, registerNode, reset } from "./register.ts";
-import { refusal } from "./respond.ts";
+import { answer, refusal } from "./respond.ts";
 import { viewOf } from "./view.ts";
 
 /** A request body is read up to this size. Each one is a URL or two and a few short values. */
@@ -46,11 +47,18 @@ async function view(env: Env, url: URL, component: string): Promise<Response> {
   return built ? Response.json(built) : refusal("not-found");
 }
 
+/** The list of the index's components. It takes no query, so one of any kind is refused. */
+async function list(env: Env, url: URL): Promise<Response> {
+  if (url.searchParams.size > 0) return refusal("bad-request");
+  return answer({ components: await registeredComponents(env) });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     if (request.method === "GET") {
+      if (path === INDEX_ROUTES.list.path) return list(env, url);
       const viewed = VIEW_PATH.exec(path);
       if (viewed) return view(env, url, viewed[1] ?? "");
       // The page is the same for a commit nobody registered: it reads the view, and says what the view says.

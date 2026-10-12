@@ -78,7 +78,7 @@ The four `admin/` routes need the node's admin key, in the header `x-cairnfield-
 
 ## The index routes
 
-`protocol/schemas/openapi.json` describes eleven routes. The index in this repo serves five of them. The other six are shapes in the library that no Worker answers yet.
+`protocol/schemas/openapi.json` describes twelve routes. The index in this repo serves six of them. The other six are shapes in the library that no Worker answers yet.
 
 | Name | Call | Needs | In this repo's index |
 | --- | --- | --- | --- |
@@ -86,6 +86,7 @@ The four `admin/` routes need the node's admin key, in the header `x-cairnfield-
 | `registerComponent` | `POST /components` | The registration key | Served |
 | `notice` | `POST /notices` | Nothing | Served |
 | `view` | `GET /components/{component}/view` | Nothing | Served |
+| `list` | `GET /view` | Nothing | Served |
 | `reset` | `POST /reset` | The reset key | Served |
 | `lookup` | `GET /components?url=` | Nothing | Described only |
 | `criteria` | `GET /components/{component}/criteria` | Nothing | Described only |
@@ -94,7 +95,7 @@ The four `admin/` routes need the node's admin key, in the header `x-cairnfield-
 | `description` | `GET /openapi.json` | Nothing | Described only |
 | `schema` | `GET /schemas/{type}.json` | Nothing | Described only |
 
-The index also serves a page for each component commit, at `GET /components/{component}`. The page is no part of the contract. Every JSON answer carries the schema version, and a refusal is a code from a closed list.
+The index also serves a page for each component commit, at `GET /components/{component}`, which reads that commit's view. The index's own page reads `GET /view` in the same way. Neither page is part of the contract. Every JSON answer carries the schema version, and a refusal is a code from a closed list.
 
 ## Matching and confirmation
 
