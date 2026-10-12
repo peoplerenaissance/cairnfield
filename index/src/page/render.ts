@@ -12,13 +12,19 @@
 // every one can be traced to a field of the endpoint (R13). A page says what the index
 // holds, and tells a reader nothing to do (R35).
 //
+// The page's own words say what a thing is to a reader who has not met the protocol:
+// what each section holds, what a finding says of the component, what a criterion
+// promises and what a label means. Each is keyed by a value of a closed list, and the
+// type check fails when a list gains a value that has no words here. The one address the
+// page holds that no record names is where the protocol defines those lists.
+//
 // The words and links that a page holds whatever was read are not drawn here. They are
 // written in the page's HTML file, outside the element this drawing goes into.
 //
 // The browser runs this file as it is built, with nothing bundled in, so it takes only
 // types from the protocol library.
 
-import type { COMPONENT_LIST, Criterion, Infer, View } from "@cairnfield/protocol";
+import type { COMPONENT_LIST, Criterion, Infer, Observation, PatchKind, RejectionReason, View } from "@cairnfield/protocol";
 
 /** The list of an index's components, as the index serves it. */
 type ComponentList = Infer<typeof COMPONENT_LIST>;
@@ -45,6 +51,8 @@ interface IndexPlace {
   readonly kind: "index";
   /** The path of the list. It takes no query, so nothing of the address is passed on. */
   readonly viewPath: string;
+  /** The Git URL of the one repo whose versions the address asks for. With none, the page lists every component. The page narrows the list itself. */
+  readonly repo?: string;
 }
 
 /** What the page at one address shows, and the data endpoint it reads there. */
@@ -123,8 +131,11 @@ const PAGE_PATH = /^\/components\/([0-9a-f]{40})$/;
 
 /** What the page at an address shows, or nothing for an address where no page stands. */
 export function placeOf(pathname: string, search: string): Place | undefined {
-  // The index's own page. The list refuses every query, so none is passed on.
-  if (pathname === "/") return { kind: "index", viewPath: "/view" };
+  // The index's own page. The list refuses every query, so none is passed on. A `repo` in the address narrows what the page draws of the list.
+  if (pathname === "/") {
+    const repo = new URLSearchParams(search).get("repo");
+    return repo === null ? { kind: "index", viewPath: "/view" } : { kind: "index", viewPath: "/view", repo };
+  }
   const component = PAGE_PATH.exec(pathname)?.[1];
   if (component === undefined) return undefined;
   // Only the teams are passed on. The endpoint refuses a query it does not know.
@@ -150,10 +161,125 @@ export function readOf(body: unknown): Read {
   return "components" in body ? { kind: "list", list: body as ComponentList } : { kind: "failed" };
 }
 
-// The criteria in the order of the protocol's list, weakest first. The object must name
-// every one, so the type check fails when that list changes.
-const IN_ORDER: { readonly [C in Criterion]: true } = { "safe-to-read": true, "safe-to-run-sandboxed": true, "safe-to-run-with-access": true, "works-as-documented": true };
-const CRITERIA = Object.keys(IN_ORDER) as Criterion[];
+// The criteria in the order of the protocol's list, and what each promises. The first
+// three are in order: a component that breaks one breaks each later one too, so the most
+// basic promise comes first. The object must name every one, so the type check fails
+// when that list changes.
+const PROMISE: { readonly [C in Criterion]: string } = {
+  "safe-to-read": "The promise that loading the component's text into an agent's context is safe.",
+  "safe-to-run-sandboxed": "The promise that running the component with no credentials and no network access is safe.",
+  "safe-to-run-with-access": "The promise that running the component with the permissions and network access it asks for is safe.",
+  "works-as-documented": "The promise that the component does what its documentation says.",
+};
+const CRITERIA = Object.keys(PROMISE) as Criterion[];
+
+/** Where the protocol defines the criteria and the observations. No record names this address: it is the page's own. */
+const DEFINED_AT = "https://github.com/peoplerenaissance/cairnfield/blob/main/reference/protocol.md#criteria-and-observations";
+const DEFINED = "The protocol defines each criterion. This label leads to that definition.";
+
+/**
+ * What a finding says of the component, by its observation: one sentence, in the words
+ * before its host and the words after it. An observation that names no host has all its
+ * words before. The sentence is the finding's, and the line under it names who reports it.
+ */
+const SAYS: { readonly [O in Observation]: readonly [before: string, after: string] } = {
+  "sends-data-to-host": ["This component sends data to ", "."],
+  "fetches-instructions-from-host": ["This component fetches instructions for an agent from ", "."],
+  "loads-resource-from-host": ["This component loads code or another resource from ", "."],
+  "network-access-any-host": ["This component allows network access to any host.", ""],
+  "environment-access-all-variables": ["This component allows access to every environment variable.", ""],
+  "reads-outside-workspace": ["This component reads files outside the workspace.", ""],
+  "writes-outside-workspace": ["This component writes files outside the workspace.", ""],
+  "runs-shell-command": ["This component runs a shell command.", ""],
+  "runs-with-permissions-bypassed": ["This component runs something with permission checks switched off.", ""],
+  "runs-install-script": ["This component runs a script when it is installed.", ""],
+  "hidden-instruction": ["This component contains a hidden instruction for an agent.", ""],
+  "overrides-host-instructions": ["This component tells an agent to set aside the instructions of its host or its user.", ""],
+  "requests-broad-credential-scope": ["This component asks for a credential that reaches more than its documented feature needs.", ""],
+  "stores-credential-in-plain-text": ["This component stores a credential in plain text.", ""],
+  "installs-unpinned-dependency": ["This component installs a dependency with no pinned version.", ""],
+  "documented-control-not-read": ["This component acts without reading a setting that its documentation says controls it.", ""],
+  "fails-on-documented-input": ["This component fails on an input that its documentation says works.", ""],
+};
+
+/** What a finding says, as one sentence with its host in place. An observation that this page has no sentence for stands in the protocol's own words. */
+function said({ observation, host }: { readonly observation: Observation; readonly host?: string | undefined }): (Drawing | string)[] {
+  const named = host === undefined ? [] : [el("code", { class: "host" }, host)];
+  const sentence: readonly [string, string] | undefined = SAYS[observation];
+  return sentence === undefined ? [words(observation), ...named] : [sentence[0], ...named, sentence[1]].filter((part) => part !== "");
+}
+
+/**
+ * What each section of a component's page holds, in plain words under its heading: what
+ * the thing is, and what stands first where the section is ordered. None tells a reader
+ * to do something (R35).
+ */
+const ABOUT = {
+  claims: "A claim is a team's notice that it has started a review or a fix. It stays live until that team publishes the result or the claim runs out.",
+  pending: "These records have reached the index, which has not finished checking them. Nothing here counts until it has.",
+  findings: "A finding is something a team's review reports seeing in this version, at the lines it names. It is that team's report, and no verdict of this index. The ones more organizations report stand first, and two organizations make a finding confirmed.",
+  patches: "A patch is a fix one team wrote for a finding, and it changes only the lines that finding names. Patches for the same lines stand side by side, the ones more organizations stand behind first.",
+  recipes: "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more organizations published come first.",
+  // What a fetch is, and three things of every count (R45): whose number it is, what it counts, and that a missing count is not a count of zero.
+  fetches:
+    "A fetch is one download over Git of a team's fork: the team's own repository of this version, where it keeps its patches. Each team's node states its own number, and the index cannot check it. The number counts the fetches of that fork since its node began to count them, and the team's own commands add to it. A team that is not listed here has no count in this view, which is not a count of zero.",
+  rejected: "The index refused these records, because each failed one of its checks. A refused record counts for nothing on this page.",
+} as const;
+
+/** What the two words at the head of a component's page mean. */
+const COMPONENT = "A component is one version of an AI tool, such as a plugin, a skill or a server: its Git repository at one commit.";
+const ORGANIZATIONS = "The teams with records on this version. A team is counted by the address of its node, and nothing more is proven about who runs it. Each has a stone of its own color, which tells the teams apart and says nothing else.";
+const CAIRN = "One stone for each organization that reports this finding, in that organization's color.";
+
+/** What "confirmed" and "unconfirmed" mean on a finding and on a patch (R10, R24). */
+const CONFIRMATION = {
+  finding: {
+    confirmed: "Two or more organizations report this or have re-checked it, and their reports count against this criterion.",
+    unconfirmed: "Fewer than two organizations report this against this criterion. Two make it confirmed.",
+  },
+  patch: {
+    confirmed: "Two or more organizations stand behind this patch. Each wrote the same patch, or re-checked it and found that it resolves its finding.",
+    unconfirmed: "Fewer than two organizations stand behind this patch. An organization stands behind a patch by writing the same one, or by re-checking it and finding that it resolves its finding.",
+  },
+} as const;
+
+/** What each kind of patch is. The index works the kind out from the commit. */
+const KIND: { readonly [K in PatchKind]: string } = {
+  "removes-only": "This patch only takes lines out. It adds no line and changes no file's mode.",
+  "adds-or-changes": "This patch adds or rewrites lines, or changes a file's mode.",
+};
+
+const PENDING = "The index has this record and has not finished checking it.";
+const NOT_CHECKED = "The team published this hash of its copy's files. The index has not built the copy, so it has not checked the hash.";
+/**
+ * What "declared" means before a value, by what the value is: the model of a patch record,
+ * and a node's count of the fetches of its fork (KTD42). A team states the value, and no
+ * check of the index reaches it (R14).
+ */
+const DECLARED = {
+  model: "This team's record states which model, if any, wrote the patch. The index cannot check that, and has not.",
+  fetches: "This team's node states how often its fork was fetched. It does not say by whom. The index cannot check the number, and has not.",
+} as const;
+
+/** Why the index refuses a record, by the reason it stores (KTD31). Each says what the check found. */
+const REFUSED: { readonly [R in RejectionReason]: string } = {
+  "unknown-field": "The record holds a field its type does not have, or its file is not written exactly as a record is.",
+  "unknown-value": "The record holds a value outside the protocol's lists and forms, or lacks a field it needs.",
+  "too-large": "The record, a list in it, or content it points at is larger than the protocol allows.",
+  "bad-path": "The record cites a path that breaks the path rule, or that is no regular file in the index's copy.",
+  "lines-out-of-range": "The record cites lines that its file does not have.",
+  "host-not-in-lines": "The finding names a host that does not stand in the lines it cites.",
+  "hash-mismatch": "The record's file is not named by the hash of its content, or sits under another component or type.",
+  "unsupported-version": "The record is of a protocol version that this index does not read.",
+  "unknown-component": "The index could not import this version, so it could check no record of it.",
+  "unresolved-reference": "The record names another record that could not be found.",
+  "patch-out-of-scope": "The patch adds a file, changes content that its findings do not cite, or changes lines outside the ones they cite.",
+  "patch-too-large": "The patch makes more than 3 replacements, changes more than 60 lines or adds more than 8 KB.",
+  "wrong-parent": "The patch commit is not built on the pinned commit.",
+  "blob-mismatch": "Content that the node served for the patch does not match its hash.",
+  "bad-mode": "The patch changes something that is not a regular file, such as a link.",
+  "patch-incomplete": "The patch changes nothing, leaves an identical copy of the content it replaces as it was, or rewrites two such copies differently.",
+};
 
 type FindingGroup = View["findings"][number];
 type FindingEntry = FindingGroup["findings"][number];
@@ -179,7 +305,7 @@ function distinct<T, K>(all: readonly T[], key: (member: T) => K): T[] {
 /** What the page reads from a view more than once: each node's tone, and each finding by its ID. */
 interface Reading {
   readonly view: View;
-  /** A node's place among the nodes of the view, which gives it one of four tones. The tone tells teams apart and says nothing else. */
+  /** A node's place among the nodes of the view, which gives it one of four tones. The tone tells teams apart and says nothing else: it colors the team's stones, and never its name. */
   readonly tones: ReadonlyMap<string, number>;
   readonly findings: ReadonlyMap<string, FindingGroup>;
 }
@@ -199,18 +325,43 @@ const toneOf = (reading: Reading, node: string): string => {
   return tone === undefined ? "" : ` tone-${tone}`;
 };
 
-/** A contributor: the node's base URL, which is its identity (KTD8, KTD38). */
-const organization = (reading: Reading, node: string): Drawing => el("span", { class: `org${toneOf(reading, node)}` }, address(node));
+/**
+ * A label with what it means. The meaning is the next text of the page, so every reader
+ * gets it. The stylesheet shows it under the label only while the label is pointed at or
+ * focused, and a label can be focused, so it shows for a reader with a keyboard as for
+ * one with a pointer. `end` is for a label that stands at the end of its row. A value
+ * that this page has no words for stands as its label alone.
+ */
+const explained = (label: Drawing, means: string | undefined, end = false): Drawing =>
+  means === undefined ? label : el("span", { class: end ? "explained end" : "explained" }, label, el("span", { class: "tip" }, means));
 
-const organizations = (reading: Reading, nodes: readonly string[]): Drawing => el("div", { class: "by" }, nodes.map((node) => organization(reading, node)));
+/** A label that can be focused: a status label by its class, or a plain word with none. */
+const focusable = (kind: string, ...text: readonly Child[]): Drawing => el("span", kind === "" ? { tabindex: "0" } : { class: kind, tabindex: "0" }, text);
 
-/** One stone for each organization behind an entry. Decoration: the label beside it says the same. */
+/**
+ * A contributor: the node's base URL, which is its identity (KTD8, KTD38). An HTTPS
+ * address is shown without the scheme that every such address has, and its link carries
+ * the whole of it. An address that is not HTTPS is no link, and is shown whole, so it
+ * never reads as the HTTPS address of the same host.
+ */
+const organization = (reading: Reading, node: string): Drawing => el("span", { class: `org${toneOf(reading, node)}` }, isHttps(node) ? el("a", { href: node }, node.replace(/^https:\/\//i, "")) : node);
+
+/** Organizations in a row, after the word for what they did where the row has one. */
+const organizations = (reading: Reading, nodes: readonly string[], did?: string): Drawing =>
+  did === undefined
+    ? el("div", { class: "by" }, nodes.map((node) => organization(reading, node)))
+    : el("div", { class: "by" }, el("span", { class: "did" }, did), el("span", { class: "orgs" }, nodes.map((node) => organization(reading, node))));
+
+/** One stone for each organization behind an entry, with what the stones are. Decoration: the label beside it says the same. */
 const cairn = (reading: Reading, nodes: readonly string[]): Drawing =>
-  el("span", { class: "cairn", "aria-hidden": "true" }, nodes.map((node) => el("span", { class: `stone${toneOf(reading, node)}` })));
+  explained(el("span", { class: "cairn", "aria-hidden": "true" }, nodes.map((node) => el("span", { class: `stone${toneOf(reading, node)}` }))), CAIRN);
 
-/** Two organizations make a finding or a patch confirmed (R10, R24). The view says whether, and the page says so in words. */
-const confirmation = (confirmed: boolean, nodes: readonly string[]): Drawing =>
-  confirmed ? el("span", { class: "tag ok" }, "confirmed by ", String(nodes.length)) : el("span", { class: "tag un" }, "unconfirmed");
+/** Two organizations make a finding or a patch confirmed (R10, R24). The view says whether, and the page says so in words, with what the word means there. */
+const confirmation = (of: keyof typeof CONFIRMATION, confirmed: boolean, nodes: readonly string[], end = false): Drawing =>
+  confirmed ? explained(focusable("tag ok", "confirmed by ", String(nodes.length)), CONFIRMATION[of].confirmed, end) : explained(focusable("tag un", "unconfirmed"), CONFIRMATION[of].unconfirmed, end);
+
+/** The members of a list with the ones more organizations stand behind first. Members with as many keep the order of the view, so a page reads the same after every read. */
+const mostBacked = <T>(all: readonly T[], backing: (member: T) => number): T[] => all.map((member, at) => ({ member, at })).sort((one, other) => backing(other.member) - backing(one.member) || one.at - other.at).map(({ member }) => member);
 
 /** A path with the line or lines cited in it. */
 const where = ({ path, start, end }: Cited): (Drawing | string)[] => [code(path), el("span", { class: "lines" }, start === end ? ["line ", String(start)] : ["lines ", String(start), "–", String(end)])];
@@ -221,33 +372,42 @@ function findingLink(reading: Reading, id: string): Drawing {
   return group === undefined ? el("span", { class: "ref" }, "finding ", code(short(id))) : el("a", { href: `#finding-${id}` }, words(group.observation));
 }
 
-function section(id: string, title: string, ...children: readonly Child[]): Drawing {
-  return el("section", { id }, el("h2", {}, title), children);
+/** A section of a page: its heading, a count beside it where it has one, what the section holds in plain words, and its entries. */
+function section({ id, title, count, about }: { readonly id: string; readonly title: string; readonly count?: Child; readonly about?: string }, ...children: readonly Child[]): Drawing {
+  return el("section", { id }, el("div", { class: "section-head" }, el("h2", {}, title), count), about === undefined ? undefined : el("p", { class: "intro" }, about), children);
 }
 
 const empty = (label: string): Drawing => el("p", { class: "empty" }, label);
 
 /** A record the page shows by its node, its type and its hash alone: pending work and rejected work (KTD31). */
-const row = (reading: Reading, { node, type, hash }: { readonly node: string; readonly type: string; readonly hash: string }, tag: Drawing): Drawing =>
-  el("li", { class: "row" }, organization(reading, node), el("span", { class: "kind" }, type), code(short(hash)), tag);
+const row = (reading: Reading, { node, type, hash }: { readonly node: string; readonly type: string; readonly hash: string }, label: Drawing): Drawing =>
+  el("li", { class: "row" }, organization(reading, node), el("span", { class: "kind" }, type), code(short(hash)), label);
 
 function header(view: View): Drawing {
   const patches = view.patches.reduce((count, group) => count + group.patches.length, 0);
-  const count = ([number, word]: [string, string]): Drawing => el("div", {}, el("dt", {}, word), el("dd", {}, number));
+  const count = ([number, word]: [string, string], means?: string): Drawing => el("div", {}, el("dt", {}, means === undefined ? word : explained(focusable("", word), means, true)), el("dd", {}, number));
   // Until the index holds its own copy it has checked nothing against it. A count of findings or of patches would be nought then, and would read as an all-clear (R14).
   const checked = view.state === "ready" ? [count(counted(view.findings.length, "finding", "findings")), count(counted(patches, "patch", "patches"))] : undefined;
   return el(
     "header",
     { class: "head" },
-    el("div", {}, el("p", { class: "label" }, "Component"), el("h1", {}, address(view.gitUrl)), el("p", { class: "commit" }, "commit ", code(view.component))),
-    el("dl", { class: "counts" }, count(counted(view.organizations, "organization", "organizations")), checked),
+    el(
+      "div",
+      {},
+      el("p", { class: "label" }, explained(focusable("", "Component"), COMPONENT)),
+      el("h1", {}, address(view.gitUrl)),
+      el("p", { class: "commit" }, "commit ", code(view.component)),
+      // The other versions of this repo are on the index's own page, narrowed to the repo. The link stays on the index, whatever the Git URL holds.
+      el("p", { class: "versions" }, el("a", { href: `/?repo=${encodeURIComponent(view.gitUrl)}` }, "Every version of this repo on this index")),
+    ),
+    el("dl", { class: "counts" }, count(counted(view.organizations, "organization", "organizations"), ORGANIZATIONS), checked),
   );
 }
 
 /** The page shows only live claims (R15). A closed or expired claim keeps its state in the endpoint (KTD15). */
 function claims(reading: Reading): Drawing {
   const live = reading.view.claims.filter(({ state }) => state === "live");
-  if (live.length === 0) return section("claims", "Live claims", empty("No live claims"));
+  if (live.length === 0) return section({ id: "claims", title: "Live claims", about: ABOUT.claims }, empty("No live claims"));
   const shown = live.map(({ node, record, state }) =>
     el(
       "li",
@@ -261,13 +421,13 @@ function claims(reading: Reading): Drawing {
       el("span", { class: "tag live" }, state),
     ),
   );
-  return section("claims", "Live claims", el("span", { class: "count" }, String(live.length), " live"), el("ul", { class: "chips" }, shown));
+  return section({ id: "claims", title: "Live claims", count: el("span", { class: "count" }, String(live.length), " live"), about: ABOUT.claims }, el("ul", { class: "claims" }, shown));
 }
 
 function pending(reading: Reading): Drawing | undefined {
   const waiting = reading.view.pending;
   if (waiting.length === 0) return undefined;
-  return section("pending", "Being checked", el("ul", { class: "rows" }, waiting.map((record) => row(reading, record, el("span", { class: "tag un" }, "pending")))));
+  return section({ id: "pending", title: "Being checked", about: ABOUT.pending }, el("ul", { class: "rows" }, waiting.map((record) => row(reading, record, explained(focusable("tag un", "pending"), PENDING, true)))));
 }
 
 /**
@@ -287,8 +447,8 @@ function finding(reading: Reading, group: FindingGroup, criterion: Criterion, na
     el(
       "div",
       { class: "what" },
-      el("strong", {}, words(group.observation)),
-      group.host === undefined ? undefined : el("code", { class: "host" }, group.host),
+      // What the finding says, as one sentence about the component, with its host where it names one.
+      el("strong", {}, said(group)),
       // Two nodes that publish the same record give one ID, which is one target on the page.
       el(
         "ul",
@@ -303,9 +463,9 @@ function finding(reading: Reading, group: FindingGroup, criterion: Criterion, na
           ),
         ),
       ),
-      organizations(reading, behind),
+      organizations(reading, behind, "Reported by: "),
     ),
-    confirmation(count?.confirmed ?? false, behind),
+    confirmation("finding", count?.confirmed ?? false, behind, true),
     // A dispute sits beside the finding it names. It hides nothing and changes no count.
     disputes.length === 0
       ? undefined
@@ -328,15 +488,27 @@ function finding(reading: Reading, group: FindingGroup, criterion: Criterion, na
 function findings(reading: Reading): Drawing {
   const groups = reading.view.findings;
   // An empty list is no all-clear, and the page never calls a version safe (R14).
-  if (groups.length === 0) return section("findings", "Findings", empty("No findings published"), el("p", { class: "note" }, "This is not a statement that the version is safe."));
+  if (groups.length === 0) return section({ id: "findings", title: "Findings", about: ABOUT.findings }, empty("No findings published"), el("p", { class: "note" }, "This is not a statement that the version is safe."));
+  // A criterion and the findings that count against it are one block, so a reader sees which heading a finding stands under.
   const byCriterion = CRITERIA.flatMap((criterion) => {
-    const entries = groups.flatMap((group) => {
-      const named = group.findings.filter(({ record }) => record.criterion === criterion);
-      return named.length === 0 ? [] : [finding(reading, group, criterion, named)];
+    const named = groups.flatMap((group) => {
+      const records = group.findings.filter(({ record }) => record.criterion === criterion);
+      return records.length === 0 ? [] : [{ group, records }];
     });
-    return entries.length === 0 ? [] : [el("h3", {}, "Counts against ", code(criterion)), el("ul", { class: "findings" }, entries)];
+    if (named.length === 0) return [];
+    // The findings more organizations report under this criterion stand first.
+    const entries = mostBacked(named, ({ group }) => group.criteria.find((held) => held.criterion === criterion)?.nodes.length ?? 0);
+    return [
+      el(
+        "div",
+        { class: "criterion" },
+        // The criterion is a link to where the protocol defines it, and the head says in a line what it promises.
+        el("div", { class: "criterion-head" }, el("h3", {}, "Counts against ", el("a", { class: "badge", href: DEFINED_AT }, code(criterion))), el("span", { class: "tip" }, DEFINED), el("p", { class: "promise" }, PROMISE[criterion])),
+        el("ul", { class: "findings" }, entries.map(({ group, records }) => finding(reading, group, criterion, records))),
+      ),
+    ];
   });
-  return section("findings", "Findings", byCriterion);
+  return section({ id: "findings", title: "Findings", about: ABOUT.findings }, byCriterion);
 }
 
 /** One patch identity: a column of its group. Identical patches are one entry that lists its organizations (R16). */
@@ -352,8 +524,8 @@ function patch(reading: Reading, entry: PatchEntry): Drawing {
   return el(
     "article",
     { class: "patch", id: `patch-${entry.patchId}` },
-    organizations(reading, authors),
-    el("div", { class: "tags" }, el("span", { class: "tag" }, words(entry.kind)), confirmation(entry.confirmed, entry.nodes)),
+    organizations(reading, authors, "Written by: "),
+    el("div", { class: "tags" }, explained(focusable("tag", words(entry.kind)), KIND[entry.kind]), confirmation("patch", entry.confirmed, entry.nodes)),
     // The paths it changes, and its changed lines in each content: where, how many it takes out and how many it puts in.
     el("div", { class: "paths" }, entry.paths.map(code)),
     el(
@@ -364,6 +536,16 @@ function patch(reading: Reading, entry: PatchEntry): Drawing {
           el("li", {}, el("span", { class: "lines" }, "line ", String(oldStart)), el("span", { class: "removed" }, "−", String(removed)), el("span", { class: "added" }, "+", String(added))),
         ),
       ),
+    ),
+    // What each record of the patch declares, a line for each: its team, then the word and the model as one label (R14). The line is set
+    // as a re-check's is, with no outline: a declared value is a statement and no status. The teams stand in the order of the row above.
+    // A model is drawn as the record holds it: with its hyphens as spaces it would read as another name.
+    el(
+      "ul",
+      { class: "declarations" },
+      authors
+        .flatMap((author) => entry.records.filter(({ node }) => node === author))
+        .map(({ node, record }) => el("li", { class: "declared" }, organization(reading, node), explained(focusable("", "declared: ", code(record.model)), DECLARED.model))),
     ),
     entry.rechecks.length === 0
       ? undefined
@@ -379,11 +561,15 @@ function patch(reading: Reading, entry: PatchEntry): Drawing {
 /** Patches whose changed lines overlap or adjoin stand side by side, one column each (R16). */
 function patches(reading: Reading): Drawing {
   const groups = reading.view.patches;
-  if (groups.length === 0) return section("patches", "Patches", empty("No patches published"));
+  if (groups.length === 0) return section({ id: "patches", title: "Patches", about: ABOUT.patches }, empty("No patches published"));
+  // The patches more organizations stand behind come first: within a group, and among the groups by the best of each.
+  const ordered = mostBacked(
+    groups.map((group) => ({ ...group, patches: mostBacked(group.patches, ({ nodes }) => nodes.length) })),
+    ({ patches: held }) => Math.max(...held.map(({ nodes }) => nodes.length)),
+  );
   return section(
-    "patches",
-    "Patches",
-    groups.map((group) =>
+    { id: "patches", title: "Patches", about: ABOUT.patches },
+    ordered.map((group) =>
       el(
         "div",
         { class: "group" },
@@ -409,25 +595,52 @@ function patchLink(reading: Reading, id: string): Drawing {
 /** Each distinct file tree and the organizations that published it. The tree hash is published, not checked (KTD5). */
 function recipes(reading: Reading): Drawing {
   const published = reading.view.recipes;
-  if (published.length === 0) return section("recipes", "Recipes", empty("No recipes published"));
-  const shown = published.map(({ tree, records, nodes }) =>
+  if (published.length === 0) return section({ id: "recipes", title: "Recipes", about: ABOUT.recipes }, empty("No recipes published"));
+  // The copies more organizations published come first.
+  const shown = mostBacked(published, ({ nodes }) => nodes.length).map(({ tree, records, nodes }) =>
     el(
       "li",
       { class: "recipe" },
       el("div", { class: "used" }, el("b", {}, String(nodes.length)), nodes.length === 1 ? " organization published this copy" : " organizations published this copy"),
-      el("div", { class: "tree" }, "tree ", code(tree), el("span", { class: "tag un" }, "published, not checked")),
+      el("div", { class: "tree" }, "tree ", code(tree), explained(focusable("tag un", "published, not checked"), NOT_CHECKED)),
       organizations(reading, nodes),
       el("ul", { class: "taken" }, [...new Set(records.flatMap(({ record }) => record.patches))].map((id) => el("li", {}, patchLink(reading, id)))),
     ),
   );
-  return section("recipes", "Recipes", el("ul", { class: "recipes" }, shown));
+  return section({ id: "recipes", title: "Recipes", about: ABOUT.recipes }, el("ul", { class: "recipes" }, shown));
+}
+
+/**
+ * Each node's count of the fetches of its fork of this component (R45), for the nodes
+ * whose entry in the view holds one. A node states its count and the index cannot check
+ * it (KTD42). So a count is drawn as the model of a patch record is: a line with its
+ * team, then the word "declared" and the value, and no outline (R14). A node with no
+ * count has no line, and a view with no count has no section: a missing count is not a
+ * count of zero.
+ */
+function fetches(reading: Reading): Drawing | undefined {
+  // The lines keep the order of the view: a number that a node states moves nothing.
+  const stated = reading.view.nodes.flatMap(({ node, declared }) => (declared?.fetches === undefined ? [] : [{ node, count: declared.fetches }]));
+  if (stated.length === 0) return undefined;
+  return section(
+    { id: "fetches", title: "Fetches", about: ABOUT.fetches },
+    el(
+      "ul",
+      { class: "declarations" },
+      // The number is a text of its own, and the word after it is the page's.
+      stated.map(({ node, count }) => {
+        const [number, word] = counted(count, " fetch", " fetches");
+        return el("li", { class: "declared" }, organization(reading, node), explained(focusable("", "declared: ", code(number), word), DECLARED.fetches));
+      }),
+    ),
+  );
 }
 
 /** Rejected work is its contributor, its type, its hash and its reason, and nothing more (KTD31). */
 function rejected(reading: Reading): Drawing | undefined {
   const refused = reading.view.rejected;
   if (refused.length === 0) return undefined;
-  return section("rejected", "Rejected work", el("ul", { class: "rows" }, refused.map((record) => row(reading, record, el("span", { class: "tag rej" }, words(record.reason))))));
+  return section({ id: "rejected", title: "Rejected work", about: ABOUT.rejected }, el("ul", { class: "rows" }, refused.map((record) => row(reading, record, explained(focusable("tag rej", words(record.reason)), REFUSED[record.reason], true)))));
 }
 
 /** The label of a component whose copy the index does not hold yet, or never will. */
@@ -445,10 +658,10 @@ function viewed(place: ComponentPlace, view: View): Drawing {
         organizations(reading, view.nodes.map(({ node }) => node)),
       )
     : undefined;
-  // Until the index holds its own copy it has checked nothing against it, so the page shows no section of checked work.
+  // Until the index holds its own copy it has checked nothing against it, so the page shows no section of checked work, and no fetches with them.
   const work =
     view.state === "ready"
-      ? el("div", { class: "work" }, el("div", { class: "part" }, claims(reading), pending(reading), findings(reading)), el("div", { class: "part" }, patches(reading), recipes(reading), rejected(reading)))
+      ? el("div", { class: "work" }, el("div", { class: "part" }, claims(reading), pending(reading), findings(reading)), el("div", { class: "part" }, patches(reading), recipes(reading), fetches(reading), rejected(reading)))
       : [el("section", { id: "state" }, el("h2", {}, NOT_READY[view.state]), el("span", { class: view.state === "failed" ? "tag rej" : "tag un" }, view.state)), pending(reading), rejected(reading)];
   return el("div", { class: "view" }, narrowed, header(view), work);
 }
@@ -464,34 +677,65 @@ function unviewed(place: ComponentPlace, kind: keyof typeof NO_VIEW): Drawing {
 type Listed = ComponentList["components"][number];
 
 /**
- * The import state of a listed component, in words, with the class of its label. The
- * index stores an imported copy as `ready`, which would read as an all-clear (R14). The object
- * must name every state, so the type check fails when that list changes.
+ * The import state of a listed component, in words: its label, the class of the label
+ * and what the label means, which the page shows when the label is pointed at or
+ * focused. The index stores a copy it holds as `ready`, which would read as an
+ * all-clear (R14), so the label says what the index holds and nothing of the component.
+ * The object must name every state, so the type check fails when that list changes.
  */
-const IMPORT: { readonly [S in Listed["state"]]: { readonly label: string; readonly tag: string } } = {
-  ready: { label: "imported", tag: "tag" },
-  importing: { label: "importing", tag: "tag un" },
-  failed: { label: "import failed", tag: "tag rej" },
+const IMPORT: { readonly [S in Listed["state"]]: { readonly label: string; readonly tag: string; readonly means: string } } = {
+  ready: { label: "copy held", tag: "tag", means: "The index holds its own copy of this version, and checks every record against it." },
+  importing: { label: "importing", tag: "tag un", means: "The index is still fetching its own copy of this version. It checks no record until it holds one." },
+  failed: { label: "import failed", tag: "tag rej", means: "The index could not fetch its own copy of this version, so it checks no record for it." },
 };
 
-/** One component of the list: the repo and the branch it was imported from, its commit as a link to its page on this index, and its import state. */
-function listedRow({ component, url, branch, state }: Listed): Drawing {
-  const { label, tag } = IMPORT[state];
-  return el(
-    "li",
-    { class: "row" },
-    el("span", { class: "repo" }, address(url)),
-    el("span", { class: "branch" }, "branch ", code(branch)),
-    el("a", { href: `/components/${component}` }, "commit ", code(short(component))),
-    el("span", { class: tag }, label),
-  );
+/** The members of a list in groups by a key. A group stands where its first member stood, and its members keep their order. */
+function grouped<T>(all: readonly T[], key: (member: T) => string): [string, T[]][] {
+  const groups = new Map<string, T[]>();
+  for (const member of all) {
+    const held = groups.get(key(member));
+    if (held === undefined) groups.set(key(member), [member]);
+    else held.push(member);
+  }
+  return [...groups];
 }
 
-/** The index's own page: every component the index holds, in the order of the list, which is the order they were first registered in. */
-function listed({ components }: ComponentList): Drawing {
+/** One version in the list: its commit, as a link to its page on this index, and its import state. The whole row leads where the link does. */
+function listedRow({ component, state }: Listed): Drawing {
+  const { label, tag, means } = IMPORT[state];
+  return el("li", { class: "row" }, el("a", { class: "commit", href: `/components/${component}` }, "commit ", code(short(component))), explained(focusable(tag, label), means, true));
+}
+
+/**
+ * The index's own page: every component the index holds. The versions of one repo stand
+ * together under its Git URL, and in it the versions of one branch. A repo stands where
+ * its first version was registered, a branch likewise, and the versions of a branch in the
+ * order they were registered. The way out to a repo is a mark beside its address, and only
+ * for an HTTPS address (KTD14).
+ *
+ * An address that names a repo narrows the page to that repo's versions, and the page
+ * says so. It never writes down what the address names: it shows a Git URL only as the
+ * list holds it.
+ */
+function listed({ components: all }: ComponentList, repo?: string): Drawing {
+  const components = repo === undefined ? all : all.filter(({ url }) => url === repo);
+  const narrowed =
+    repo === undefined ? undefined : el("div", { id: "narrowed", class: "notice" }, el("strong", {}, "One repo"), el("span", {}, "Only the versions of one repo are listed."), el("a", { href: "/" }, "Every component of this index"));
   // An index with no component says so in words of its own. A count of nought is not drawn, as on a component's page (R14).
-  const shown = components.length === 0 ? empty("No component registered") : [el("span", { class: "count" }, String(components.length)), el("ul", { class: "rows" }, components.map(listedRow))];
-  return el("div", { class: "view" }, section("components", "Components", shown));
+  if (components.length === 0) return el("div", { class: "view" }, narrowed, section({ id: "components", title: "Components" }, empty(repo === undefined ? "No component registered" : "No version of this repo registered")));
+  const repos = grouped(components, ({ url }) => url).map(([url, versions]) =>
+    el(
+      "li",
+      { class: "repo" },
+      el("div", { class: "repo-head" }, el("h3", {}, url), isHttps(url) ? el("a", { class: "source", href: url }, el("span", {}, "source")) : undefined),
+      el(
+        "ul",
+        { class: "branches" },
+        grouped(versions, ({ branch }) => branch).map(([branch, held]) => el("li", { class: "branch" }, el("span", { class: "branch-name" }, "branch ", code(branch)), el("ul", { class: "rows" }, held.map(listedRow)))),
+      ),
+    ),
+  );
+  return el("div", { class: "view" }, narrowed, section({ id: "components", title: "Components", count: el("span", { class: "count" }, String(components.length)) }, el("ul", { class: "repos" }, repos)));
 }
 
 /**
@@ -520,7 +764,7 @@ function status(held: Held): Drawing {
  * names no commit and passes on no teams, so a refusal says nothing it can show.
  */
 function shownAt(place: Place, read: Read): { readonly version: number | string; readonly body: () => Drawing } | undefined {
-  if (place.kind === "index") return read.kind === "list" ? { version: keyOf(read.list), body: () => listed(read.list) } : undefined;
+  if (place.kind === "index") return read.kind === "list" ? { version: keyOf(read.list), body: () => listed(read.list, place.repo) } : undefined;
   if (read.kind === "view") return { version: read.view.viewVersion, body: () => viewed(place, read.view) };
   return read.kind === "unknown" || read.kind === "refused" ? { version: read.kind, body: () => unviewed(place, read.kind) } : undefined;
 }

@@ -90,7 +90,42 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - A Workflow step called an outside host over HTTP.
 - `wrangler queues subscription create --source artifacts.repo` fails, because it has no flags for the namespace and the repo that the API requires.
 
-**Not known.** Whether the trigger honors the Workflow creation limit of 100 per second, and what it uses as the instance ID.
+**Not known.** Whether the trigger honors the Workflow creation limit of 100 per second. The second check below saw what it uses as the instance ID.
+
+## Artifacts events, second check
+
+**Observed on Oct 12, 2026**, against a live Artifacts namespace made for the check. A throwaway Worker was deployed with Wrangler 4.147.0. Its Workflow kept each event it was started with. Each row of the check had a repo of its own, so an event named the row it came from. Every repo was pushed to first, and one repo was only pushed to, as the control. A run waited 90 seconds after its last operation. The check ran to its end twice, and both runs agreed. The row for a second fetch, into a repo that already held a commit, was in the second run only. A run between the two stopped early: about a minute after the Worker was deployed again under the name it had just been deleted from, `workers.dev` answered one request with a 404 of its own, after three requests had reached the Worker.
+
+### The trigger
+
+- A config with three `triggers.events` entries deployed: `cf.artifacts.repo.pushed`, `cf.artifacts.repo.fetched` and `cf.artifacts.repo.cloned`. Each had the shape of the push trigger above, with a namespace filter, and one Workflow was the target of all three. Wrangler printed `event triggers: 3`.
+- The two runs kept 17 and 21 events. Each event had an `id`, no two were the same, and each Workflow instance's ID was its event's `id`. The events-schemas page shows no event ID.
+
+### What sent an event
+
+| Operation | Token | Event |
+| --- | --- | --- |
+| `git fetch --depth=1 <remote> <commit hash>` into an empty bare repo | read | One `cloned`, 2.1 to 4.5 seconds later |
+| The same fetch | write | One `cloned`, 3.5 and 5.4 seconds later |
+| A second fetch of that kind, of a newer commit, into a repo that held the first commit under a ref | read | One `fetched`, 3.5 seconds later |
+| `git clone` | read | One `cloned`, 2.8 and 3.9 seconds later |
+| `git fetch <remote> refs/notes/cairnfield:refs/notes/cairnfield` into an empty bare repo | read | One `cloned`, 2.8 and 3.1 seconds later |
+| `git ls-remote` | read | None |
+| `readCommit`, `readTree`, `readBlob`, `readFile` and `log` on the binding, each on a repo of its own | | None. Each read found what it asked for |
+| `git push` of a branch | write | One `pushed`, 1.9 to 7.0 seconds later |
+| `git push` of `refs/notes/cairnfield` | write | One `pushed` that names the ref, with no commit in `commits` |
+| Nothing but the first push, on the control repo | | No `cloned` and no `fetched` |
+
+- A fetch into a repo that held nothing came as `cloned`, whatever the Git command. A fetch into a repo that already held a commit of the repo came as `fetched`.
+- The payload of a `cloned` and of a `fetched` event held `id`, `type`, `source` with `namespace` and `repoName`, and an inner `payload` with no member. It names the repo, and nothing about who fetched or what.
+
+### The notes ref
+
+- A write token pushed `refs/notes/cairnfield`.
+- A read token then listed that ref with `git ls-remote` and fetched it. The fetched ref was the commit that was pushed. Its tree held one entry, named by the commit the note was on.
+- A push of the notes ref sends a `pushed` event, as the table says. So a node's push Workflow starts on it.
+
+**Not known.** What a fetch that brings nothing new sends. Whether one event can arrive twice. Whether an import brings a notes ref of the repo it imports into a copy, and so into the forks of that copy. What a subscription for one repo delivers to a queue: the check did not need one and did not try it.
 
 ## Deployed nodes and index
 
@@ -104,6 +139,12 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - A node shows a new head in the index within about a minute of a push.
 - **Observed on Oct 11, 2026**, after a deploy of the index. Its two pages answered with the content type `text/html`, and their script and stylesheet with `text/javascript` and `text/css`, each with no charset. The stand-in for the assets binding in the tests answers `text/html; charset=utf-8`.
 - **Observed on Oct 11, 2026**, in a browser. Cloudflare added the script of its Web Analytics beacon, from `static.cloudflareinsights.com`, to both pages of the index. The pages' content security policy takes scripts from the index's own origin alone, so the browser refused it and wrote one error to the console on each load. The pages drew as they should. The HTML that `curl` received held no such script.
+- **Observed on Oct 12, 2026**, after a deploy of the index and of both nodes with the count of fetches. A node's config has two Workflows and three event triggers, and a fetch was counted on a deployed node.
+  - One node answered `not-found` for the count of its fork. One `git fetch --depth=1` of the component's commit into an empty repo followed, with the token from that node's `read-token` route. The node answered `not-found` 1, 3 and 5 seconds after the fetch, and a count of 1 after 8 seconds. No more looks were made in between.
+  - The index's view held no count for the node about 8 and 12 seconds after the node first served one, and held it after about 16. The other node did not run the new code yet. It answered 404 for the route, and its entry held no count.
+  - The demo was then reset and played twice, with both nodes on the new code. The nodes served counts of 22 and 11. A `git ls-remote` of each fork changed neither. A fetch of each fork's notes ref into an empty repo raised each by one, to 23 and 12. The index's page, in a browser, drew the section of fetches with those two numbers.
+  - After the two plays each fork held `refs/notes/cairnfield`, and a token from the node's `read-token` route listed and fetched it. Each ref held two commits, one for each note, so the second play added none. Each commit had the fixed author, date and message of a notes commit. Each tree held two plain files, each named by a patch commit that the fork's team had pushed. Each note held `commit`, `findings`, `model`, `recording` and `version`. None held `prompt`: the demo's recordings are from before a recording held one. Each of the four notes named its recording by the hash that the saved recording in `fixtures/recordings/` has. Both teams wrote the same patch commit for one finding, and each fork's note under that commit named its own team's recording.
+  - **Not known.** Whether a push alone still leads to a notice on a node with the three triggers. The plays did not show it apart, because a counted fetch sends the notice a push sends. What the two plays printed: only what they left on the nodes and the index was read.
 - Artifacts took a push of a commit whose root tree holds no file. The demo's reset pushed one to each node's repo of records on Oct 10, twice, and each node then listed no record at the new head.
 
 ## The index's first deploy
@@ -152,6 +193,24 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - `readFile` at a full commit hash.
 - Import by branch from a public HTTPS remote, and no Wrangler command for import or fork.
 - The fields of the push payload.
+
+## A walk shared between requests
+
+**Observed on Oct 12, 2026, in local workerd only.** The runtime was workerd 1.20260815.1 through Miniflare, at the compatibility date `2026-08-15`. The Worker kept a promise in module state, as the node's page does, and a slow service binding stood in for Artifacts.
+
+- Two requests that arrived while a first request's reads ran got that walk's answer when it ended, about 1.2 seconds in.
+- They still got it when the first request's reader left 200 ms in, before the walk ended.
+- The same run without the hand-off to `waitUntil` gave the same answers. So the local runtime does not show what the hand-off adds.
+- A request after the walk got the kept answer at once.
+
+**Observed on Oct 12, 2026, on a deployed node.** Five requests for a node's page were sent together, 35 seconds after the last view of it, so the node kept no page.
+
+- All five answered 200 between 1.5397 and 1.5411 seconds after they were sent, each with the same time of drawing. The page gives that time to the second. This fits one walk that all five waited on, and does not show it: several isolates that each walked would give the same second.
+- A request five seconds later got the same page, with that time.
+- The page carried its policy with the hash of its one style, `cache-control: no-store`, `x-robots-tag: noindex, nofollow`, `referrer-policy: no-referrer` and `nosniff`. A request with a query answered 400.
+- In a browser the style applied under the policy, at 1280 and at 390 pixels wide, with no message in the console. A team's name on the index's page led to that team's page.
+
+**Not known.** Whether the five requests reached one isolate and shared one walk, or reached several that each walked: nothing in the check counted the node's reads of Artifacts. What the hand-off to `waitUntil` adds on a deployed Worker: no reader left during a walk in this check.
 
 ## Platform limits
 
@@ -228,3 +287,5 @@ The demo's two nodes and its index run as separate Workers in one Cloudflare acc
 The check of Oct 4 left a namespace with five repos, a Worker with its Workflow, a KV namespace and a queue. All were deleted on Oct 9, 2026. No part of Cairnfield used them.
 
 A report to Cloudflare that a read-only repo accepts pushes was drafted and not sent.
+
+Each run of the check of Oct 12 deleted its repos, its Worker and its Workflow at its end. The check left its namespace, empty, to be deleted in the dashboard: Wrangler 4.147 has no command that deletes a namespace. It did not look at its three event triggers, because Wrangler lists none.

@@ -43,6 +43,43 @@ Four rules hold for every record.
 
 `protocol/schemas/<type>.json` holds each shape. The closed lists of values are under [Appendix J](#appendix-j-the-closed-vocabularies).
 
+## Criteria and observations
+
+A criterion is a promise a team wants a component to keep. A finding counts against the promise that its cited lines break.
+
+| Criterion | The promise |
+| --- | --- |
+| `safe-to-read` | Loading the component's text into an agent's context is safe. |
+| `safe-to-run-sandboxed` | Running the component with no credentials and no network access is safe. |
+| `safe-to-run-with-access` | Running the component with the permissions and network access it asks for is safe. |
+| `works-as-documented` | The component does what its documentation says. It stands apart from the three above and covers ordinary bugs. |
+
+The first three are in order, the most basic first, and each implies the ones before it (R5). A finding counts against the criterion it names and against each later one of the three.
+
+An observation is what a finding says its cited lines do. The page of a component commit says it as one sentence about the component.
+
+| Observation | The cited lines | The page says |
+| --- | --- | --- |
+| `sends-data-to-host` | send data to the host | This component sends data to *host*. |
+| `fetches-instructions-from-host` | fetch text from the host that an agent then follows | This component fetches instructions for an agent from *host*. |
+| `loads-resource-from-host` | load code or another resource from the host | This component loads code or another resource from *host*. |
+| `network-access-any-host` | allow or ask for network access to any host | This component allows network access to any host. |
+| `environment-access-all-variables` | allow or ask for every environment variable | This component allows access to every environment variable. |
+| `reads-outside-workspace` | read files outside the workspace | This component reads files outside the workspace. |
+| `writes-outside-workspace` | write files outside the workspace | This component writes files outside the workspace. |
+| `runs-shell-command` | run a shell command | This component runs a shell command. |
+| `runs-with-permissions-bypassed` | run something with permission checks switched off | This component runs something with permission checks switched off. |
+| `runs-install-script` | run a script when the component is installed | This component runs a script when it is installed. |
+| `hidden-instruction` | hold an instruction to an agent that a person reading the component would not see or expect | This component contains a hidden instruction for an agent. |
+| `overrides-host-instructions` | tell an agent to set aside the instructions of its host or its user | This component tells an agent to set aside the instructions of its host or its user. |
+| `requests-broad-credential-scope` | ask for a credential that reaches more than the documented feature needs | This component asks for a credential that reaches more than its documented feature needs. |
+| `stores-credential-in-plain-text` | store a credential in plain text | This component stores a credential in plain text. |
+| `installs-unpinned-dependency` | install a dependency with no pinned version | This component installs a dependency with no pinned version. |
+| `documented-control-not-read` | act without reading a setting that the documentation says controls them | This component acts without reading a setting that its documentation says controls it. |
+| `fails-on-documented-input` | fail on an input the documentation says works | This component fails on an input that its documentation says works. |
+
+The sentence is the finding's. The page names the organizations that report it on the line under it, and says in the section's own words that a finding is a team's report and no verdict of the index.
+
 ## Validation
 
 Validation has two layers. A failure is a reason from a closed list, never a sentence.
@@ -69,12 +106,15 @@ A node is storage with a small HTTP contract. It validates nothing. The shapes a
 | `patch` | `GET patch?component=&commit=` | A patch commit's parent and its changed paths, each with its mode and blob |
 | `blob` | `GET blob?component=&blob=` | The bytes of one blob of a fork |
 | `readToken` | `GET read-token?component=` | A read token for the fork of a component |
+| `fetches` | `GET fetches?component=` | How often the fork of a component was fetched over Git, as the node counted it |
 | `importCopy` | `POST admin/import` | Starts the import of a component, and says whether the copy is ready |
 | `createTeamRepo` | `POST admin/team-repo` | Creates the team repo |
 | `createFork` | `POST admin/fork` | Forks a component copy |
 | `repoToken` | `POST admin/token` | A token for one repo. A copy gets a read token only |
 
 The four `admin/` routes need the node's admin key, in the header `x-cairnfield-admin-key`.
+
+A node also serves a page at its own address, `GET /`, which lists what its team repo holds. The page is not part of the contract, and no index and no command reads it. Every answer the node's Worker builds carries `x-content-type-options: nosniff`. When a route throws, the platform answers with an error page of its own, and the Worker sets no header on that.
 
 ## The index routes
 
@@ -113,6 +153,8 @@ A patch is one commit whose only parent is the pinned commit, on the branch `pat
 - **Groups.** Two patches are in one group when their changed lines in one content overlap or adjoin, directly or through another patch. A group shows side by side. Patch records with one patch ID show as one entry.
 
 The command runs the checks on a patch it wrote before it pushes. The index runs them on every patch record it reads. Assembly runs them again on what it fetched.
+
+`patch` also attaches a note to the commit it pushes, at `refs/notes/cairnfield` of the team's fork (R46). The note is one small JSON file. It says how the team says the commit was made: the commit, the findings its patch record names, the model, the SHA-256 of the recording and, when the recording names one, the SHA-256 of the prompt. Nothing checks a note, and no record names one. Anyone reads it with Git and the fork's read token.
 
 ## Lenses and copies
 
@@ -160,13 +202,29 @@ The library also holds the rule that reads criteria against a lens, `countsAgain
 
 **R13.** The view of a component commit carries everything the page shows. It holds data and no prose. The library also describes a lookup by Git URL and a projection that holds only criteria and hosts. The index in this repo serves neither.
 
+A registered node's entry in the view holds the commit of its team repo that the index last processed. It may also hold `declared`: what the node states of itself and the index cannot compute (KTD42). That is the node's count of the fetches of its fork (R45). The page lists the count in a section of its own (R14).
+
 **R14.** The index serves two pages: its own, at `/`, and one per component commit, at `/components/<commit>`.
 
-The index's own page says in one paragraph what an index is and what it is not. Under it the page lists the components the index holds, in the order they were first registered. A failed component that is registered again keeps its place. Each has its Git URL, its branch, its commit as a link to that commit's page, and its import state.
+The index's own page says in one paragraph what an index is and what it is not: a part of Cairnfield that collects findings, patches and recipes and reports them together, that holds nothing original and gives no verdict, and that no team builds from. Under it the page lists the components the index holds. The versions of one repo stand together under its Git URL, and in it the versions of one branch. A repo stands where its first version was registered, and so does a branch, and the versions of a branch stand in the order they were registered. A failed component that is registered again keeps its place. Each version is a row with its commit, which is a link to that commit's page on the index, and its import state. A mark beside a repo's Git URL leads out to the repo when the URL is an HTTPS address. An address of the form `/?repo=<Git URL>` narrows the page to the versions of that repo, and the page says that it is narrowed. The page of a component commit links there, so a reader gets from one version of a repo to its others. The page narrows the list itself: `GET /view` still takes no query. It shows a Git URL only as the list holds it, and never what the address names. Each import state is a label, and the page shows what the label means when a reader points at it or focuses it.
 
-The page of a component commit says in one line what it is. It shows live claims, work that is being checked, findings by criterion, patches, recipes and rejected work, in that order.
+The page of a component commit says in two sentences what it gathers, and that the index gives no verdict of its own. It shows live claims, work that is being checked, findings by criterion, patches, recipes, each team's fetches and rejected work, in that order. Under its heading each section says in plain words what it holds.
 
-Both pages link to the project's site and to its repo, and the page of a component commit links to the index's own page.
+A finding is shown as what it says of the component, in one sentence, then its file and lines, then the organizations that report it. Each criterion heads its findings in one block with the promise it stands for, and its name is a link to [Criteria and observations](#criteria-and-observations) in this document. That is the one address the page holds that no record names.
+
+A patch shows the model that each of its records names. Each record has a line of its own: the organization that published it, the word "declared", and the model as the record holds it, with its hyphens. The lines stand in the order of the organizations' addresses. A team states the model, and the index cannot check it. The line is set as a re-check's line is, with no outline. An outline on the page is a status: solid for what is confirmed or checked, dashed for what is unconfirmed. A declared value is a statement and no status. An unconfirmed patch can gain a second organization, and no check reaches a model. The page shows the model of no other record.
+
+After the recipes the page lists each team's fetches: the count a node states of the fetches of its fork (R45), which the view holds as a value the node declared (KTD42). Each node with a count has a line of its own: the organization, the word "declared", the number, and the word "fetch" or "fetches". The line is set as a declared model's line is, with no outline. The lines keep the order of the view, so a number moves nothing. A node whose entry holds no count has no line, and a view with no count has no such section. So a missing count never reads as a count of zero.
+
+Under its heading the section says what a fetch is: one download over Git of a team's fork, which is the team's own repository of that version. Then it says three things of every count. Each team's node states its own number, and the index cannot check it. The number counts the fetches of that fork since its node began to count them, and the team's own commands add to it. A team that is not listed has no count in the view, which is not a count of zero.
+
+Order carries weight on the page. Under a criterion the findings that more organizations report come first. Patches of one group, the groups themselves and recipes are ordered the same way, by the organizations behind each. Entries with as many keep the order of the view. A counter-finding moves nothing, as it changes no count.
+
+A label whose meaning is not plain shows that meaning while a reader points at it or focuses it: a criterion, confirmed and unconfirmed, a patch's kind, the word "declared" before a model and before a count, pending, a rejection reason, and the hash of a recipe. An organization is shown by its node's address without `https://`, with a small stone in its tone, and the link under it carries the whole address. The tone tells organizations apart and says nothing else. A node address that is not HTTPS is shown whole and is no link.
+
+Each page's bar is a trail: the project's name leads to the project's site, and on the page of a component commit the next part leads to the index's own page. The last part names the page that is open.
+
+Both pages end with the same footer. It credits the people behind the software, says that anyone can run an index and that the credits say nothing of who runs this one, and links to the project's site, its repo, its README and this document.
 
 Each state has words of its own, and none reads as an all-clear.
 
@@ -177,14 +235,14 @@ Each state has words of its own, and none reads as an all-clear.
 | The import failed | "The index could not import this version" |
 | The copy is ready and there are no findings | "No findings published", and "This is not a statement that the version is safe." |
 
-Until the index holds its own copy, the page of a component commit shows no count of findings or patches and no section of checked work.
+Until the index holds its own copy, the page of a component commit shows no count of findings or patches, no section of checked work and no fetches.
 
 | State | The index's own page says |
 | --- | --- |
 | The index holds no component | "No component registered" |
 | The index is importing a component's copy | "importing" |
 | The import failed | "import failed" |
-| The copy is ready | "imported", and never "ready" |
+| The copy is ready | "copy held", and never "ready" |
 
 **R15.** A claim says that work has started. The page shows live claims only. The index shows a claim as closed when a finding or a patch record from the same node cites it. A record from another node closes nothing. A claim expires a set time after the index received it.
 
@@ -194,7 +252,7 @@ Until the index holds its own copy, the page of a component commit shows no coun
 
 **R19.** An agent the command runs is given nothing from another team: no record, no patch and no part of a view. Its target is one finding of the team's own.
 
-**R20.** A live run of the patch agent saves its validated edits as a recording. `patch --replay` reads the recording in place of the model call and goes on through the same check, commit and publish path. A replay repeats the commit hash and every record ID of the live run.
+**R20.** A live run of the patch agent saves its validated edits as a recording. `patch --replay` reads the recording in place of the model call and goes on through the same check, commit and publish path. A replay repeats the commit hash and every record ID of the live run, and the note on the commit (R46).
 
 **R21.** A person or an outside agent writes record files to the outbox, and they publish through the same path as the command's own records. `skills/cairnfield/SKILL.md` and the schemas in `protocol/schemas/` say how. `validate` needs no key and makes no call. It is the one command an outside agent runs. The operator runs `publish`. A record that a person or a script wrote names the model `none`.
 
@@ -230,6 +288,20 @@ Until the index holds its own copy, the page of a component commit shows no coun
 
 **R44.** On a terminal, the demo script and the reset script print what a viewer of a recording can follow: each step heading in bold, each team's lines in a color of its own, each JSON result indented over several lines with its keys, strings and numbers colored, and the diff `assemble` prints with added lines in green and removed lines in red. A hash is shown whole and no result is cut. When the output is not a terminal, and under `NO_COLOR`, every line is plain: one line for each command and each result, and a plain diff. The command itself does not change, and its standard output stays JSON.
 
+**R45.** A node counts the fetches of each fork it holds, and serves the count at `GET fetches?component=`. It counts the events Artifacts sends for a fetch or a clone of the fork over Git, and KTD43 holds what was seen of them. A fetch with a token from the node's admin routes counts as one with the public read token does, so a team's own fetches are in its count. A read of the fork through the node's routes is no fetch, and neither is a listing of the fork's refs. An event names the fork and nothing else. So a count belongs to one team and one component. It names no reader and no patch, and anyone can raise it. A node counts from when it begins to count: a fetch from before that is in no count, however long the fork has stood. The node forgets a fork's count when the fork is made anew. A fork with no counted fetch has no count, and the node answers `not-found`: a missing count is not a count of zero. The node states the count, and nothing checks it.
+
+The index carries a node's count into the view of that component, in the node's entry, as a value the node declared (KTD42). The entry of a node with no count holds none. The page lists a count beside its node, with fixed words that say whose count it is (R14). No command acts on the count. `view` prints it as part of the view. The count is outside the replay promise of R20, so a reset and a second play of the demo may give another number.
+
+**R46.** `patch` attaches a note to each patch commit it pushes, at `refs/notes/cairnfield` of the team's fork. The note says what the team declares about how the commit was made: the commit, the findings its patch record names, the model, the SHA-256 of the recording and, when the recording names one, the SHA-256 of the prompt the model ran under. The note `patch` writes holds hashes and one value from a closed list, and no free text. A live run and its replay write the same bytes.
+
+The note is in the fork before the patch record is published. When the fork turns down the push of the notes ref, `patch` ends before it publishes, and `patch --replay` finishes the run.
+
+A note is read with Git: a fetch of `refs/notes/cairnfield` from the fork, with the read token that the node's `read-token` route gives anyone. No route of a node serves a note, and the index reads none. Nothing has checked a note that a reader fetches. Its team can push any bytes in its place, so a note from another team's fork is data until it is held to `PATCH_NOTE`. A note changes nothing that the index or a command works out, and a commit with no note is as valid as one with a note. `carry` attaches none to the commits it builds, and a commit made by hand has none.
+
+A note is the team's own statement and no record. No record gains a field for it, nothing names it, and its team can write it again.
+
+**R47.** A node answers `GET /` with an HTML page that lists what its team repo holds: each component, and under it each record by its type and ID, as a link to that record's file on the same node. The page draws only what the record path pattern admits of a file's path, the team repo's head, the node's own address and the time the page was drawn. It reads no record file. It says in fixed words that it is the team's own list and that nothing on it was checked, and it tells a reader nothing to do. It runs no script, takes nothing from the request and draws a bounded number of entries. For the page, a node walks its team repo at most once in 30 seconds per isolate, and the page it keeps never serves the `records` route. Every answer the node's Worker builds carries `x-content-type-options: nosniff`.
+
 ## Decisions
 
 **KTD1.** Records are content-addressed files. A record's ID is the SHA-256 of its canonical JSON: keys sorted, no white space, whole numbers only, in UTF-8. Its path in the team repo is `records/<component-commit>/<type>/<id>.json`. Two pushes then never differ on a file, only on where the branch points. A record whose content hash differs from its file name, or whose component or type differs from its folders, is rejected with `hash-mismatch`. `publish` never writes a published record again. The index stores each record as valid, pending or rejected.
@@ -242,7 +314,7 @@ Until the index holds its own copy, the page of a component commit shows no coun
 
 The patch ID is the SHA-256 over the replacements in sorted order, one line each: `<old blob> <old mode> <new blob> <new mode>`. It holds no commit and no path. So the same patch on a later version has the same ID, and one replacement covers every byte-identical copy. No diff algorithm has to agree across implementations. A patch record may list the patch IDs it merges, as `sources`. No command writes a merged patch yet.
 
-**KTD5.** The index and the command compute, and authors do not declare. Match groups, confirmation counts, and a patch's kind, size, changed lines, paths and ID are computed from content. So is a finding's cited content. A record declares only references: a patch record's commit, findings and sources, the target of a re-check, a counter-finding or a patch re-check, and a recipe's patches and tree hash.
+**KTD5.** The index and the command compute, and authors do not declare. Match groups, confirmation counts, and a patch's kind, size, changed lines, paths and ID are computed from content. So is a finding's cited content. A record declares only references: a patch record's commit, findings and sources, the target of a re-check, a counter-finding or a patch re-check, and a recipe's patches and tree hash. A view holds one value that a node declares and the index cannot compute, and marks it as such (KTD42).
 
 A reference is resolved when a view is built. A patch shows only while every finding it names is a valid finding of that view. A re-check, a counter-finding or a patch re-check whose target the view does not hold shows nowhere. No code reads `sources` yet. The page labels a recipe's tree hash as published, not checked.
 
@@ -263,11 +335,12 @@ A reference is resolved when a view is built. A patch shows only while every fin
 | A served blob | 256 KB |
 | A node listing | 5,000 entries, and 500 records per component |
 | A fetch from another team's fork | 16 MB of objects, a first value |
+| A node's count of the fetches of one fork | 1 to 1,000,000,000, a first value |
 | A repo or fork name | Starts with a lower-case letter or a digit, then lower-case letters, digits, dots, underscores or hyphens. At most 100 characters, a first value |
 | A namespace name | The same rule, with 2 to 63 characters |
 | A branch name | Letters, digits, dots, underscores, hyphens and slashes. It never starts with a hyphen. At most 200 characters, a first value |
 
-**KTD7.** The node is storage with a small HTTP contract. It returns its head commit with a listing of record files, serves a record file at a given commit, serves a patch commit's parent and changed paths with their modes and blobs, serves a blob of a fork, and gives a read token for a fork only. It validates nothing. A refusal is a code: `bad-request`, `unauthorized`, `not-found`, `not-ready` or `refused`. `node/src/contract.ts` holds the node's own copy of the contract.
+**KTD7.** The node is storage with a small HTTP contract. It returns its head commit with a listing of record files, serves a record file at a given commit, serves a patch commit's parent and changed paths with their modes and blobs, serves a blob of a fork, gives a read token for a fork only, and gives its count of a fork's fetches (R45). It validates nothing. A refusal is a code: `bad-request`, `unauthorized`, `not-found`, `not-ready` or `refused`. `node/src/contract.ts` holds the node's own copy of the contract. The page a node serves at its own address stands outside the contract (R47, KTD45).
 
 The node keeps one read token per fork, in a Durable Object named after the fork, and serves that one until five minutes before it expires. So the public route cannot mint without bound.
 
@@ -275,7 +348,7 @@ The cost of this design is trust. The index trusts a node for a patch commit's p
 
 **KTD8.** A node's identity is its base URL. Organization counts are counts of registered node URLs. The URL has one accepted spelling: lower-case `https://`, a lower-case hostname of at most 253 characters that is a name and never an address, with no dot at its end and no Punycode label, and no credentials, query, fragment or last slash. A port is allowed when it is not 443 and has no zero in front. A node under a path adds parts of lower-case letters, digits, dots, underscores and hyphens (KTD24). The library refuses every other spelling, and the JSON Schema pattern states the same rule. Nothing rewrites a node URL, so two strings never name one node. The index refuses a registration whose URL is already registered.
 
-**KTD9.** Each node has its own Artifacts namespace. The push trigger filters by namespace, so one team's push never starts another team's Workflow.
+**KTD9.** Each node has its own Artifacts namespace. The push trigger filters by namespace, and so do the two fetch triggers (KTD43). So one team's push or fetch never starts another team's Workflow.
 
 **KTD10.** A node's admin routes need its admin key, sent in a header. The command calls them to import a component copy, create the team repo and a fork, and get repo tokens. Each node has its own key, set by hand as a Worker secret. A node with no key set refuses every admin call.
 
@@ -287,6 +360,8 @@ Notices for one node within 5 seconds cause one sync. A notice that arrives afte
 
 A patch record whose commit cannot be checked yet is looked at again every 30 seconds, 20 times. After that it stays pending. Each later sync of its node looks again at up to 120 of the node's waiting patch records, in turn. A finding it names that turns valid also causes a look. Each component's view has a version number that goes up with every change the view can show, so a reader draws again only when it moved.
 
+A sync also asks the node for its counts of fetches (KTD43). The index stores one number for each node and component. A count that is new, has changed or is gone moves the version of that component's view by one, in the batch that writes it. The same count again moves nothing.
+
 **KTD12.** A component is registered with its Git URL, branch and commit. The URL must be HTTPS with no credentials. The index imports the branch with no depth, so every commit the branch reaches can be pinned. It holds records for the commit as pending until the copy is ready, and it revokes the token the import returns. When the copy is ready, the index stores its file listing: each path with its mode and blob hash. Matching and the patch checks read that listing.
 
 A component fails when Artifacts refuses the import, when the copy is not ready within five minutes, when the finished copy does not hold the commit, or when the copy holds more than 500 folders or 20,000 files. Its pending records are then rejected with `unknown-component`. Only an import that fails with `UPSTREAM_UNAVAILABLE` is tried again by itself.
@@ -297,7 +372,7 @@ The index neither fetches nor stores a record of a component that is not registe
 
 **KTD13.** The index keeps the last commit it read per node, and the commit at which it read each record. It detects no history rewrite: a view's `historyRewritten` field is always false. A rebuild drops every record and reads every node again. It does not rebuild claim state. A claim first seen in a rebuild counts as expired.
 
-**KTD14.** A page's script draws only what its data endpoint holds, and reads that endpoint every 2 seconds: the view on the page of a component commit, and the list at `GET /view` on the index's own page. People and agents then see the same data. Each page is served with a content security policy that allows no script or style written into the page and loads files from its own origin only. Every value from a record or a registration is set as text. A link made from such a value leaves the index only for an HTTPS address.
+**KTD14.** A page's script draws only what its data endpoint holds, and reads that endpoint every 2 seconds: the view on the page of a component commit, and the list at `GET /view` on the index's own page. People and agents then see the same data. Each page is served with a content security policy that allows no script or style written into the page and loads files from its own origin only: its scripts, its stylesheet, its fonts and its icon. Every value from a record or a registration is set as text. A link made from such a value leaves the index only for an HTTPS address. A patch record's model is a value its team states and the index cannot check. It stands after the word "declared", as the record holds it, in a plain line with no outline. A node's count of fetches is such a value too (KTD42), and stands the same way, beside the node that states it. The words a page adds are its own: each is fixed in the page's code, keyed by a value of a closed list, and none comes from a record.
 
 A page's own fixed text and links are written in the repo, in the page's HTML file, outside the element its script draws in. They are what R14 names: what an index is and is not, the line that says what the page of a component commit is, and the links to the site, the repo and the index's own page. They come from no record, a reader with scripts off still sees them, and they tell a reader nothing to do.
 
@@ -309,9 +384,9 @@ The checkout is an export with no `.git` folder and no symbolic link. It holds o
 
 File content reaches the model only inside a tool result. The system turn and every user turn the command writes hold none of it. A model's own earlier turn goes back to it unchanged. The model key and the repo tokens share the command's process. None is in a prompt or a tool result, and no tool can read one.
 
-**KTD17.** The patch agent returns structured output only: edits, each a path, a line range and the lines that replace it. The command applies each edit to every path that holds the same content, runs the patch checks, and commits with a fixed message, author, committer and dates. The same edits on the same pinned commit then give the same commit hash on every machine, and a repeat push changes nothing. Replacement text goes into the fork as code and never into a record.
+**KTD17.** The patch agent returns structured output only: edits, each a path, a line range and the lines that replace it. The command applies each edit to every path that holds the same content, runs the patch checks, and commits with a fixed message, author, committer and dates. The same edits on the same pinned commit then give the same commit hash on every machine, and a repeat push changes nothing. Replacement text goes into the fork as code and never into a record. `patch` then attaches a note to the commit, which names the recording the edits came from (KTD44).
 
-**KTD18.** A recording is the patch agent's saved edits. A live run saves the edits that passed the patch checks, with the number of the claim it published and the model that wrote them. Recordings are kept in the folder the command's config names, by team label, component commit and finding ID. The team label is a stable name from the config and not the node URL, so a reader's own deployment finds the same recordings.
+**KTD18.** A recording is the patch agent's saved edits. A live run saves the edits that passed the patch checks, with the number of the claim it published, the model that wrote them and, as `prompt`, the SHA-256 of the prompt that model ran under. A recording saved before live runs kept that hash has no `prompt`. Neither has a recording written by hand, with the model `none`, and the command refuses a recording with that model and a `prompt`. Recordings are kept in the folder the command's config names, by team label, component commit and finding ID. The team label is a stable name from the config and not the node URL, so a reader's own deployment finds the same recordings.
 
 A replay reads the saved edits in place of the model call. It fails when the recording is missing and never calls a model. `cli/src/agents/live.ts` is the one file that calls a model and the one file that names a provider. The protocol, the node, the index and assembly involve no model.
 
@@ -372,6 +447,42 @@ The carried records go out through the outbox. Nothing is carried from another t
 
 **KTD41.** The demo script renders its own lines for a terminal, and the command knows nothing of it. Every line a script says passes through one function, and one function writes the command and result lines, so the renderer tells a line's kind by its prefix. The script decides once for each stream whether to paint: never under `NO_COLOR`, and otherwise only when the stream is a terminal whose own check says it shows colors. A stream that does not paint gets the plain lines unchanged. A result is colored by walking the parsed value and never by matching its text, because a value can hold another team's record fields. The diff is colored line by line, with the counts of each hunk header telling content from a file header.
 
+**KTD42.** A view marks what a node declared. A node's entry in a view may hold the member `declared`, for what the node states of itself and the index cannot compute. It holds one value, `fetches`: the node's count of the fetches of its fork of the view's component (R45). This is the one exception to KTD5. The count stands under `declared` and never beside the computed members, so a reader of the JSON can tell a stated value from a computed one.
+
+The index holds the number to its form: a whole number from 1 to 1,000,000,000 (KTD6). It checks nothing else of it. A node's answer gives a count for that node's own entry only. An entry has no `declared` while the index holds no count for the node: the node has counted no fetch, it is from before the route, or the index has read no count from it. So a view with no count is the view it was before this member. A reader that holds a view to its shape must know the member, and a command from before it refuses a view that holds one.
+
+`view` passes `declared` on as the index gave it, in the entry of each node the team's lens keeps (R23). No command checks the count or acts on it.
+
+**KTD43.** A node counts a fetch from an event of its own namespace, and holds no Cloudflare API token to do it. Beside the push trigger, its Wrangler config states two more, for `cf.artifacts.repo.fetched` and `cf.artifacts.repo.cloned`, each filtered by the node's namespace (KTD9). Both start one Workflow, which is not the push Workflow. It counts an event only when the type is one of the two, the event has an ID, and the repo name is `fork-` and a commit hash. An event for the team repo or for a component copy counts nothing and sends no notice.
+
+The count lives in the fork's Durable Object, beside the kept read token (KTD7). The object counts an event under its ID and remembers the last 100 IDs it counted. So an event that arrives twice, or a Workflow step that runs twice, adds one. The count stops at 1,000,000,000 (KTD6). A count starts at the first event the node counts for the fork. A fetch from before the node ran with the two triggers started no Workflow, and nothing fills it in. When a fork is made anew, the node forgets the count with the token. An event names a fork by its repo's name and holds no time. So an event that arrives after that, for a fetch of the fork that was deleted, starts the new fork's count, and the node cannot tell it from an event for the new fork. The route answers `{ component, fetches }` from the object alone: it reads no repo and writes nothing. It starts an object for any component it is asked about, as the read-token route does.
+
+A counted fetch then sends the index the notice a push sends (R7), because the index reads a node only after a notice, and a fetch pushes nothing. The count is kept before the notice is sent, so a notice that fails loses no count.
+
+The index asks for the count inside a sync of the node (R12), once the node's records are read and stored. It asks once for each registered component that the node's listing names, six at a time and at most 60 in one sync, under the bounds of every read from a node (KTD30): a deadline, no redirect and a size limit, which is 512 bytes here. A node whose listing names more than 60 is asked about them in turn, over several syncs. So one sync makes a set number of reads and writes, whatever the index's limit on components is set to. It takes an answer only in the contract's shape, and only for the component it asked about. A `not-found` refusal in the contract's shape drops the number the index holds. Any other answer, and no answer, changes nothing: the number of an earlier sync stays. So a count never fails a sync, and a sync marks the node's head as processed whatever the node says of its fetches. An error of the index's own in this step, such as a database that takes no count, does not fail the sync either. The index then logs one line with a code, the numbers it holds stay, and the node's next sync asks again.
+
+Only the sync of a node that started last writes a count, as only it says what is processed. So an older sync that gets its answer late puts no older number back. A reset drops every count with the records, and each node's next sync asks again. A node is not asked about a component its listing does not name, so a count the index holds for one stays until a reset. A node from before the route answers `not-found` for the path, and the index stores nothing for it. So the index and the nodes can deploy in either order.
+
+**Observed on Oct 12, 2026**, on the live service, with Wrangler 4.147.0. A config with triggers for the three event types deployed. It was the probe's own, with one Workflow as the target of all three. The node's config has two Workflows. It was deployed to both demo nodes later that day, and a fetch with a node's public read token showed in that node's count within eight seconds. A `git fetch --depth=1` of one commit sent one `cloned` event when the repo it fetched into held nothing, and one `fetched` event when that repo already held a commit. An event came some seconds after its fetch: 3.5, 3.6 and 5.4 seconds in three cases. A fetch with a write token sent the event as a fetch with a read token did. A plain `git clone` sent one `cloned` event. `git ls-remote` sent no event, and neither did `readCommit`, `readTree`, `readBlob`, `readFile` or `log` on the binding. So a node's own routes raise no count, and neither does an index that reads the node. A repo that was only pushed to got neither event. Each event held an ID, its type and a source with the namespace and the repo name, and its inner payload was empty. Of 38 events no two had the same ID, and each Workflow instance had its event's ID as its own.
+
+**Not known.** What a fetch that brings nothing new sends, and whether one event can arrive twice. `platform-notes.md` holds the whole check.
+
+**KTD44.** `patch` writes the note on a patch commit, and `publish` does not. `publish` holds a token for the team repo only. `patch` holds a write token for the fork and a scratch repo with the commit in it.
+
+The note is a blob of canonical JSON, the form a record's ID is taken over (KTD1). Its fields are `version`, `commit`, `findings`, `model`, `recording` and, when the recording has one, `prompt`. `recording` is the SHA-256 of the recording's canonical JSON and not of its file's bytes, so a file with other spacing or line endings gives the same note. `prompt` is copied from the recording. A live run hashes the prompt it gave the model, as UTF-8 text, and saves the hash in its recording (KTD18). That is the SHA-256 of the file `cli/src/agents/prompts/patch.md` as the run read it. A replay hashes no prompt. The note holds no count of tool calls: no recording holds one, so a replay could not repeat it. `PATCH_NOTE` and `NOTES_REF` in `protocol/src/contracts.ts` hold the shape and the name of the ref.
+
+The notes tree is flat: one plain file for each noted commit, named by the commit's full hash. The command builds it with Git's plumbing, and merges it by the name of that one entry. Git's own `notes` command spreads a tree over folders as it grows, and a reader of the flat path would then miss a note. The notes commit sits on top of the one the fork held, with the message `Cairnfield note` and the fixed author, committer and dates of a patch commit (KTD17). So the same notes on the same history give the same notes commit on every machine.
+
+The notes ref is pushed alone, after the patch branch. One push of both refs could not tell a refusal of one from a refusal of the other. When the ref moved meanwhile, the command reads it again and builds its commit on top, up to six times, as `publish` does (KTD20). When the fork already holds the same bytes under the commit's name, the command makes no commit and no push. A push of the notes ref starts the node's Workflow like any push (R7), so a replay that finds its own note starts none. Other bytes under that name are replaced, and so is a folder. A note names one recording. Two runs of `patch` for two findings that cite the same lines can build the same commit, and each then writes the note of its own recording under that commit's name: the commit has the note of the run that wrote last. A replay of the earlier run writes its note back and moves the ref. `patch` prints which of the three happened, as `note`: `written`, `already-there` or `replaced`.
+
+**KTD45.** The node's page is a string the Worker builds, at `/`, outside the node contract. It comes from the walk the listing makes. It draws the component, the type and the ID that the record path pattern captures, the head, the node's base URL when that is the Worker's own origin in the accepted spelling (KTD8), and the time of the walk. It escapes every value. A file under `records/` whose path the pattern does not admit is not drawn. Components come in ascending order of commit, and a component's records in ascending order of type and then of ID. The page draws at most 20 components and 50 records of a component, so it holds at most 1,000 record links, and it gives the number of the rest. The project's name in the page's bar is a link to the project's site, at an address fixed in the node's code. It is the page's one link that is no record's.
+
+The page's `content-security-policy` is `default-src 'none'` with the SHA-256 hash of the page's one style, `base-uri 'none'`, `form-action 'none'` and `frame-ancestors 'none'`. The style is written into the page because the node has no assets binding and no build step. `cache-control` is `no-store`: the kept page already bounds the reads, and a browser's copy on top would show a reader an older page. `x-robots-tag` is `noindex, nofollow`, because each record link costs the node two reads of the binding that nothing keeps. `referrer-policy` is `no-referrer`. A request with any query is refused as `bad-request`, so nothing a caller sends reaches the kept page.
+
+The rendered page is kept in the isolate, as a promise, for 30 seconds. Requests that arrive together then walk the repo once. The request that starts a walk hands the promise to `waitUntil`, so a reader who leaves does not end a walk that others wait on. Requests that share one walk were seen in local workerd. On a deployed node, five requests sent together answered alike, which fits one walk and does not show one. `platform-notes.md` holds what was seen. The page gives the time of its walk, so a reader can tell the age of a kept page. No cache stands in front of the Worker, so a `records` answer is never a kept one.
+
+A node with no team repo, with one still being made or with one that has no push answers 200 and says that nothing is published yet. A head with no record path under it answers 200 and says that the team repo holds no record. When Artifacts fails, the node serves the last page that a walk gave. It keeps that page as a value, so a failed walk waits on no walk before it. A walk that lasts longer than 30 seconds can end after the walk that began next. Its page is the older of the two, and it does not take the place of the newer one. With no such page it answers 503 with fixed words. A failed walk is kept for the same 30 seconds, so a failing Artifacts is asked once in that time.
+
 ## Examples
 
 Each example is a case that a test covers. The test's name cites it as `AE<n>`.
@@ -407,6 +518,12 @@ Each example is a case that a test covers. The test's name cites it as `AE<n>`.
 **AE17.** A team approved a copy. `verify` passes on that copy. It fails on a copy with one changed byte, one added file or one changed file mode.
 
 **AE18.** A config names no index. A team pins, publishes, patches, assembles, records a verdict and verifies, and every step succeeds.
+
+**AE19.** A team repo holds files under `records/` whose names hold markup, and files whose paths are no record path. The node's page draws none of them, and has the same elements as a page drawn without them.
+
+**AE20.** A team repo's head has no `records` folder, as after a reset of the demo. The node's page answers 200 and says in fixed words that the team repo holds no record. A node with no team repo, with one still being made or with one that has no push answers 200 and says that nothing is published yet.
+
+**AE21.** A team's fork takes the patch branch and refuses a push to `refs/notes/cairnfield`. `patch` ends with a Git failure. No patch record is published, and the recording is kept. Once the fork takes the ref, `patch --replay` finishes the run under the same claim.
 
 ## Notes
 

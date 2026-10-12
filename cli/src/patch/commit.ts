@@ -4,6 +4,9 @@
 // The message, the author, the committer and both dates are fixed (KTD17). The same
 // edits on the same pinned commit then give the same commit hash on every machine, so a
 // repeat push changes nothing and a replay names the same commit as the live run did.
+//
+// `patch` also attaches a note to the commit it pushes (`note.ts`). `carry` and a patch
+// made by hand push through here too and attach none (R46), so no push here writes one.
 
 import { isSha256 } from "@cairnfield/protocol";
 import { commitChanges, listRefs } from "../git.ts";

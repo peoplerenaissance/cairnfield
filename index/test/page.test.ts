@@ -73,12 +73,52 @@ const withClass = (root: Drawing | undefined, name: string): Drawing[] => elemen
 const withTag = (root: Drawing | undefined, tag: string): Drawing[] => elements(root).filter((element) => element.tag === tag);
 const byId = (root: Drawing | undefined, id: string): Drawing | undefined => elements(root).find((element) => element.attributes["id"] === id);
 
+/** A node's address as a page shows it: an HTTPS address without its scheme. The link under it carries the whole address. */
+const asShown = (node: string): string => node.replace(/^https:\/\//, "");
+
+/** Where the protocol defines the criteria and the observations. It is the one address a component's page holds that no record names. */
+const PROTOCOL = "https://github.com/peoplerenaissance/cairnfield/blob/main/reference/protocol.md#criteria-and-observations";
+
 /** The status labels on an element, each as a reader reads it. */
 const tagsOf = (root: Drawing | undefined): string[] => withClass(root, "tag").map(textOf);
 
+/** What the word "declared" means before the model of a patch record. The page shows it while the word and the model are pointed at or focused. */
+const DECLARED = "This team's record states which model, if any, wrote the patch. The index cannot check that, and has not.";
+
+/** What the word "declared" means before a node's count of fetches. The page shows it while the word and the count are pointed at or focused. */
+const DECLARED_COUNT = "This team's node states how often its fork was fetched. It does not say by whom. The index cannot check the number, and has not.";
+
+/** The three things the page says of every count, in the line under the heading of its section. */
+const OF_A_COUNT = [
+  "Each team's node states its own number, and the index cannot check it.",
+  "The number counts the fetches of that fork since its node began to count them, and the team's own commands add to it.",
+  "A team that is not listed here has no count in this view, which is not a count of zero.",
+];
+/** That line whole: what a fetch is, and then the three. */
+const FETCHES = ["A fetch is one download over Git of a team's fork: the team's own repository of this version, where it keeps its patches.", ...OF_A_COUNT].join(" ");
+
+/** The lines under an element that say what a team declares, each as its texts: the team, the word, the value and what the word means. */
+const declaredOf = (root: Drawing | undefined): string[][] => withClass(root, "declared").map(texts);
+
+/** The rules of the stylesheet, each as its selectors and what it sets: every property with its value. */
+function rulesOf(styles: string): { selectors: string[]; set: string[][] }[] {
+  const rules = [...styles.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  return rules.map(([, selectors = "", set = ""]) => ({
+    selectors: selectors.split(",").map((one) => one.trim()),
+    set: set.split(";").flatMap((one) => (one.includes(":") ? [[one.slice(0, one.indexOf(":")).trim(), one.slice(one.indexOf(":") + 1).trim()]] : [])),
+  }));
+}
+
+/** What the stylesheet sets for one selector, in every rule that names it alone or in a list: each property with its value. */
+const styledAs = (styles: string, selector: string): string[][] => rulesOf(styles).filter(({ selectors }) => selectors.includes(selector)).flatMap(({ set }) => set);
+
+/** The rules of the stylesheet that reach an element of a class or anything inside one: each rule with the class in one of its selectors. */
+const rulesNaming = (styles: string, name: string): { selectors: string[]; set: string[][] }[] =>
+  rulesOf(styles).filter(({ selectors }) => selectors.some((one) => new RegExp(`\\.${name}(?![\\w-])`).test(one)));
+
 /** The counts at the head of a page, each as its number and the word for what it counts. */
 const countsOf = (root: Drawing | undefined): string[][] =>
-  withClass(root, "counts").flatMap((list) => list.children.filter(isElement)).map((count) => [textOf(theOne(withTag(count, "dd"), "")), textOf(theOne(withTag(count, "dt"), ""))]);
+  withClass(root, "counts").flatMap((list) => list.children.filter(isElement)).map((count) => [textOf(theOne(withTag(count, "dd"), "")), texts(theOne(withTag(count, "dt"), ""))[0] ?? ""]);
 
 /** The one element under a root that a test names, by what it reads. */
 function theOne(found: readonly Drawing[], holding: string): Drawing {
@@ -190,7 +230,7 @@ describe("a version with little to show (R14)", () => {
     const page = await pageOf(on, component);
     const [row, ...more] = withTag(byId(page, "pending"), "li");
     expect(more).toEqual([]);
-    expect(textOf(row)).toContain(NODE_A);
+    expect(textOf(row)).toContain(asShown(NODE_A));
     expect(textOf(row)).toContain("patch");
     expect(textOf(row)).toContain(waiting.slice(0, 8));
     expect(tagsOf(row)).toEqual(["pending"]);
@@ -209,15 +249,17 @@ describe("a version with little to show (R14)", () => {
 });
 
 describe("the sections of a page (R14)", () => {
-  it("come in the origin's order: live claims, findings, patches, recipes, rejected work", async () => {
+  it("come in the origin's order, with each team's fetches after the recipes: live claims, findings, patches, recipes, fetches, rejected work", async () => {
     const { on, one, component } = await twoNodes();
     await one.publish(finding(component, { location: { path: README, start: 400, end: 410 } }));
+    // The node has counted fetches of its fork, so the page has a count to list.
+    one.counted(component, 2);
     await synced(on, NODE_A);
 
     const page = await pageOf(on, component);
     const order = elements(page).flatMap((element) => (element.tag === "section" ? (element.attributes["id"] ?? []) : []));
-    expect(order).toEqual(["claims", "findings", "patches", "recipes", "rejected"]);
-    expect(withTag(page, "h2").map(textOf)).toEqual(["Live claims", "Findings", "Patches", "Recipes", "Rejected work"]);
+    expect(order).toEqual(["claims", "findings", "patches", "recipes", "fetches", "rejected"]);
+    expect(withTag(page, "h2").map(textOf)).toEqual(["Live claims", "Findings", "Patches", "Recipes", "Fetches", "Rejected work"]);
   });
 
   it("heads the page with the component's Git URL, its commit and counts of organizations, findings and patches", async () => {
@@ -263,7 +305,7 @@ describe("live claims (R15, KTD15)", () => {
     const section = byId(await pageOf(on, component), "claims");
     const [shown, ...more] = withClass(section, "claim");
     expect(more).toEqual([]);
-    expect(textOf(shown)).toContain(NODE_A);
+    expect(textOf(shown)).toContain(asShown(NODE_A));
     expect(textOf(shown)).toContain("review");
     expect(textOf(shown)).toContain("permissions");
     expect(tagsOf(shown)).toEqual(["live"]);
@@ -316,12 +358,12 @@ describe("findings (R14)", () => {
     expect(rows).toHaveLength(2);
     const alone = theOne(rows, "hidden instruction");
     expect(tagsOf(alone)).toEqual(["unconfirmed"]);
-    expect(textOf(alone)).toContain(NODE_A);
-    expect(textOf(alone)).not.toContain(NODE_B);
-    const shared = theOne(rows, "sends data to host");
+    expect(textOf(alone)).toContain(asShown(NODE_A));
+    expect(textOf(alone)).not.toContain(asShown(NODE_B));
+    const shared = theOne(rows, "This component sends data to ");
     expect(tagsOf(shared)).toEqual(["confirmed by 2"]);
-    expect(textOf(shared)).toContain(NODE_A);
-    expect(textOf(shared)).toContain(NODE_B);
+    expect(textOf(shared)).toContain(asShown(NODE_A));
+    expect(textOf(shared)).toContain(asShown(NODE_B));
     expect(textOf(shared)).toContain(HOST);
   });
 
@@ -333,7 +375,7 @@ describe("findings (R14)", () => {
     await synced(on, NODE_A);
 
     const [row] = withClass(byId(await pageOf(on, component), "findings"), "finding");
-    expect(textOf(row)).toContain("documented control not read");
+    expect(textOf(row)).toContain("This component acts without reading a setting that its documentation says controls it.");
     expect(textOf(row)).toContain(`${README}lines 11–13`);
     expect(textOf(row)).toContain(`contradicts ${SKILL}line 2`);
   });
@@ -354,8 +396,35 @@ describe("findings (R14)", () => {
     // Each heading is followed by the findings that name its criterion.
     const lists = withTag(section, "ul").filter((list) => classesOf(list).includes("findings"));
     expect(lists.map((list) => withClass(list, "finding").length)).toEqual([1, 2, 1]);
-    expect(textOf(lists[0])).toContain("hidden instruction");
-    expect(textOf(lists[2])).toContain("fails on documented input");
+    expect(textOf(lists[0])).toContain("This component contains a hidden instruction for an agent.");
+    expect(textOf(lists[2])).toContain("This component fails on an input that its documentation says works.");
+  });
+
+  it("puts the findings that more organizations report first under a criterion, and leaves the others in the order of the view", async () => {
+    const { on, one, other, component } = await twoNodes();
+    const under = { criterion: "safe-to-run-with-access", check: "code" };
+    await one.publish(
+      finding(component, { ...onReadme(5), ...under, observation: "runs-shell-command" }),
+      finding(component, { ...onReadme(7), ...under, observation: "reads-outside-workspace" }),
+      finding(component, { ...onReadme(9), ...under, observation: "writes-outside-workspace" }),
+    );
+    // The second team reports one of the three as well.
+    await other.publish(finding(component, { ...onReadme(9), ...under, observation: "writes-outside-workspace" }));
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+
+    const says: { readonly [observation: string]: string } = {
+      "runs-shell-command": "This component runs a shell command.",
+      "reads-outside-workspace": "This component reads files outside the workspace.",
+      "writes-outside-workspace": "This component writes files outside the workspace.",
+    };
+    const inTheView = (await on.view(component)).findings.map(({ observation }) => says[observation]);
+    const rows = withClass(byId(await pageOf(on, component), "findings"), "finding");
+    expect(rows.map(tagsOf)).toEqual([["confirmed by 2"], ["unconfirmed"], ["unconfirmed"]]);
+    // The one that two organizations report stands first, wherever the view holds it.
+    expect(rows.map((row) => texts(withTag(row, "strong")[0])[0])).toEqual([says["writes-outside-workspace"], ...inTheView.filter((said) => said !== says["writes-outside-workspace"])]);
+    // The section says in its own words how it is ordered.
+    expect(textOf(byId(await pageOf(on, component), "findings"))).toContain("The ones more organizations report stand first");
   });
 
   it("counts the organizations behind a finding for the criterion it sits under", async () => {
@@ -370,7 +439,7 @@ describe("findings (R14)", () => {
     expect(rows).toHaveLength(2);
     // One organization says it breaks safe-to-read. Its finding counts against the stricter criterion too (R5, R10).
     expect(tagsOf(rows[0])).toEqual(["unconfirmed"]);
-    expect(textOf(rows[0])).not.toContain(NODE_B);
+    expect(textOf(rows[0])).not.toContain(asShown(NODE_B));
     expect(tagsOf(rows[1])).toEqual(["confirmed by 2"]);
   });
 
@@ -389,7 +458,7 @@ describe("findings (R14)", () => {
     const [row, ...more] = withClass(byId(await pageOf(on, component), "findings"), "finding");
     expect(more).toEqual([]);
     expect(textOf(row)).toContain("hidden instruction");
-    const dispute = theOne(withClass(row, "dispute"), NODE_C);
+    const dispute = theOne(withClass(row, "dispute"), asShown(NODE_C));
     expect(textOf(dispute)).toContain("documented behavior");
     expect(textOf(dispute)).toContain(`${README}line 30`);
     // A dispute changes no count.
@@ -413,8 +482,8 @@ describe("patches (R16)", () => {
     const page = await pageOf(on, component);
     const [entry, ...more] = withClass(byId(page, "patches"), "patch");
     expect(more).toEqual([]);
-    expect(textOf(entry)).toContain(NODE_A);
-    expect(textOf(entry)).toContain(NODE_B);
+    expect(textOf(entry)).toContain(asShown(NODE_A));
+    expect(textOf(entry)).toContain(asShown(NODE_B));
     expect(tagsOf(entry)).toEqual(["removes only", "confirmed by 2"]);
     const id = await idOf(SKILL_TEXT, SKILL_FIXED);
     expect(entry?.attributes["id"]).toBe(`patch-${id}`);
@@ -429,6 +498,96 @@ describe("patches (R16)", () => {
     const [target = "", ...targets] = placesFrom(entry);
     expect(targets).toEqual([]);
     expect([`#finding-${first.finding}`, `#finding-${second.finding}`]).toContain(target);
+  });
+
+  it("draws the model each team's record of a patch declares: a line for each record, with its team, the word 'declared' and the model as the record holds it", async () => {
+    const { on, one, other, component } = await twoNodes();
+    // Both teams wrote the same patch. The first team's record names a model, and the second team's says that no model wrote it.
+    for (const [node, where, model] of [[one, {}, "claude-sonnet-5-5"], [other, { location: { path: SKILL, start: 2, end: 3 } }, "none"]] as const) {
+      const cited = await node.publish(finding(component, where));
+      await node.publish({ ...patchRecord(component, await node.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }]), cited), model });
+    }
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+    const view = await on.view(component);
+    const place = placeAt(`/components/${component}`);
+
+    const [entry, ...more] = withClass(byId(firstDrawing(place, view), "patches"), "patch");
+    expect(more).toEqual([]);
+    // Each model stands beside the team whose record names it. It is the record's value whole: an enumerated value has its hyphens turned to spaces, and a model does not.
+    const lines = [
+      [asShown(NODE_A), "declared: ", "claude-sonnet-5-5", DECLARED],
+      [asShown(NODE_B), "declared: ", "none", DECLARED],
+    ];
+    expect(declaredOf(entry)).toEqual(lines);
+    // The lines stand in the order of the teams' addresses, as the teams above them do, whatever the order of the records in the view.
+    const turned = { ...view, patches: view.patches.map((group) => ({ patches: group.patches.map((held) => ({ ...held, records: [...held.records].reverse() })) })) };
+    expect(turned.patches[0]?.patches[0]?.records.map(({ node }) => node)).not.toEqual(view.patches[0]?.patches[0]?.records.map(({ node }) => node));
+    expect(declaredOf(byId(firstDrawing(place, turned), "patches"))).toEqual(lines);
+    // What a record declares is no status label: the entry keeps the two it had.
+    expect(tagsOf(entry)).toEqual(["removes only", "confirmed by 2"]);
+  });
+
+  it("draws a line for each record of a team that has two records of one patch", async () => {
+    const { on, one, component } = await twoNodes();
+    // One team wrote one patch and published two records of it. Each record names a model of its own.
+    const cited = await one.publish(finding(component));
+    const commit = await one.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }]);
+    for (const model of ["claude-sonnet-5-5", "other"]) await one.publish({ ...patchRecord(component, commit, cited), model });
+    await synced(on, NODE_A);
+
+    const [entry, ...more] = withClass(byId(await pageOf(on, component), "patches"), "patch");
+    expect(more).toEqual([]);
+    // Both lines name the one team. The view gives the two records in the order of their IDs, so the lines are compared in an order of the test's own.
+    expect(declaredOf(entry).sort()).toEqual([
+      [asShown(NODE_A), "declared: ", "claude-sonnet-5-5", DECLARED],
+      [asShown(NODE_A), "declared: ", "other", DECLARED],
+    ]);
+  });
+
+  it("gives a declared line a class of its own and no status label, and the stylesheet gives that class no outline of any kind", async () => {
+    const { on, one, component } = await twoNodes();
+    await publishPatch(one, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
+    await synced(on, NODE_A);
+
+    const [entry] = withClass(byId(await pageOf(on, component), "patches"), "patch");
+    const [line, ...more] = withClass(entry, "declared");
+    expect(more).toEqual([]);
+    expect(line?.attributes["class"]).toBe("declared");
+    // Nothing in the line is a status label, so the labels of the entry are its kind and its confirmation alone.
+    expect(withClass(line, "tag")).toEqual([]);
+    expect(tagsOf(entry)).toEqual(["removes only", "unconfirmed"]);
+    // The word and the model are one label with its meaning beside it. The label is the one part of the line that can be focused, so the meaning shows without a pointer too.
+    expect(withClass(line, "tip").map(textOf)).toEqual([DECLARED]);
+    expect(elements(line).filter((element) => element.attributes["tabindex"] !== undefined).map((element) => [textOf(element), element.attributes["tabindex"]])).toEqual([["declared: none", "0"]]);
+
+    // An outline is a status on this page: solid is confirmed or checked, and dashed is unconfirmed. What a record declares is a statement
+    // and no status, so its line has no outline of any kind. An unconfirmed patch can gain a second organization, and no check of the index reaches a declared value.
+    const set = styledAs(env.PAGE_FILES["styles.css"] ?? "", ".declared");
+    expect(set).not.toEqual([]);
+    expect(set.filter(([property = ""]) => /^(?:border|outline|box-shadow)/.test(property))).toEqual([]);
+  });
+
+  it("draws the model of a patch that was carried to a later commit, on the page of that commit", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const first = await on.component();
+    // A later commit of the component that leaves the skill file as it was.
+    const later = await on.component({ ...FILES, [README]: `${README_TEXT}line 81\n` });
+    expect(later).not.toBe(first);
+    await on.registerNode(NODE_A);
+    // A model wrote the patch at the first commit. The team's command built it again on the later one, and the record it wrote there keeps the model of the first.
+    for (const component of [first, later]) {
+      const cited = await node.publish(finding(component));
+      await node.publish({ ...patchRecord(component, await node.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }]), cited), model: "claude-haiku-4-5-20251001" });
+    }
+    await synced(on, NODE_A);
+
+    const [entry, ...more] = withClass(byId(await pageOf(on, later), "patches"), "patch");
+    expect(more).toEqual([]);
+    expect(entry?.attributes["id"]).toBe(`patch-${await idOf(SKILL_TEXT, SKILL_FIXED)}`);
+    expect(declaredOf(entry)).toEqual([[asShown(NODE_A), "declared: ", "claude-haiku-4-5-20251001", DECLARED]]);
   });
 
   it("links a patch once to each finding its records name, when they name two, and in one order on every read", async () => {
@@ -453,8 +612,10 @@ describe("patches (R16)", () => {
 
     const links = withTag(entry, "a").filter((link) => (link.attributes["href"] ?? "").startsWith("#"));
     expect(links.map(textOf).sort()).toEqual(["hidden instruction", "sends data to host"]);
-    // Each link leads into the entry of the finding it is read as.
-    for (const link of links) expect(elements(theOne(rows, textOf(link)))).toContain(byId(page, (link.attributes["href"] ?? "").slice(1)));
+    // Each link leads into the entry of one finding, and the two lead into two.
+    const led = links.map((link) => rows.filter((row) => elements(row).some((element) => `#${element.attributes["id"]}` === link.attributes["href"])));
+    expect(led.map((entries) => entries.length)).toEqual([1, 1]);
+    expect(new Set(led.flat()).size).toBe(2);
 
     const again = byId(await pageOf(on, component), entry?.attributes["id"] ?? "");
     expect(placesFrom(again)).toEqual(placesFrom(entry));
@@ -494,10 +655,10 @@ describe("patches (R16)", () => {
     expect(rows).toEqual([]);
     expect(columns?.children.filter(isElement).map((column) => classesOf(column).includes("patch"))).toEqual([true, true]);
     const [first, second] = [theOne(withClass(together, "patch"), "line 12"), theOne(withClass(together, "patch"), "line 13")];
-    expect(textOf(first)).toContain(NODE_A);
-    expect(textOf(first)).not.toContain(NODE_B);
-    expect(textOf(second)).toContain(NODE_B);
-    expect(textOf(second)).not.toContain(NODE_A);
+    expect(textOf(first)).toContain(asShown(NODE_A));
+    expect(textOf(first)).not.toContain(asShown(NODE_B));
+    expect(textOf(second)).toContain(asShown(NODE_B));
+    expect(textOf(second)).not.toContain(asShown(NODE_A));
     expect(textOf(together)).toContain("2 patches side by side");
 
     const alone = theOne(groups, "line 40");
@@ -506,18 +667,22 @@ describe("patches (R16)", () => {
     expect(textOf(alone)).not.toContain("side by side");
   });
 
-  it("shows each patch with its team, its kind, its changed lines and a link to its finding on the page", async () => {
+  it("shows each patch with its team, its kind, its changed lines, the model its record declares and a link to its finding on the page", async () => {
     const { on, one, component } = await twoNodes();
     const made = await publishPatch(one, component, onReadme(12), [{ path: README, content: edited(README_TEXT, { 12: "line twelve" }) }]);
     await synced(on, NODE_A);
+    // A person wrote the patch record, so the model it names is `none`.
+    expect((await on.view(component)).patches[0]?.patches[0]?.records.map(({ record }) => record.model)).toEqual(["none"]);
 
     const page = await pageOf(on, component);
     const [entry] = withClass(byId(page, "patches"), "patch");
-    expect(textOf(entry)).toContain(NODE_A);
+    expect(textOf(entry)).toContain(asShown(NODE_A));
     expect(tagsOf(entry)).toEqual(["adds or changes", "unconfirmed"]);
     // One line taken out and one put in, at line 12 of the readme.
     expect(textOf(entry)).toContain(README);
     expect(textOf(entry)).toContain("line 12−1+1");
+    // A record whose model is `none` says so on the page, as it does in the record.
+    expect(declaredOf(entry)).toEqual([[asShown(NODE_A), "declared: ", "none", DECLARED]]);
     expect(linksOf(entry)).toContain(`#finding-${made.finding}`);
     // The link leads to that finding's entry, which stands in the findings section.
     expect(elements(byId(page, "findings"))).toContain(byId(page, `finding-${made.finding}`));
@@ -537,8 +702,8 @@ describe("patches (R16)", () => {
 
     const [entry] = withClass(byId(await pageOf(on, component), "patches"), "patch");
     expect(tagsOf(entry)).toEqual(["removes only", "confirmed by 2"]);
-    expect(textOf(theOne(withClass(entry, "recheck"), NODE_B))).toContain("resolves");
-    expect(textOf(theOne(withClass(entry, "recheck"), NODE_C))).toContain("does not resolve");
+    expect(textOf(theOne(withClass(entry, "recheck"), asShown(NODE_B)))).toContain("resolves");
+    expect(textOf(theOne(withClass(entry, "recheck"), asShown(NODE_C)))).toContain("does not resolve");
   });
 });
 
@@ -562,8 +727,8 @@ describe("recipes (KTD5)", () => {
     expect(textOf(shown)).toContain(tree);
     expect(tagsOf(shown)).toEqual(["published, not checked"]);
     expect(textOf(shown)).toContain("2 organizations published this copy");
-    expect(textOf(shown)).toContain(NODE_A);
-    expect(textOf(shown)).toContain(NODE_B);
+    expect(textOf(shown)).toContain(asShown(NODE_A));
+    expect(textOf(shown)).toContain(asShown(NODE_B));
     // A patch of the copy that the view shows leads to its entry on the page. The other is named, and is no link.
     expect(linksOf(shown).filter((href) => href.startsWith("#"))).toEqual([`#patch-${patch}`]);
     expect(byId(page, `patch-${patch}`)).toBeDefined();
@@ -574,6 +739,165 @@ describe("recipes (KTD5)", () => {
     const on = bench();
     const component = await on.component();
     expect(textOf(byId(await pageOf(on, component), "recipes"))).toContain("No recipes published");
+  });
+});
+
+describe("each team's fetches (R14, R45, KTD42)", () => {
+  /**
+   * The view of the small component after two teams each published a finding on it, and
+   * each team's node said how many fetches of its fork it has counted. With no number a
+   * node has counted none. The index asks a node only about a component its listing names.
+   */
+  async function served(ofOne?: number, ofOther?: number): Promise<{ place: Place; view: View }> {
+    const { on, one, other, component } = await twoNodes();
+    await one.publish(finding(component));
+    await other.publish(finding(component, onReadme(12)));
+    one.counted(component, ofOne);
+    other.counted(component, ofOther);
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+    return { place: placeAt(`/components/${component}`), view: await on.view(component) };
+  }
+
+  /** The section of a page that lists the counts. */
+  const sectionOf = (place: Place, view: unknown): Drawing | undefined => byId(firstDrawing(place, view), "fetches");
+
+  it("lists each node whose entry in the view holds a count: the node, the word 'declared', its number as a text of its own and the word for it, which is 'fetch' for one", async () => {
+    const { place, view } = await served(1, 4);
+    // The view holds each count in its node's entry, as a value the node declared.
+    expect(view.nodes.map(({ node, declared }) => [node, declared])).toEqual([
+      [NODE_A, { fetches: 1 }],
+      [NODE_B, { fetches: 4 }],
+    ]);
+
+    const section = sectionOf(place, view);
+    expect(withTag(section, "h2").map(textOf)).toEqual(["Fetches"]);
+    // A line for each node, in the order of the view. A number is one text and its word another: one fetch, and four fetches.
+    const lines = [
+      [asShown(NODE_A), "declared: ", "1", " fetch", DECLARED_COUNT],
+      [asShown(NODE_B), "declared: ", "4", " fetches", DECLARED_COUNT],
+    ];
+    expect(declaredOf(section)).toEqual(lines);
+    // Each node is drawn as an organization is anywhere on the page: without its scheme, as a link that carries its whole address.
+    expect(withClass(section, "org").map((name) => [textOf(name), linksOf(name)])).toEqual([
+      [asShown(NODE_A), [NODE_A]],
+      [asShown(NODE_B), [NODE_B]],
+    ]);
+    // Every text of the section is a node of the view, a count of the view or one of the page's own words: its heading, the line
+    // under the heading, the word before a number, the word after it and what the word "declared" means there.
+    expect(texts(section)).toEqual(["Fetches", FETCHES, ...lines.flat()]);
+    // No element carries anything but a class, a target, the address of a link and the mark of a label that can be focused.
+    for (const element of elements(section)) {
+      for (const name of Object.keys(element.attributes)) expect(["class", "id", "href", "tabindex"]).toContain(name);
+    }
+  });
+
+  it("draws no section and no word of a fetch for a view that holds no count", async () => {
+    const without = await served();
+    expect(without.view.nodes.map(({ declared }) => declared)).toEqual([undefined, undefined]);
+    const page = firstDrawing(without.place, without.view);
+    // The page is the one it was before a view could hold a count: the same sections, and no word of a fetch.
+    expect(withTag(page, "section").map((section) => section.attributes["id"])).toEqual(["claims", "findings", "patches", "recipes"]);
+    expect(textOf(page)).not.toMatch(/fetch|declared/i);
+  });
+
+  it("lists only the node that has a count when the other has none, and never draws a missing count as a number", async () => {
+    // Covers the plan's AE1 on the page: the second team's node has counted no fetch of its fork.
+    const { place, view } = await served(3);
+    expect(view.nodes.map(({ node, declared }) => [node, declared])).toEqual([
+      [NODE_A, { fetches: 3 }],
+      [NODE_B, undefined],
+    ]);
+
+    const section = sectionOf(place, view);
+    expect(declaredOf(section)).toEqual([[asShown(NODE_A), "declared: ", "3", " fetches", DECLARED_COUNT]]);
+    // A missing count is not a count of zero: the other node has no line, and the section names it nowhere.
+    expect(textOf(section)).not.toContain(asShown(NODE_B));
+    expect(texts(section)).not.toContain("0");
+  });
+
+  it("says three things of a count in the one line under its heading: whose number it is, what it counts, and what a missing line means", async () => {
+    const { place, view } = await served(1, 4);
+    const [line, ...more] = withClass(sectionOf(place, view), "intro");
+    expect(more).toEqual([]);
+    // The line is one text, so it is the page's own words whole and holds no value of the view.
+    const [said = "", ...rest] = texts(line);
+    expect(rest).toEqual([]);
+    for (const statement of OF_A_COUNT) expect(said).toContain(statement);
+  });
+
+  it("gives a count's line the class of a declared line and no status label, and the stylesheet gives no part of such a line an outline of any kind", async () => {
+    const { place, view } = await served(3);
+    const section = sectionOf(place, view);
+    const [line, ...more] = withClass(section, "declared");
+    expect(more).toEqual([]);
+    // The line is set as the model of a patch record is: it has that line's class and no other.
+    expect(line?.attributes["class"]).toBe("declared");
+    // Nothing in the section is a status label.
+    expect(withClass(section, "tag")).toEqual([]);
+    // The word, the number and its word are one label with its meaning beside it. The label is the one part of the line that can be focused, so the meaning shows without a pointer too.
+    expect(withClass(line, "tip").map(textOf)).toEqual([DECLARED_COUNT]);
+    expect(elements(line).filter((element) => element.attributes["tabindex"] !== undefined).map((element) => [textOf(element), element.attributes["tabindex"]])).toEqual([["declared: 3 fetches", "0"]]);
+
+    // An outline is a status on this page, and a count is a node's statement and no status. So no rule of the stylesheet that
+    // reaches a declared line, anything inside one or the list the lines stand in sets a border, an outline or a shadow.
+    const styles = env.PAGE_FILES["styles.css"] ?? "";
+    const list = elements(section).find((element) => line !== undefined && element.children.includes(line));
+    const reaching = ["declared", ...(list ? classesOf(list) : [])].filter((name) => name !== "").flatMap((name) => rulesNaming(styles, name));
+    expect(reaching).not.toEqual([]);
+    for (const { selectors, set } of reaching) expect([selectors, set.filter(([property = ""]) => /^(?:border|outline|box-shadow)/.test(property))]).toEqual([selectors, []]);
+  });
+
+  it("says nothing of a count that reads as an all-clear or as an approval", async () => {
+    const { place, view } = await served(1, 4);
+    const said = textOf(sectionOf(place, view));
+    expect(said).toContain("declared: 4 fetches");
+    // The two words the page's other tests keep off it: a version is never called clean, and nothing is called ready.
+    expect(said).not.toMatch(/clean|ready/i);
+    // A count is no confirmation and no verdict, so the section holds no word that would read as either.
+    expect(said).not.toMatch(/confirm|safe|approv|trust|verif/i);
+  });
+
+  it("shows a node URL that is not HTTPS as text beside its count, and gives it no link", async () => {
+    const { place, view } = await served(1, 4);
+    // An HTTPS node URL is a link to the node.
+    expect(linksOf(sectionOf(place, view))).toEqual([NODE_A, NODE_B]);
+
+    for (const spelling of ["http://node.team-a.example", "javascript:alert(1)//node.team-a.example", "//node.team-a.example", "node.team-a.example"]) {
+      const section = sectionOf(place, replaced(view, NODE_A, spelling));
+      // The address is shown whole, scheme and all, and its count still stands beside it.
+      expect(declaredOf(section)).toEqual([
+        [spelling, "declared: ", "1", " fetch", DECLARED_COUNT],
+        [asShown(NODE_B), "declared: ", "4", " fetches", DECLARED_COUNT],
+      ]);
+      // The one link of the section is the other node's.
+      expect(withTag(section, "a").map((link) => [textOf(link), link.attributes["href"]])).toEqual([[asShown(NODE_B), NODE_B]]);
+    }
+  });
+
+  it("shows a node URL that holds markup as text beside its count, and makes the section of the same elements as with a plain one", async () => {
+    const { place, view } = await served(1, 4);
+    // The index takes no such spelling in a registration. The page is handed it as an index that did would serve it.
+    const nodeUrl = 'https://node.team-a.example/"><script>alert(1)</script><b class="tag">';
+    const plain = sectionOf(place, view);
+    const hostile = sectionOf(place, replaced(view, NODE_A, nodeUrl));
+    expect(plain).toBeDefined();
+
+    // The address is one text of the section, whole and unchanged, and its count stands beside it.
+    expect(declaredOf(hostile)[0]).toEqual([asShown(nodeUrl), "declared: ", "1", " fetch", DECLARED_COUNT]);
+    // The section is made of the same elements as with a plain address: the value became no element and no name of an attribute.
+    const shape = (root: Drawing | undefined): unknown[] => elements(root).map((element) => [element.tag, Object.keys(element.attributes)]);
+    expect(shape(hostile)).toEqual(shape(plain));
+    expect(withTag(hostile, "script")).toEqual([]);
+    expect(withTag(hostile, "b")).toEqual([]);
+    expect(withClass(hostile, "tag")).toEqual([]);
+    // The address reaches an attribute only as the target of its own link, and no class is made from it.
+    for (const element of elements(hostile)) {
+      for (const [name, value] of Object.entries(element.attributes)) {
+        if (name === "href") expect([nodeUrl, NODE_B]).toContain(value);
+        else expect(value).not.toMatch(/[<>"]/);
+      }
+    }
   });
 });
 
@@ -591,7 +915,7 @@ describe("rejected work (R14, KTD31)", () => {
     const page = await pageOf(on, component);
     const [row, ...more] = withTag(byId(page, "rejected"), "li");
     expect(more).toEqual([]);
-    expect(textOf(row)).toContain(NODE_B);
+    expect(textOf(row)).toContain(asShown(NODE_B));
     expect(textOf(row)).toContain("patch");
     expect(textOf(row)).toContain(patch.slice(0, 8));
     expect(tagsOf(row)).toEqual(["patch out of scope"]);
@@ -611,19 +935,19 @@ describe("a page narrowed by a teams query (KTD38)", () => {
     const address = `/components/${component}?teams=${encodeURIComponent(NODE_A)}`;
     expect(placeAt(address)).toEqual({ kind: "component", component, narrowed: true, viewPath: `/components/${component}/view?teams=${encodeURIComponent(NODE_A)}` });
     const narrowed = await pageOf(on, component, `?teams=${encodeURIComponent(NODE_A)}`);
-    expect(textOf(narrowed)).not.toContain(NODE_B);
-    expect(textOf(narrowed)).toContain(NODE_A);
+    expect(textOf(narrowed)).not.toContain(asShown(NODE_B));
+    expect(textOf(narrowed)).toContain(asShown(NODE_A));
     expect(withClass(byId(narrowed, "findings"), "finding")).toHaveLength(1);
     expect(textOf(byId(narrowed, "claims"))).toContain("No live claims");
     const notice = byId(narrowed, "narrowed");
     expect(textOf(notice)).toContain("Narrowed view");
     // It names the organizations whose work is shown.
-    expect(textOf(notice)).toContain(NODE_A);
+    expect(textOf(notice)).toContain(asShown(NODE_A));
 
     // The whole view shows both teams, and says nothing of the kind.
     expect(placeAt(`/components/${component}`)).toEqual({ kind: "component", component, narrowed: false, viewPath: `/components/${component}/view` });
     const whole = await pageOf(on, component);
-    expect(textOf(whole)).toContain(NODE_B);
+    expect(textOf(whole)).toContain(asShown(NODE_B));
     expect(withClass(byId(whole, "findings"), "finding")).toHaveLength(2);
     expect(byId(whole, "narrowed")).toBeUndefined();
     expect(textOf(whole)).not.toMatch(/narrowed/i);
@@ -689,6 +1013,12 @@ describe("the index's own page (R14, KTD14)", () => {
 
   /** The labels a row puts before a value. */
   const LABELS = ["branch ", "commit "];
+  /** The word of the mark that leads out to a component's repo. */
+  const WAY_OUT = "source";
+  /** What a row calls each import state, and what it says the label means. */
+  const HELD = ["copy held", "The index holds its own copy of this version, and checks every record against it."] as const;
+  const IMPORTING = ["importing", "The index is still fetching its own copy of this version. It checks no record until it holds one."] as const;
+  const FAILED = ["import failed", "The index could not fetch its own copy of this version, so it checks no record for it."] as const;
 
   it("stands at the index's own address, where it reads the list and passes on no query", () => {
     expect(placeOf("/", "")).toEqual({ kind: "index", viewPath: "/view" });
@@ -697,7 +1027,7 @@ describe("the index's own page (R14, KTD14)", () => {
     expect(placeOf("/", `?teams=${encodeURIComponent(NODE_A)}&shown=all`)).toEqual({ kind: "index", viewPath: "/view" });
   });
 
-  it("lists the components in the order they were registered, under 'Components' with their count: each with its Git URL, its branch, its commit as a link to its page and its import state in words", async () => {
+  it("lists the components under 'Components' with their count, the versions of a repo together and in it the versions of a branch: each with its commit as a link to its page and its import state in words", async () => {
     const { on, components } = await threeComponents();
     expect(await on.call("GET", "/view")).toEqual({ status: 200, body: { version: "1", components } });
 
@@ -707,38 +1037,77 @@ describe("the index's own page (R14, KTD14)", () => {
     expect(withTag(section, "h2").map(textOf)).toEqual(["Components"]);
     expect(withClass(section, "count").map(textOf)).toEqual(["3"]);
 
-    // One row for each, with its values in one order. A commit is shown by its first eight characters.
-    const rows = withTag(section, "li");
-    expect(rows.map((row) => texts(row).filter((text) => !LABELS.includes(text)))).toEqual([
-      [UPSTREAM, BRANCH, "c3c3c3c3", "imported"],
-      [OTHER_UPSTREAM, "next", "a1a1a1a1", "importing"],
-      [UPSTREAM, "gone", "b2b2b2b2", "import failed"],
+    // A block for each repo, where its first version was registered. The first and the third component are of one repo, so they stand together.
+    const repos = withClass(section, "repo");
+    expect(repos.map((repo) => withTag(repo, "h3").map(textOf))).toEqual([[UPSTREAM], [OTHER_UPSTREAM]]);
+    // In a repo, a group for each branch, and in it one row for each version. A commit is shown by its first eight characters.
+    const branchesOf = (repo: Drawing | undefined): string[][] => withClass(repo, "branch").map((branch) => texts(branch).filter((text) => !LABELS.includes(text)));
+    expect(repos.map(branchesOf)).toEqual([
+      [
+        [BRANCH, "c3c3c3c3", ...HELD],
+        ["gone", "b2b2b2b2", ...FAILED],
+      ],
+      [["next", "a1a1a1a1", ...IMPORTING]],
     ]);
-    expect(rows.map(tagsOf)).toEqual([["imported"], ["importing"], ["import failed"]]);
+    // A repo's address stands once, however many of its versions the index holds, and each has the way out to the repo beside it.
+    expect(texts(section).filter((text) => text === UPSTREAM)).toHaveLength(1);
+    expect(repos.map((repo) => withClass(repo, "source").map((link) => [link.tag, link.attributes["href"], textOf(link)]))).toEqual([[["a", UPSTREAM, WAY_OUT]], [["a", OTHER_UPSTREAM, WAY_OUT]]]);
+
+    const rows = withClass(section, "row");
+    expect(rows.map(tagsOf)).toEqual([[HELD[0]], [FAILED[0]], [IMPORTING[0]]]);
+    // Each label has its meaning beside it, and can be focused, so the meaning shows without a pointer too.
+    expect(rows.map((row) => withClass(row, "tip").map(textOf))).toEqual([[HELD[1]], [FAILED[1]], [IMPORTING[1]]]);
+    expect(rows.map((row) => withClass(row, "tag").map((tag) => tag.attributes["tabindex"]))).toEqual([["0"], ["0"], ["0"]]);
     // The outline of a label carries meaning: solid for a copy the index holds, dashed for one it does not hold yet, and the rejected one for an import that failed.
-    expect(rows.map((row) => withClass(row, "tag").map((tag) => tag.attributes["class"]))).toEqual([["tag"], ["tag un"], ["tag rej"]]);
+    expect(rows.map((row) => withClass(row, "tag").map((tag) => tag.attributes["class"]))).toEqual([["tag"], ["tag rej"], ["tag un"]]);
     // The state is never drawn as the index stores it: "ready" would read as an all-clear.
     expect(textOf(body)).not.toMatch(/ready/i);
     expect(textOf(status)).not.toMatch(/ready/i);
 
-    // A row links to its repo, which is an HTTPS address, and to the page of its commit on this index.
-    expect(rows.map(linksOf)).toEqual(components.map(({ component, url }) => [url, `/components/${component}`]));
-    for (const [at, { component }] of components.entries()) {
-      const toPage = withTag(rows[at], "a").filter((link) => link.attributes["href"] === `/components/${component}`);
-      expect(toPage.map(textOf)).toEqual([`commit ${component.slice(0, 8)}`]);
+    // A row's one link is its commit, to the page of that commit on this index.
+    const [first, second, third] = components;
+    const inOrder = [first, third, second].flatMap((listed) => (listed ? [listed] : []));
+    expect(rows.map(linksOf)).toEqual(inOrder.map(({ component }) => [`/components/${component}`]));
+    for (const [at, { component }] of inOrder.entries()) {
+      expect(withTag(rows[at], "a").map(textOf)).toEqual([`commit ${component.slice(0, 8)}`]);
       // The link carries the commit whole, and a component's page stands there.
       expect(placeAt(`/components/${component}`)).toMatchObject({ kind: "component", component });
       expect(textOf(rows[at])).not.toContain(component);
     }
 
-    // Every text is a value of the list, the count of its components or one of the page's own words. Each word is a label, and none says what to do.
+    // Every text is a value of the list, the count of its components or one of the page's own words. Each word is a label or says what a label means, and none says what to do.
     const values = new Set(components.flatMap(({ component, url, branch }) => [url, branch, component.slice(0, 8)]));
-    const words = ["Components", "3", ...LABELS, "imported", "importing", "import failed"];
+    const words = ["Components", "3", ...LABELS, WAY_OUT, ...HELD, ...IMPORTING, ...FAILED];
     expect([...new Set(texts(body).filter((text) => !values.has(text)))].sort()).toEqual([...words].sort());
-    // No element carries anything but a class, a target and the address of a link.
+    // No element carries anything but a class, a target, the address of a link and the mark of a label that can be focused.
     for (const element of elements(body)) {
-      for (const name of Object.keys(element.attributes)) expect(["class", "id", "href"]).toContain(name);
+      for (const name of Object.keys(element.attributes)) expect(["class", "id", "href", "tabindex"]).toContain(name);
     }
+  });
+
+  it("narrows the list to one repo when the address names it, says so, and never writes down what the address names", async () => {
+    const { on, components } = await threeComponents();
+    // The page of a component links here, with the component's Git URL in the address. The list still takes no query.
+    const address = `/?repo=${encodeURIComponent(UPSTREAM)}`;
+    expect(placeAt(address)).toEqual({ kind: "index", viewPath: "/view", repo: UPSTREAM });
+    const { body } = await read(on, address);
+    expect(withClass(body, "repo").map((repo) => withTag(repo, "h3").map(textOf))).toEqual([[UPSTREAM]]);
+    expect(withClass(body, "row")).toHaveLength(components.filter(({ url }) => url === UPSTREAM).length);
+    expect(withClass(body, "count").map(textOf)).toEqual(["2"]);
+    const notice = byId(body, "narrowed");
+    expect(texts(notice)).toEqual(["One repo", "Only the versions of one repo are listed.", "Every component of this index"]);
+    expect(linksOf(notice)).toEqual(["/"]);
+
+    // A repo the index holds no version of gives no row, in words of its own. What the address named is no text of the page.
+    const named = '<img src=x onerror=alert(1)>"';
+    const place = placeAt(`/?repo=${encodeURIComponent(named)}`);
+    const none = firstDrawing(place, { version: "1", components });
+    expect(withClass(none, "row")).toEqual([]);
+    expect(withClass(none, "empty").map(textOf)).toEqual(["No version of this repo registered"]);
+    expect(textOf(none)).not.toContain("img");
+    expect(linksOf(none)).toEqual(["/"]);
+    // With no repo in the address the page says nothing of narrowing.
+    expect(byId((await read(on, "/")).body, "narrowed")).toBeUndefined();
   });
 
   it("shows 'No component registered' for an index that holds none, and no row", async () => {
@@ -792,14 +1161,17 @@ describe("the index's own page (R14, KTD14)", () => {
     }
   });
 
-  it("shows a Git URL that is not HTTPS as text, and as no link", () => {
+  it("shows a Git URL that is not HTTPS as text, and gives it no way out", () => {
     const component = "1f".repeat(20);
     for (const spelling of ["http://git.fellbeck-tools.example/fellbeck-sync.git", "javascript:alert(1)//git.fellbeck-tools.example", "//git.fellbeck-tools.example/fellbeck-sync.git", "git.fellbeck-tools.example/fellbeck-sync.git"]) {
       const page = drawnFrom([{ component, url: spelling, branch: BRANCH, state: "ready" }]);
       expect(texts(page)).toContain(spelling);
-      // The one link of the row is the commit's, to its page on this index.
+      // The one link of the page is the commit's, to its page on this index. The address heads its block as text, and is the target of no link.
       expect(linksOf(page)).toEqual([`/components/${component}`]);
-      for (const link of withTag(page, "a")) expect(textOf(link)).not.toContain(spelling);
+      expect(withTag(page, "a").map(textOf)).toEqual(["commit 1f1f1f1f"]);
+      expect(withTag(page, "h3").map(textOf)).toEqual([spelling]);
+      expect(withClass(page, "source")).toEqual([]);
+      expect(texts(page)).not.toContain(WAY_OUT);
     }
   });
 
@@ -810,7 +1182,7 @@ describe("the index's own page (R14, KTD14)", () => {
     await on.deliver();
 
     const first = await read(on, "/", NOTHING_READ, START);
-    expect(withTag(first.body, "li").map(tagsOf)).toEqual([["importing"]]);
+    expect(withClass(first.body, "row").map(tagsOf)).toEqual([["importing"]]);
     expect(textOf(first.status)).toContain("12:00:00 UTC");
 
     // Two seconds on, the index serves the same list.
@@ -822,7 +1194,7 @@ describe("the index's own page (R14, KTD14)", () => {
     on.artifacts.finish();
     await on.drain();
     const third = await read(on, "/", second.held, START + 4000);
-    expect(withTag(third.body, "li").map(tagsOf)).toEqual([["imported"]]);
+    expect(withClass(third.body, "row").map(tagsOf)).toEqual([["copy held"]]);
     expect(textOf(third.status)).toContain("12:00:04 UTC");
   });
 
@@ -976,8 +1348,8 @@ describe("a value from a record or a registration (KTD14, KTD33)", () => {
 
     // Each is one text of the page, whole and unchanged.
     expect(texts(hostile)).toContain(gitUrl);
-    expect(texts(hostile)).toContain(nodeUrl);
-    expect(texts(hostile).filter((text) => text === nodeUrl)).toHaveLength(texts(plain).filter((text) => text === NODE_A).length);
+    expect(texts(hostile)).toContain(asShown(nodeUrl));
+    expect(texts(hostile).filter((text) => text === asShown(nodeUrl))).toHaveLength(texts(plain).filter((text) => text === asShown(NODE_A)).length);
     // The page is made of the same elements as with plain values: no value became an element or the name of an attribute.
     const shape = (page: Drawing): unknown[] => elements(page).map((element) => [element.tag, Object.keys(element.attributes)]);
     expect(shape(hostile)).toEqual(shape(plain));
@@ -986,10 +1358,34 @@ describe("a value from a record or a registration (KTD14, KTD33)", () => {
     // Neither address reaches an attribute but as the target of its own link, and no class is made from one.
     for (const element of elements(hostile)) {
       for (const [name, value] of Object.entries(element.attributes)) {
-        if (name === "href") expect([gitUrl, nodeUrl]).toContain(value);
+        if (name === "href") expect([gitUrl, nodeUrl, PROTOCOL, `/?repo=${encodeURIComponent(gitUrl)}`]).toContain(value);
         else expect(value).not.toMatch(/[<>"]/);
       }
     }
+  });
+
+  it("shows a node's HTTPS address without its scheme, and keeps the whole of it in the link", async () => {
+    const { place, view } = await served();
+    const page = firstDrawing(place, view);
+    const names = withClass(page, "org");
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      expect(textOf(name)).toBe("node.team-a.example");
+      expect(linksOf(name)).toEqual([NODE_A]);
+    }
+    // The address stands nowhere on the page with its scheme: the scheme is in the link alone.
+    expect(texts(page)).not.toContain(NODE_A);
+  });
+
+  it("draws a value it has no words for as the value alone, and still draws the page", async () => {
+    const { place, view } = await served();
+    // The index takes no observation outside the protocol's list. The page is handed one as an index of a later protocol would serve it.
+    const page = firstDrawing(place, replaced(view, "hidden-instruction", "an-observation-of-a-later-protocol"));
+    const [row, ...more] = withClass(page, "finding");
+    expect(more).toEqual([]);
+    expect(texts(withTag(row, "strong")[0])).toEqual(["an observation of a later protocol"]);
+    expect(textOf(row)).toContain("node.team-a.example");
+    expect(tagsOf(row)).toEqual(["unconfirmed"]);
   });
 
   it("is no link when it is a node URL that is not HTTPS, and is shown as text", async () => {
@@ -1001,8 +1397,12 @@ describe("a value from a record or a registration (KTD14, KTD33)", () => {
 
     for (const spelling of ["http://node.team-a.example", "javascript:alert(1)//node.team-a.example", "//node.team-a.example", "node.team-a.example"]) {
       const page = firstDrawing(place, replaced(replaced(view, NODE_A, spelling), UPSTREAM, spelling));
+      // An address that is not HTTPS is shown whole, scheme and all, so it never reads as the HTTPS address of that host.
       expect(texts(page)).toContain(spelling);
-      expect(linksOf(page).filter((href) => !href.startsWith("#"))).toEqual([]);
+      // The one link that leaves the index is the page's own, to where the protocol defines a criterion. The other stays on the index, whatever the Git URL holds.
+      const away = [...new Set(linksOf(page).filter((href) => !href.startsWith("#")))];
+      expect(away).toEqual([`/?repo=${encodeURIComponent(spelling)}`, PROTOCOL]);
+      expect(away.map((href) => new URL(href, INDEX).origin)).toEqual([INDEX, new URL(PROTOCOL).origin]);
       for (const link of withTag(page, "a")) expect(textOf(link)).not.toContain(spelling);
     }
   });
@@ -1013,8 +1413,8 @@ describe("a value from a record or a registration (KTD14, KTD33)", () => {
   // the name of anything that parses a text as markup.
   it("is set by scripts that name nothing that parses a text as markup", () => {
     const parsers = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "DOMParser", "createContextualFragment", "setHTML"];
-    // Every script of the page is read: the one the page loads and the one that script imports.
-    expect(Object.keys(env.PAGE_SCRIPTS).sort()).toEqual(["poll.ts", "render.ts"]);
+    // Every script of the page is read: the one the page loads and the two that script imports.
+    expect(Object.keys(env.PAGE_SCRIPTS).sort()).toEqual(["map.ts", "poll.ts", "render.ts"]);
     for (const [name, source] of Object.entries(env.PAGE_SCRIPTS)) {
       expect([name, source === ""]).toEqual([name, false]);
       expect([name, parsers.filter((parser) => source.includes(parser))]).toEqual([name, []]);
@@ -1029,9 +1429,35 @@ describe("the pages' addresses on the index (KTD14)", () => {
     return new Map(directives.flatMap(([name, ...sources]) => (name ? [[name.toLowerCase(), sources]] : [])));
   }
 
-  // The two addresses outside the index that a page links to. Both are written in the page's file.
+  // The addresses outside the index that a page's file links to. The project's site is the one its bar leads to.
   const SITE = "https://cairnfield.net";
   const REPO = "https://github.com/peoplerenaissance/cairnfield";
+  /** Where the links of a page's footer lead, in the order of the file: its credits, then where more about the project is written. */
+  const FOOTER = ["https://sparkwise.co", REPO, "https://aribadernatal.com", "https://cloudflare.com", SITE, REPO, `${REPO}#readme`, `${REPO}/blob/main/reference/protocol.md`];
+  /** The words of that footer. They credit the people behind the software, say what an index is, and name where four links lead. */
+  const FOOTER_WORDS = [
+    "Credits",
+    "Cairnfield is an unofficial side project by the",
+    "Sparkwise",
+    "engineering team.",
+    "Open source",
+    "under the MIT license.",
+    "Set in Routed Gothic by Darren Embry, Hanken Grotesk by Hanken Design Co. and Spline Sans Mono by Sorkin Type, all under the SIL Open Font License and served from this index.",
+    "Code by",
+    "Ari Bader-Natal",
+    ". Built with",
+    "Cloudflare",
+    ".",
+    "This index",
+    "Anyone can run an index. The credits here are for the software, and say nothing of who runs this one.",
+    "An index holds nothing original: every record it shows is published by a team's own node.",
+    "More about Cairnfield",
+    "The Cairnfield site",
+    "The repository",
+    "The README, which is the manual",
+    "The protocol",
+    "Copyright 2026 People Renaissance, Inc.",
+  ];
 
   /** The addresses a page's file names: the files it loads, and where its links lead, in the order of the file. */
   function addressesIn(html: string): { loads: string[]; links: string[] } {
@@ -1054,7 +1480,10 @@ describe("the pages' addresses on the index (KTD14)", () => {
     expect(html).not.toMatch(/<style|\sstyle\s*=|\son[a-z]+\s*=/i);
     // Its one script is a module: `poll.js` imports `render.js`, and only a module imports.
     expect(html.match(/<script\b[^>]*>/gi)).toEqual(['<script type="module" src="/page/poll.js">']);
-    expect(addressesIn(html).loads.sort()).toEqual(["/page/poll.js", "/page/styles.css"]);
+    // Beside the script it loads its stylesheet and its icon, which it names in three forms.
+    expect(addressesIn(html).loads.sort()).toEqual(["/page/apple-touch-icon.png", "/page/favicon.ico", "/page/favicon.svg", "/page/poll.js", "/page/styles.css"]);
+    // It holds no image of its own: the policy takes an image from the index for the icon's sake.
+    expect(html).not.toMatch(/<img|<picture|<svg|<object|<embed|<iframe/i);
     // The script replaces what is under this element on each draw, so the file puts nothing there.
     expect(html).toContain('<main id="view"></main>');
   }
@@ -1068,13 +1497,15 @@ describe("the pages' addresses on the index (KTD14)", () => {
     expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     const policy = policyOf(response);
-    // Scripts, styles and fetches come from the page's own origin, and nothing else is allowed.
+    // Scripts, styles, fonts, images and fetches come from the page's own origin, and nothing else is allowed.
     expect(policy.get("default-src")).toEqual(["'none'"]);
     expect(policy.get("script-src")).toEqual(["'self'"]);
     expect(policy.get("style-src")).toEqual(["'self'"]);
+    expect(policy.get("font-src")).toEqual(["'self'"]);
+    expect(policy.get("img-src")).toEqual(["'self'"]);
     expect(policy.get("connect-src")).toEqual(["'self'"]);
     for (const [directive, sources] of policy) {
-      if (!["script-src", "style-src", "connect-src"].includes(directive)) expect([directive, sources]).toEqual([directive, ["'none'"]]);
+      if (!["script-src", "style-src", "font-src", "img-src", "connect-src"].includes(directive)) expect([directive, sources]).toEqual([directive, ["'none'"]]);
     }
     expect(response.headers.get("content-security-policy")).not.toMatch(/unsafe|nonce-|sha(256|384|512)-|data:|https?:|\*/);
 
@@ -1082,8 +1513,8 @@ describe("the pages' addresses on the index (KTD14)", () => {
     const html = await response.text();
     expect(html).toBe(env.PAGE_FILES["page.html"]);
     worksUnderThePolicy(html);
-    // Its links lead to the index's own page, the site and the repo, and nowhere else.
-    expect(addressesIn(html).links).toEqual(["/", SITE, REPO]);
+    // Its links lead to the site and the index's own page, and then to where its footer's lead, and nowhere else.
+    expect(addressesIn(html).links).toEqual([SITE, "/", ...FOOTER]);
   });
 
   it("answers the index's own address with its page, under the policy of a component's page", async () => {
@@ -1102,60 +1533,64 @@ describe("the pages' addresses on the index (KTD14)", () => {
     const html = await response.text();
     expect(html).toBe(env.PAGE_FILES["root.html"]);
     worksUnderThePolicy(html);
-    // Its links lead to the site and the repo, and nowhere else.
-    expect(addressesIn(html).links).toEqual([SITE, REPO]);
+    // Its links lead to the site, from its bar and from its first sentence, and then to where its footer's lead, and nowhere else.
+    expect(addressesIn(html).links).toEqual([SITE, SITE, ...FOOTER]);
     // The query of the address changes nothing: the page passes none of it on.
     expect(await (await on.get("/?teams=x")).text()).toBe(html);
   });
 
   // The words below are each page's own: they are written in its file and come from no
-  // record. They say what the page is and what an index is, and name where two links
-  // lead. None tells a reader to do something (R35). A change to a word shows here.
+  // record. They say what the page is and what an index is and is not. None tells a
+  // reader to do something (R35). A change to a word shows here.
   it("says what an index is and what each page is in words of its own, outside the element its script draws in", () => {
     const [root = "", page = ""] = [env.PAGE_FILES["root.html"], env.PAGE_FILES["page.html"]];
-    const index =
-      "An index is a service that reads the nodes registered with it. For each version of a component it shows every team's findings, patches and recipes together, each checked against the index's own copy of that component. An index holds nothing original and gives no verdict. It is not what a team builds from: each team's command fetches patches from the nodes of the teams that wrote them, and checks them again.";
-    const component = "This page shows one version of one component, as this index holds it.";
-    expect(wordsIn(root)).toEqual([
-      "Cairnfield index",
+    // The paragraph names the project, and the name is a link to its site.
+    const index = [
+      "This index is a core part of",
       "Cairnfield",
-      "index",
-      "Reading the index",
-      "Cairnfield index",
-      index,
-      "The list of components needs the page's script. The rest of this page does not.",
-      "The Cairnfield site",
-      "The source repository",
-    ]);
+      ". It collects findings, patches and recipes about AI tools from teams and their AI agents, and reports them together for each version of a tool, each checked against the index's own copy of that version. An index holds nothing original and gives no verdict. It is not what a team builds from: each team's command fetches patches from the nodes of the teams that wrote them, and checks them again.",
+    ];
+    const component = "This page gathers what teams report about one exact version of an AI tool: what their reviews found, the fixes they wrote, and the copies they built with those fixes. The index collects these reports and gives no verdict of its own.";
+    expect(wordsIn(root)).toEqual(["Cairnfield index", "Cairnfield", "index", "Reading the index", "Cairnfield index", ...index, "The list of components needs the page's script. The rest of this page does not.", ...FOOTER_WORDS]);
     expect(root).toContain("<h1>Cairnfield index</h1>");
     expect(root).toContain("<title>Cairnfield index</title>");
     expect(wordsIn(page)).toEqual([
       "Cairnfield index: one component version",
       "Cairnfield",
       "index",
-      "Index",
+      "component",
       "Reading the index",
       component,
       "This page draws what the index serves as data, and it needs its script to do so.",
-      "The Cairnfield site",
-      "The source repository",
+      ...FOOTER_WORDS,
     ]);
-    // The link in the bar of a component's page is the one that leads to the index's own page.
-    expect(page).toMatch(/<a\b[^>]*\shref="\/"[^>]*>Index<\/a>/);
-    // Each page says what it is before the element its script draws in, and its links to the site and the repo come after it.
-    for (const [html, said] of [[root, index], [page, component]] as const) {
+    // The bar of each page is a trail: the project's name leads to its site, and on a component's page the index leads to the index's own page.
+    expect(page).toMatch(/<a\b[^>]*\shref="\/"[^>]*>index<\/a>/);
+    expect(root).not.toMatch(/\shref="\/"/);
+    // The last part of a trail is the page that is open, and is no link.
+    expect(root).toContain('<li aria-current="page">index</li>');
+    expect(page).toContain('<li aria-current="page">component</li>');
+    // The project's name leads to the project's site wherever a page's file holds it: in each bar, and in the index's paragraph.
+    const toSite = new RegExp(`<a\\b[^>]*\\shref="${SITE}"[^>]*>Cairnfield</a>`, "g");
+    expect(page.match(toSite)).toHaveLength(1);
+    expect(root.match(toSite)).toHaveLength(2);
+    // Each page says what it is after its bar and before the element its script draws in. After that element it holds the words for a reader with no script, and then its footer, which is the same on both.
+    for (const [html, said] of [[root, index[2] ?? ""], [page, component]] as const) {
       const drawn = html.indexOf('<main id="view"></main>');
+      expect(html.indexOf(`href="${SITE}"`)).toBeLessThan(html.indexOf('id="status"'));
       expect(html.indexOf(said)).toBeGreaterThan(html.indexOf('id="status"'));
       expect(html.indexOf(said)).toBeLessThan(drawn);
-      expect(html.indexOf(`href="${SITE}"`)).toBeGreaterThan(drawn);
-      expect(html.indexOf(`href="${REPO}"`)).toBeGreaterThan(drawn);
+      expect(wordsIn(html.slice(drawn)).slice(1)).toEqual(FOOTER_WORDS);
+      expect(html.indexOf("<footer")).toBeGreaterThan(html.indexOf("</noscript>"));
     }
+    expect(root.slice(root.indexOf("<footer"))).toBe(page.slice(page.indexOf("<footer")));
   });
 
-  it("serves the page's script and stylesheet with their media types, and never lets a browser guess one", async () => {
+  it("serves the page's scripts and stylesheet with their media types, and never lets a browser guess one", async () => {
     const on = bench();
     for (const [path, type] of [
       ["/page/poll.js", "text/javascript; charset=utf-8"],
+      ["/page/map.js", "text/javascript; charset=utf-8"],
       ["/page/render.js", "text/javascript; charset=utf-8"],
       ["/page/styles.css", "text/css; charset=utf-8"],
     ] as const) {
@@ -1163,8 +1598,51 @@ describe("the pages' addresses on the index (KTD14)", () => {
       expect([path, response.status]).toEqual([path, 200]);
       expect(response.headers.get("content-type")).toBe(type);
       expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      // A script or a stylesheet can change with a deploy, so a browser is not told to keep one.
+      expect([path, response.headers.get("cache-control")]).toEqual([path, null]);
     }
     expect(await (await on.get("/page/styles.css")).text()).toBe(env.PAGE_FILES["styles.css"]);
+  });
+
+  it("serves the icon each page names, in its three forms, under the policy of the pages", async () => {
+    const on = bench();
+    const icons = [
+      ["/page/favicon.ico", "image/vnd.microsoft.icon"],
+      ["/page/favicon.svg", "image/svg+xml"],
+      ["/page/apple-touch-icon.png", "image/png"],
+    ] as const;
+    // They are the icons the build copies, each of them.
+    expect(Object.keys(env.PAGE_FILES).filter((name) => /\.(?:ico|svg|png)$/.test(name)).sort()).toEqual(icons.map(([path]) => path.slice("/page/".length)).sort());
+    for (const [path, type] of icons) {
+      const response = await on.get(path);
+      expect([path, response.status]).toEqual([path, 200]);
+      expect(response.headers.get("content-type")).toBe(type);
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      // An icon opened at its own address is held to the policy too, so one drawn as markup runs no script.
+      expect(response.headers.get("content-security-policy")).toBe((await on.get("/")).headers.get("content-security-policy"));
+    }
+  });
+
+  it("serves each font the stylesheet names, and the stylesheet names no file that the index does not serve", async () => {
+    const on = bench();
+    const styles = env.PAGE_FILES["styles.css"] ?? "";
+    // Every address of the stylesheet is a font beside it. It names no image and takes in no other stylesheet.
+    const named = [...styles.matchAll(/url\(\s*["']?([^"')]*)["']?\s*\)/g)].map(([, address = ""]) => address);
+    expect(styles.match(/url\(/g)).toHaveLength(named.length);
+    expect(named.sort()).toEqual(["fonts/hanken-grotesk.woff2", "fonts/routed-gothic.ttf", "fonts/spline-sans-mono.woff2"]);
+    expect(styles).not.toMatch(/@import/);
+    // They are the fonts the build copies, each of them.
+    expect(Object.keys(env.PAGE_FILES).filter((name) => name.startsWith("fonts/")).sort()).toEqual(named);
+
+    for (const address of named) {
+      const response = await on.get(`/page/${address}`);
+      expect([address, response.status]).toEqual([address, 200]);
+      expect(response.headers.get("content-type")).toBe(address.endsWith(".ttf") ? "font/ttf" : "font/woff2");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.get("content-security-policy")).toBe((await on.get("/")).headers.get("content-security-policy"));
+      // A font's file never changes under its name, so a browser keeps it between two pages.
+      expect(response.headers.get("cache-control")).toBe("public, max-age=604800");
+    }
   });
 
   it("answers the page for any commit in its full form, a commit nobody registered included", async () => {
@@ -1188,6 +1666,13 @@ describe("the pages' addresses on the index (KTD14)", () => {
     expect(await on.call("GET", "/page/root.html")).toEqual(notFound);
     expect(await on.call("GET", "/page/")).toEqual(notFound);
     expect(await on.call("GET", "/page/..%2Fwrangler.jsonc")).toEqual(notFound);
+    // Of the fonts' folder the index serves a font and nothing else: not the license, and no file of another folder.
+    expect(await on.call("GET", "/page/fonts/LICENSE.md")).toEqual(notFound);
+    expect(await on.call("GET", "/page/fonts/README.md")).toEqual(notFound);
+    expect(await on.call("GET", "/page/fonts/")).toEqual(notFound);
+    expect(await on.call("GET", "/page/fonts/..%2Fpoll.js")).toEqual(notFound);
+    // An icon is served under `/page/` like every other file of the pages, and not at the index's root.
+    expect(await on.call("GET", "/favicon.ico")).toEqual(notFound);
     expect(await on.call("POST", `/components/${"1f".repeat(20)}`)).toEqual(notFound);
     expect(await on.call("POST", "/")).toEqual(notFound);
     // The assets binding was asked for the one file it does not hold, and for nothing a path made up.
@@ -1237,18 +1722,18 @@ describe("the demo on the page (R27)", () => {
     const skill = fixture(`demo-plugin/first/${PLUGIN_SKILL}`);
     const manifest = fixture(`demo-plugin/first/${MANIFEST}`);
 
-    // Both teams take the hidden line out, each in a commit of its own.
+    // Both teams take the hidden line out, each in a commit of its own. In the demo each of the two is written by hand, so its record names the model `none`.
     const withoutLine = edited(skill, { 41: undefined });
     for (const [node, cited] of [[teamA, ofA], [teamB, ofB]] as const) {
       const commit = await node.patchCommit(component, [{ path: PLUGIN_SKILL, content: withoutLine }]);
-      await node.publish(patchRecord(component, commit, [cited(PLUGIN_SKILL)]));
+      await node.publish({ ...patchRecord(component, commit, [cited(PLUGIN_SKILL)]), model: "none" });
     }
-    // The first team narrows the hosts on line 12 of the manifest, and the second the variables on line 13.
+    // The first team narrows the hosts on line 12 of the manifest, and the second the variables on line 13. In the demo a model wrote each of the two, and its record names that model.
     const hosts = edited(manifest, { 12: '    "network": { "hosts": ["api.fellbeck-notes.example"] },' });
     const variables = edited(manifest, { 13: '    "env": { "read": ["FELLBECK_TOKEN"] }' });
     const done = { version: "1", type: "claim", component, kind: "patch", number: 1, findings: [ofA(MANIFEST)], intent: "new" };
-    await teamA.publish(done, { ...patchRecord(component, await teamA.patchCommit(component, [{ path: MANIFEST, content: hosts }]), [ofA(MANIFEST)]), claim: await recordId(done) });
-    await teamB.publish(patchRecord(component, await teamB.patchCommit(component, [{ path: MANIFEST, content: variables }]), [ofB(MANIFEST)]));
+    await teamA.publish(done, { ...patchRecord(component, await teamA.patchCommit(component, [{ path: MANIFEST, content: hosts }]), [ofA(MANIFEST)]), claim: await recordId(done), model: "claude-sonnet-5-5" });
+    await teamB.publish({ ...patchRecord(component, await teamB.patchCommit(component, [{ path: MANIFEST, content: variables }]), [ofB(MANIFEST)]), model: "claude-sonnet-5-5" });
     // Two agents still run: one patches the off switch, the other reviews the code.
     await teamA.publish({ version: "1", type: "claim", component, kind: "patch", number: 2, findings: [ofA(SWITCH)], intent: "new" });
     await teamB.publish({ version: "1", type: "claim", component, kind: "review", number: 1, check: "code" });
@@ -1281,21 +1766,30 @@ describe("the demo on the page (R27)", () => {
     expect(counts).toEqual(["2", "6", "3"]);
 
     // Each team has one agent at work. The claim that a patch record cites is closed, and is not shown.
-    const working = withClass(byId(page, "claims"), "claim").map((shown) => [NODE_A, NODE_B].filter((node) => textOf(shown).includes(node)));
+    const working = withClass(byId(page, "claims"), "claim").map((shown) => [NODE_A, NODE_B].filter((node) => textOf(shown).includes(asShown(node))));
     expect(working.sort()).toEqual([[NODE_A], [NODE_B]]);
     const groups = withClass(byId(page, "patches"), "group");
     expect(groups).toHaveLength(2);
     const shared = byId(page, `patch-${patches.both}`);
     expect(tagsOf(shared)).toEqual(["removes only", "confirmed by 2"]);
-    expect(textOf(shared)).toContain(NODE_A);
-    expect(textOf(shared)).toContain(NODE_B);
+    expect(textOf(shared)).toContain(asShown(NODE_A));
+    expect(textOf(shared)).toContain(asShown(NODE_B));
     const sideBySide = theOne(groups, "2 patches side by side");
     expect(withClass(sideBySide, "patch").map((entry) => entry.attributes["id"]).sort()).toEqual([`patch-${patches.hosts}`, `patch-${patches.variables}`].sort());
-    expect(textOf(byId(page, `patch-${patches.hosts}`))).toContain(NODE_A);
-    expect(textOf(byId(page, `patch-${patches.variables}`))).toContain(NODE_B);
+    expect(textOf(byId(page, `patch-${patches.hosts}`))).toContain(asShown(NODE_A));
+    expect(textOf(byId(page, `patch-${patches.variables}`))).toContain(asShown(NODE_B));
+    // Each patch shows the model its record declares, beside the team that published the record: both teams' records of the shared patch, and the one record of each of the other two.
+    expect(declaredOf(shared)).toEqual([
+      [asShown(NODE_A), "declared: ", "none", DECLARED],
+      [asShown(NODE_B), "declared: ", "none", DECLARED],
+    ]);
+    expect(declaredOf(byId(page, `patch-${patches.hosts}`))).toEqual([[asShown(NODE_A), "declared: ", "claude-sonnet-5-5", DECLARED]]);
+    expect(declaredOf(byId(page, `patch-${patches.variables}`))).toEqual([[asShown(NODE_B), "declared: ", "claude-sonnet-5-5", DECLARED]]);
+    // No other part of the page says what a record declares.
+    expect(declaredOf(page)).toHaveLength(4);
 
     const [refused] = withTag(byId(page, "rejected"), "li");
-    expect(textOf(refused)).toContain(NODE_B);
+    expect(textOf(refused)).toContain(asShown(NODE_B));
     expect(tagsOf(refused)).toEqual(["patch out of scope"]);
     const [recipe] = withClass(byId(page, "recipes"), "recipe");
     expect(textOf(recipe)).toContain("4c".repeat(20));
@@ -1320,13 +1814,15 @@ describe("the demo on the page (R27)", () => {
     collect(view);
     const hashes = [...values].filter((value) => /^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(value));
     // The three ways the page writes a value down: as it is, an enumerated value with its hyphens as spaces, and a hash by its first eight characters.
+    // A node's address is written a fourth way: an HTTPS address without its scheme.
     const isOfTheView = (text: string): boolean =>
-      values.has(text) || values.has(text.replaceAll(" ", "-")) || (text.length === 8 && hashes.some((hash) => hash.startsWith(text))) || counts.has(text);
+      values.has(text) || values.has(`https://${text}`) || values.has(text.replaceAll(" ", "-")) || (text.length === 8 && hashes.some((hash) => hash.startsWith(text))) || counts.has(text);
 
-    // The page's own words for this view. Each is a label, and none says what to do.
-    const words = [
+    // The page's own words for this view. Each is a label, or says what a thing on the page is, and none says what to do (R35).
+    const labels = [
       "Component",
       "commit ",
+      "Every version of this repo on this index",
       "organizations",
       "findings",
       "patches",
@@ -1339,13 +1835,16 @@ describe("the demo on the page (R27)", () => {
       "–",
       "contradicts ",
       "finding ",
+      "Reported by: ",
       "confirmed by ",
       "unconfirmed",
       "Patches",
       " patch",
       " patches side by side",
+      "Written by: ",
       "−",
       "+",
+      "declared: ",
       "patch ",
       "for ",
       "Recipes",
@@ -1354,6 +1853,46 @@ describe("the demo on the page (R27)", () => {
       "published, not checked",
       "Rejected work",
     ];
+    // What each section holds, under its heading.
+    const sections = [
+      "A claim is a team's notice that it has started a review or a fix. It stays live until that team publishes the result or the claim runs out.",
+      "A finding is something a team's review reports seeing in this version, at the lines it names. It is that team's report, and no verdict of this index. The ones more organizations report stand first, and two organizations make a finding confirmed.",
+      "A patch is a fix one team wrote for a finding, and it changes only the lines that finding names. Patches for the same lines stand side by side, the ones more organizations stand behind first.",
+      "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more organizations published come first.",
+      "The index refused these records, because each failed one of its checks. A refused record counts for nothing on this page.",
+    ];
+    // What a finding says of the component, by its observation. One that names a host has the host between its words.
+    const says = [
+      "This component contains a hidden instruction for an agent.",
+      "This component allows access to every environment variable.",
+      "This component allows network access to any host.",
+      "This component sends data to ",
+      ".",
+      "This component acts without reading a setting that its documentation says controls it.",
+    ];
+    // What each criterion of this view promises, and where its label leads.
+    const promises = [
+      "The promise that loading the component's text into an agent's context is safe.",
+      "The promise that running the component with the permissions and network access it asks for is safe.",
+      "The promise that the component does what its documentation says.",
+      "The protocol defines each criterion. This label leads to that definition.",
+    ];
+    // What a label means, shown while the label is pointed at or focused.
+    const meanings = [
+      "A component is one version of an AI tool, such as a plugin, a skill or a server: its Git repository at one commit.",
+      "The teams with records on this version. A team is counted by the address of its node, and nothing more is proven about who runs it. Each has a stone of its own color, which tells the teams apart and says nothing else.",
+      "One stone for each organization that reports this finding, in that organization's color.",
+      "Two or more organizations report this or have re-checked it, and their reports count against this criterion.",
+      "Fewer than two organizations report this against this criterion. Two make it confirmed.",
+      "Two or more organizations stand behind this patch. Each wrote the same patch, or re-checked it and found that it resolves its finding.",
+      "Fewer than two organizations stand behind this patch. An organization stands behind a patch by writing the same one, or by re-checking it and finding that it resolves its finding.",
+      "This patch only takes lines out. It adds no line and changes no file's mode.",
+      "This patch adds or rewrites lines, or changes a file's mode.",
+      DECLARED,
+      "The team published this hash of its copy's files. The index has not built the copy, so it has not checked the hash.",
+      "The patch adds a file, changes content that its findings do not cite, or changes lines outside the ones they cite.",
+    ];
+    const words = [...labels, ...sections, ...says, ...promises, ...meanings];
     expect([...new Set(texts(page).filter((text) => !isOfTheView(text)))].sort()).toEqual([...words].sort());
 
     // A target on the page is a section, a finding of the view or a patch of the view.
@@ -1365,15 +1904,17 @@ describe("the demo on the page (R27)", () => {
     ]);
     expect(targets.filter((target) => !known.has(target))).toEqual([]);
     expect(new Set(targets).size).toBe(targets.length);
-    // A link leads to a target on the page, or to an HTTPS address that the view holds (KTD14).
+    // A link leads to a target on the page, to an HTTPS address that the view holds (KTD14), or to where the protocol defines a criterion, which is the page's own address.
     for (const href of linksOf(page)) {
       if (href.startsWith("#")) expect(targets).toContain(href.slice(1));
-      else expect([href, values.has(href), href.startsWith("https://")]).toEqual([href, true, true]);
+      else if (href !== PROTOCOL && href !== `/?repo=${encodeURIComponent(UPSTREAM)}`) expect([href, values.has(href), href.startsWith("https://")]).toEqual([href, true, true]);
     }
+    // The page's own address is the target of each criterion's label, and of nothing else.
+    expect(withTag(page, "a").filter((link) => link.attributes["href"] === PROTOCOL).map((link) => classesOf(link))).toEqual([["badge"], ["badge"], ["badge"]]);
     expect(linksOf(page)).toEqual(expect.arrayContaining([UPSTREAM, NODE_A, NODE_B]));
-    // No element carries anything else: a class and a mark for decoration are the page's own.
+    // No element carries anything else: a class, a mark for decoration and the mark of a label that can be focused are the page's own.
     for (const element of elements(page)) {
-      for (const name of Object.keys(element.attributes)) expect(["class", "id", "href", "aria-hidden"]).toContain(name);
+      for (const name of Object.keys(element.attributes)) expect(["class", "id", "href", "aria-hidden", "tabindex"]).toContain(name);
     }
   });
 });

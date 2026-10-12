@@ -5,7 +5,11 @@
 //
 // A drawing becomes the document through `createElement` and `createTextNode` alone, so
 // a value from a record or a registration is set as text and never parsed as markup.
+//
+// It also puts the map of `map.ts` behind the page. The map is decoration and holds no
+// data.
 
+import { ground } from "./map.ts";
 import { NOTHING_READ, draw, placeOf, readOf } from "./render.ts";
 import type { Drawing, Drawn } from "./render.ts";
 
@@ -21,6 +25,8 @@ function build(drawing: Drawing | string): Node {
   element.append(...drawing.children.map(build));
   return element;
 }
+
+ground();
 
 const place = placeOf(location.pathname, location.search);
 const view = document.getElementById("view");

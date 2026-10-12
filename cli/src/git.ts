@@ -315,8 +315,12 @@ export async function writeBlobs(scratch: Scratch, contents: readonly Uint8Array
   return blobs;
 }
 
-/** The author and committer date of every commit the command builds on a component, in Git's own form: seconds since 1970 and a time zone. */
-const FIXED_DATE = "1760000000 +0000";
+/**
+ * The author and committer date of every commit the command builds on a component, and
+ * of the commit that holds a fork's notes, in Git's own form: seconds since 1970 and a
+ * time zone.
+ */
+export const FIXED_DATE = "1760000000 +0000";
 
 /**
  * Builds a commit on a commit the scratch repo holds: the parent's tree with each change
@@ -385,6 +389,24 @@ export async function listRefs(scratch: Scratch, access: Access, prefix: string)
     const name = line.slice(tab + 1);
     return tab > 0 && name.startsWith(prefix) ? [name] : [];
   });
+}
+
+/**
+ * A push to a ref that another run moved is built again on what the ref holds then, up
+ * to this many tries. Three runs at once all landed within three tries on Artifacts, so
+ * this leaves room.
+ */
+export const MAX_PUSH_TRIES = 6;
+/** A try waits up to this long, times its number, so runs that collide spread out. */
+export const RETRY_SPREAD_MS = 400;
+
+/**
+ * Whether the remote turned a push down, as `push --porcelain` prints it: the line of a
+ * ref that was refused starts with `!`. A ref that is not where the push expects it is
+ * refused so.
+ */
+export function wasRejected(porcelain: string): boolean {
+  return porcelain.split("\n").some((line) => line.startsWith("!\t"));
 }
 
 /** A commit's own lines are read up to this size. Its message may be as long as its author made it. */

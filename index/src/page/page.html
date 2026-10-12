@@ -4,23 +4,57 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cairnfield index: one component version</title>
+<link rel="icon" href="/page/favicon.ico" sizes="48x48">
+<link rel="icon" href="/page/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/page/apple-touch-icon.png">
 <link rel="stylesheet" href="/page/styles.css">
 <script type="module" src="/page/poll.js"></script>
 </head>
 <body>
 <div class="bar">
-  <p class="mark">Cairnfield <span>index</span></p>
-  <a href="/">Index</a>
-  <p id="status" class="status">Reading the index</p>
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Where this page is">
+      <ol>
+        <li><a class="mark" href="https://cairnfield.net">Cairnfield</a></li>
+        <li><a href="/">index</a></li>
+        <li aria-current="page">component</li>
+      </ol>
+    </nav>
+    <p id="status" class="status">Reading the index</p>
+  </div>
 </div>
-<div class="intro">
-  <p>This page shows one version of one component, as this index holds it.</p>
+<div class="about">
+  <div class="wrap">
+    <p>This page gathers what teams report about one exact version of an AI tool: what their reviews found, the fixes they wrote, and the copies they built with those fixes. The index collects these reports and gives no verdict of its own.</p>
+  </div>
 </div>
 <main id="view"></main>
 <noscript><p class="notice">This page draws what the index serves as data, and it needs its script to do so.</p></noscript>
-<footer class="links">
-  <a href="https://cairnfield.net">The Cairnfield site</a>
-  <a href="https://github.com/peoplerenaissance/cairnfield">The source repository</a>
+<footer class="end">
+  <div class="wrap cols">
+    <div>
+      <h4>Credits</h4>
+      <p>Cairnfield is an unofficial side project by the <a href="https://sparkwise.co">Sparkwise</a> engineering team.</p>
+      <p><a href="https://github.com/peoplerenaissance/cairnfield">Open source</a> under the MIT license.</p>
+      <p>Set in Routed Gothic by Darren Embry, Hanken Grotesk by Hanken Design Co. and Spline Sans Mono by Sorkin Type, all under the SIL Open Font License and served from this index.</p>
+      <p>Code by <a href="https://aribadernatal.com">Ari Bader-Natal</a>. Built with <a href="https://cloudflare.com">Cloudflare</a>.</p>
+    </div>
+    <div>
+      <h4>This index</h4>
+      <p>Anyone can run an index. The credits here are for the software, and say nothing of who runs this one.</p>
+      <p>An index holds nothing original: every record it shows is published by a team's own node.</p>
+    </div>
+    <div>
+      <h4>More about Cairnfield</h4>
+      <p><a href="https://cairnfield.net">The Cairnfield site</a></p>
+      <p><a href="https://github.com/peoplerenaissance/cairnfield">The repository</a></p>
+      <p><a href="https://github.com/peoplerenaissance/cairnfield#readme">The README, which is the manual</a></p>
+      <p><a href="https://github.com/peoplerenaissance/cairnfield/blob/main/reference/protocol.md">The protocol</a></p>
+    </div>
+  </div>
+  <div class="wrap legal">
+    <p>Copyright 2026 People Renaissance, Inc.</p>
+  </div>
 </footer>
 </body>
 </html>

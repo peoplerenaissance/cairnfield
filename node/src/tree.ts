@@ -2,11 +2,11 @@
 // per call, so each walk here reads only the folders it has to.
 
 import type { Repo } from "./artifacts.ts";
-import { DELETED_BLOB, DELETED_MODE } from "./contract.ts";
+import { DELETED_BLOB, DELETED_MODE, RECORDS_FOLDER, TEAM_BRANCH } from "./contract.ts";
 import type { FileEntry } from "./contract.ts";
 
 /** Every file under a tree, with its path after `prefix`. */
-export async function filesUnder(repo: Repo, tree: string, prefix: string): Promise<FileEntry[]> {
+async function filesUnder(repo: Repo, tree: string, prefix: string): Promise<FileEntry[]> {
   const files: FileEntry[] = [];
   for (const child of (await repo.readTree(tree)) ?? []) {
     const path = `${prefix}${child.name}`;
@@ -14,6 +14,19 @@ export async function filesUnder(repo: Repo, tree: string, prefix: string): Prom
     else files.push({ path, mode: child.mode, blob: child.hash });
   }
   return files;
+}
+
+/**
+ * The head commit of the team repo with every file under its records folder, or nothing
+ * before the first push. The listing and the node's own page both come from this walk.
+ */
+export async function recordFiles(team: Repo): Promise<{ readonly head: string; readonly files: FileEntry[] } | undefined> {
+  // The branch is named, because `log()` reads `HEAD` otherwise (KTD36).
+  const [head] = await team.log({ ref: TEAM_BRANCH, limit: 1 });
+  if (!head) return undefined;
+  const root = (await team.readTree(head.treeHash)) ?? [];
+  const folder = root.find((child) => child.name === RECORDS_FOLDER && child.type === "tree");
+  return { head: head.hash, files: folder ? await filesUnder(team, folder.hash, `${RECORDS_FOLDER}/`) : [] };
 }
 
 async function childrenOf(repo: Repo, tree: string | undefined): Promise<Map<string, ArtifactsTreeEntry>> {

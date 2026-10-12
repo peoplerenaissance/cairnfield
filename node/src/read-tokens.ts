@@ -1,15 +1,25 @@
-// The one read token kept per fork (KTD7). A Durable Object named after the fork holds
-// it. The object takes one call at a time, so of many requests that arrive together only
-// the first mints a token and the others are given that one. That is what keeps the
-// public route from minting without bound.
+// What the node keeps per fork, in a Durable Object named after the fork: the one read
+// token (KTD7) and the count of the fork's fetches (KTD43). The object takes one call at a
+// time, so of many requests that arrive together only the first mints a token and the
+// others are given that one. That is what keeps the public route from minting without bound.
 
 import { DurableObject } from "cloudflare:workers";
 import type { Unavailable } from "./artifacts.ts";
+import { MAX_FETCH_COUNT } from "./contract.ts";
 import type { RepoToken } from "./contract.ts";
 
 /** A kept token is not served in its last minutes, so a reader has time to use it. */
 const KEPT_TOKEN_MARGIN = 5 * 60;
 const KEPT = "token";
+
+/** How often the fork was fetched, with the IDs of the events that were counted last. */
+interface Counted {
+  readonly fetches: number;
+  readonly events: readonly string[];
+}
+const COUNTED = "fetches";
+/** The object remembers the IDs of this many events, the last it counted. */
+const REMEMBERED_EVENTS = 100;
 
 export class ReadTokens extends DurableObject {
   /**
@@ -30,8 +40,33 @@ export class ReadTokens extends DurableObject {
     });
   }
 
-  /** Forgets the kept token. A fork that is made anew has none of the old fork's tokens. */
+  /**
+   * Counts one fetch of the fork, for the event with this ID (KTD43). An event whose ID
+   * is among the last the object counted is not counted again, so an event that arrives
+   * twice, or a Workflow step that runs twice, adds one. The count stops at the limit of
+   * the contract.
+   */
+  async countFetch(event: string): Promise<void> {
+    // The object takes no other call while it waits for its own storage, so two events
+    // that arrive together are counted one after the other.
+    const { fetches, events } = (await this.ctx.storage.get<Counted>(COUNTED)) ?? { fetches: 0, events: [] };
+    if (events.includes(event)) return;
+    await this.ctx.storage.put(COUNTED, {
+      fetches: Math.min(fetches + 1, MAX_FETCH_COUNT),
+      events: [...events, event].slice(-REMEMBERED_EVENTS),
+    } satisfies Counted);
+  }
+
+  /** How often the fork was fetched, or nothing when no fetch was counted. A read writes nothing. */
+  async fetchCount(): Promise<number | undefined> {
+    return (await this.ctx.storage.get<Counted>(COUNTED))?.fetches;
+  }
+
+  /**
+   * Forgets the kept token and the count. A fork that is made anew has none of the old
+   * fork's tokens, and nobody has fetched it.
+   */
   async forget(): Promise<void> {
-    await this.ctx.storage.delete(KEPT);
+    await this.ctx.storage.delete([KEPT, COUNTED]);
   }
 }

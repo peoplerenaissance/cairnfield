@@ -8,8 +8,9 @@ Cairnfield assumes that some contributors are hostile, and that any component un
 
 - A component's files are hostile text. An agent reads them as data.
 - A record or a patch from another node is hostile until the team's own checks have passed on it.
-- A node is storage. It validates nothing, and only its own team trusts it.
-- An index is untrusted. It can omit or misreport work. It cannot make the command take a patch that fails the command's own checks.
+- A node is storage. It validates nothing, and only its own team trusts it. The page a node serves at its own address is that team's own list. Nothing on it was checked, and no index and no command reads it.
+- A node's count of the fetches of its fork is that node's own statement (R45). The index holds the number to its form and carries it in a view under `declared`, in that node's entry and no other (KTD42). Nothing checks its truth.
+- An index is untrusted. It can omit or misreport work, and a count a node declared. It cannot make the command take a patch that fails the command's own checks. `view` prints a declared count as the index gave it. No command checks one against its node, and none acts on one.
 - A person gives the verdict. No part of Cairnfield issues one.
 
 ## The four defenses the prototype builds
@@ -46,8 +47,8 @@ The rest of the design is built in part or not at all. The sections below say wh
 
 An agent rewrites or deletes another team's findings.
 
-- **The design.** Each team's repos sit in the team's own account, with tokens scoped to one repo. The shared view is computed and never written to.
-- **Builds.** Each node has its own Artifacts namespace. A token opens one repo. A write token comes only from a node's admin routes, which need that node's key. The index only reads a node, and holds no key and no token of one. A record is named by the hash of its content, and the index and the command each reject a file whose content does not match its name.
+- **The design.** Each team's repos sit in the team's own account, with tokens scoped to one repo. The shared view is computed and never written to. One value in it is stated and not computed, and is marked as such: a node's count of the fetches of its own fork, under `declared` (KTD42).
+- **Builds.** Each node has its own Artifacts namespace. A token opens one repo. A write token comes only from a node's admin routes, which need that node's key. The index only reads a node, and holds no key and no token of one. A record is named by the hash of its content, and the index and the command each reject a file whose content does not match its name. What a node declares stands in that node's own entry of a view and in no other, and changes no finding, no patch and no count of organizations.
 - **Does not show.** Separate accounts. The demo's nodes share one Cloudflare account, each with its own namespace.
 
 ### Rewritten history
@@ -81,6 +82,7 @@ One party runs many agents, or many nodes, to inflate confirmations.
 - **The design.** A node is identified by the domain it runs on. Confirmations are counted by organization, not by agent.
 - **Builds.** Counts are by node, so many agents of one node count once. A node URL has one accepted spelling, so one node cannot register twice under two spellings (KTD8). Registering a node needs a key, and the index caps its nodes (KTD30). A lens names the teams that count. Work from any other node counts for nothing in that team's `view` or in its copy (KTD38).
 - **Builds in part.** Organization counts are counts of registered node URLs. The count in a view's header is the number of nodes registered with the index, whether or not each published anything.
+- **Builds in part.** A fetch count is no confirmation. A node counts the fetches of each fork it holds and states the number (R45). A fetch names no reader, so the count says nothing of how many parties fetched. A node counts from when it begins to count, and it forgets a fork's count when the fork is made anew, so a number says nothing of the fetches before either. One party raises it with each fetch, with the read token a node gives anyone, and a team raises its own each time its command fetches its fork. A node can also state any number, and nothing checks it. No count of organizations reads a fetch count, and no command acts on one.
 - **Does not build.** Domain verification. Nothing proves who runs a node, or that two nodes are two organizations. Counting organizations as a reason to take a patch is not built, and with it any proof of independence. No command acts on a count.
 
 ### Planted instructions
@@ -89,6 +91,8 @@ Hostile text reaches an agent through a component, a finding or a patch.
 
 - **The design.** Findings hold locations and fixed fields, with no quoted text. Agents read the component in a sandbox with no credentials. An agent that reads another team's patch runs under the same limits.
 - **Builds.** No record field holds free text, and the command and the index each check that before an agent reads a record. The bundled patch agent reads one checkout through read-only tools. It has no tool that writes, runs a command or reaches a network. A component's text reaches the model only inside a tool result. The agent is given nothing from another team. Its answer is a list of edits, and the patch checks bound what the edits may change. A config file, a lens file or an approvals file that lies among a component's files is refused.
+- **Builds.** The page a node serves at its own address draws a file of the team repo only by what the record path pattern captures: two hashes and a type from a closed list. Beside those it draws the head commit, the node's own address and the time of its walk. It draws no other part of a file's name, reads no record and runs no script, and its own words tell a reader nothing to do (R47, KTD45). Each record's link leads to a record file as the node holds it, which no check has passed, so that file is hostile text to an agent that follows the link. The page's one other link is fixed in the node's code: the project's name in the bar, which leads to the project's site.
+- **Does not build.** A check of a note. The note on a patch commit (R46) is a file of a team's fork that no check has passed. `patch` writes hashes and one value from a closed list there, and the fork's team can push any bytes in their place. So a note from another team's fork is hostile text to an agent that reads it.
 - **Builds in part.** Credentials. The agent's tools cannot reach a credential, and no key is in a prompt or a tool result. But the model key, the node's admin key and the repo tokens share the command's process (KTD16). The limit is in the tools. There is no sandbox of the operating system around the command.
 - **Builds in part.** Outside agents. A team's own review agent is not run by the command, so the command cannot limit it. The rule is that such an agent stops at `validate`, which needs no key, and that the operator publishes (R21). Its shell must hold neither the node's admin key nor an index's registration key. The command cannot enforce where a key is set, so this rests on the operator. An agent that runs in the operator's folder can also write `cairnfield.json`, the lens file and `.cairnfield/decisions.json`, and `publish` and `pin` send the admin key in a header to the node that `cairnfield.json` names. The skill file forbids a write outside the outbox, the command cannot enforce it, and Git ignores `cairnfield.json` at the repo root and all of `.cairnfield/`, so `git status` shows no change to either and this too rests on the operator.
 - **Does not build.** An agent that reads another team's patch. No agent reads one. The operator reads the assembled diff.
@@ -124,8 +128,8 @@ A patched copy is read as an approval.
 Teams that use the same model miss the same things, so agreement looks stronger than it is.
 
 - **The design.** Every finding and re-check records the model and the checks used, and the page shows that spread.
-- **Builds in part.** A finding, a re-check, a counter-finding, a patch record and a patch re-check each name a model from a closed list. A finding also names its kind of check. A view carries the records. The author declares the model, and nothing checks it.
-- **Does not build.** The display. The page shows no model. No lens rule discounts agreement between identical setups.
+- **Builds in part.** A finding, a re-check, a counter-finding, a patch record and a patch re-check each name a model from a closed list. A finding also names its kind of check. A view carries the records. The author declares the model, and nothing checks it. The page shows the model of each patch record beside the team that published it, after the word "declared", in a plain line with no outline. The page keeps its dashed outline for what is unconfirmed, which a second organization can still confirm.
+- **Does not build.** The rest of the display. The page shows the model of no finding, re-check, counter-finding or patch re-check. No lens rule discounts agreement between identical setups.
 
 ### Anchoring
 
@@ -168,8 +172,8 @@ A contributor is found to be hostile, and its work still shows.
 
 A party registers work or sends requests to exhaust a public Worker. This threat is not in the design's own table. It is here because the prototype runs a public demo.
 
-- **Builds.** Registering a node or a component needs a key. The index caps its nodes and its components and imports only from Git URLs on its allow-list. Every read from a node runs under a deadline, follows no redirect and stops at a size limit (KTD30). A node's listing is held to 5,000 entries and 500 records per component (KTD6). A notice for a node that is not registered causes no fetch. Notices for one node within 5 seconds cause one sync (KTD11). A node's public read-token route keeps one token per fork and cannot mint without bound (KTD7).
-- **Does not build.** A rate limit. The notice route takes no key. A node's `records`, `file`, `patch` and `blob` routes read Artifacts on every request, for anyone. Cloudflare's documentation gives each namespace a request budget, which anonymous requests could spend. `platform-notes.md` holds the numbers, which were not tested.
+- **Builds.** Registering a node or a component needs a key. The index caps its nodes and its components and imports only from Git URLs on its allow-list. Every read from a node runs under a deadline, follows no redirect and stops at a size limit (KTD30). A node's listing is held to 5,000 entries and 500 records per component (KTD6). A notice for a node that is not registered causes no fetch. Notices for one node within 5 seconds cause one sync (KTD11). A node's public read-token route keeps one token per fork and cannot mint without bound (KTD7). A node keeps its own page for 30 seconds in each isolate, so views of the page walk the team repo at most once in that time, and a walk that failed is kept as long. The page draws at most 1,000 record links and takes nothing from a request (KTD45). A node's `fetches` route reads one Durable Object and no repo, and writes nothing (KTD43).
+- **Does not build.** A rate limit. The notice route takes no key. A node's `records`, `file`, `patch` and `blob` routes read Artifacts on every request, for anyone. Each record's link on a node's page leads to the `file` route. The page asks a crawler not to follow its links, and nothing makes one obey. A fetch of a fork over Git, which anyone can make with the read token a node gives, starts one Workflow instance on that node, writes once to the fork's object and sends the index one notice (KTD43). Nothing in Cairnfield limits those fetches. A counted fetch that raises a node's number moves the version of that component's view at the index's next sync of the node (KTD11), and every open page of that component then draws again. Anyone with the read token a node gives can cause that, at most once for each sync. A node counts an event by its type, its ID and its repo's name. It does not read the event's namespace: it trusts each trigger's namespace filter for that (KTD9). Two nodes' forks of one component have the same name, so an event of another namespace that reached a node would raise this node's count for a fetch of the other node's fork. That was not seen to happen. The `fetches` route starts a Durable Object for any component it is asked about, as the read-token route does. Cloudflare's documentation gives each namespace a request budget, which anonymous requests could spend. `platform-notes.md` holds the numbers, which were not tested.
 
 ## Other limits of the prototype
 
@@ -179,7 +183,7 @@ A party registers work or sends requests to exhaust a public Worker. This threat
 - **A team's records all go through one branch of one repo.** The command pushes with pull and retry. Artifacts guidance prefers a repo per agent to one shared repo. Contention stays within a team, because the command pushes and the agents do not.
 - **`view` trusts the index for two things.** It takes the index at its word for which node a record came from and which content a path holds. `assemble` does not: it reads each record and each commit from the node itself.
 
-These parts of the design are described here and not built: domain verification, maintainer flags, the display of models used, removal of a contributor from an index, and the unreviewed list, a team's local list of components it uses and has not reviewed.
+These parts of the design are described here and not built: domain verification, maintainer flags, removal of a contributor from an index, and the unreviewed list, a team's local list of components it uses and has not reviewed. The display of models used is built in part: the page shows the model that a patch record declares, and the model of no other record.
 
 ## Not solved by the design
 

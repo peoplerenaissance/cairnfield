@@ -7,10 +7,13 @@ import {
   COMPONENT_LIST,
   INDEX_REFUSAL,
   INDEX_ROUTES,
+  NODE_FETCHES,
   NODE_LISTING,
   NODE_PATCH,
   NODE_ROUTES,
+  NOTES_REF,
   NOTICE,
+  PATCH_NOTE,
   PROJECTION,
   REGISTER_COMPONENT_REQUEST,
   REGISTER_NODE_REQUEST,
@@ -21,10 +24,10 @@ import {
 } from "../src/contracts.ts";
 import type { Projection, Route, View } from "../src/contracts.ts";
 import { DELETED_BLOB, DELETED_MODE } from "../src/enums.ts";
-import { object, sha256, shape, text, url } from "../src/fields.ts";
+import { gitHash, object, sha256, shape, text, url } from "../src/fields.ts";
 import type { ContractKind } from "../src/fields.ts";
 import { jsonSchemaOf } from "../src/json-schema.ts";
-import { MAX_LISTING_ENTRIES } from "../src/limits.ts";
+import { MAX_FETCH_COUNT, MAX_LISTING_ENTRIES } from "../src/limits.ts";
 import { matchGroups } from "../src/match.ts";
 import { RECORD_SHAPES } from "../src/schemas.ts";
 import { conforms } from "../src/validate.ts";
@@ -142,6 +145,40 @@ describe("node contract (KTD7, KTD10)", () => {
     expect(reasonOf(REPO_TOKEN, { ...body, token: "" })).toBe("unknown-value");
   });
 
+  describe("a fork's fetch count (R45)", () => {
+    const counted = { component: COMPONENT, fetches: 3 };
+
+    it("has a public route of its own, which takes a component", () => {
+      expect(NODE_ROUTES.fetches).toEqual({
+        method: "GET",
+        path: "fetches",
+        query: { component: gitHash() },
+        response: NODE_FETCHES,
+      });
+    });
+
+    it("names its component and is a whole number from 1 to the limit", () => {
+      expect(reasonOf(NODE_FETCHES, counted)).toBe("ok");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: 1 })).toBe("ok");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: MAX_FETCH_COUNT })).toBe("ok");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: MAX_FETCH_COUNT + 1 })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: 2.5 })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: "3" })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { ...counted, component: "main" })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { fetches: 3 })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { component: COMPONENT })).toBe("unknown-value");
+    });
+
+    it("is never zero, because a fork with no counted fetch has no count", () => {
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: 0 })).toBe("unknown-value");
+    });
+
+    it("is refused with a member the contract does not name", () => {
+      expect(reasonOf(NODE_FETCHES, { ...counted, readers: [NODE_B] })).toBe("unknown-field");
+      expect(reasonOf(NODE_FETCHES, { ...counted, note: "fetched by many teams" })).toBe("unknown-field");
+    });
+  });
+
   it("sends the admin key in a header on every admin route and on no public route", () => {
     for (const [id, route] of Object.entries<Route>(NODE_ROUTES)) {
       expect(route.key, id).toBe(route.path.startsWith("admin/") ? ADMIN_KEY_HEADER : undefined);
@@ -237,6 +274,34 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
 
   it("accepts a view", () => {
     expect(conforms(VIEW, view)).toBeUndefined();
+  });
+
+  describe("what a node declared, in its entry of a view (KTD42)", () => {
+    const [first, second] = view.nodes;
+    const declaring = (declared: unknown) => ({ ...view, nodes: [{ ...first, declared }, second] });
+
+    it("takes a node's count of fetches under `declared`, from 1 to the limit, and an entry with nothing declared", () => {
+      expect(reasonOf(VIEW, declaring({ fetches: 3 }))).toBe("ok");
+      expect(reasonOf(VIEW, declaring({ fetches: 1 }))).toBe("ok");
+      expect(reasonOf(VIEW, declaring({ fetches: MAX_FETCH_COUNT }))).toBe("ok");
+      expect(first).not.toHaveProperty("declared");
+      expect(reasonOf(VIEW, view)).toBe("ok");
+    });
+
+    it("refuses a count of zero, a count over the limit, a fraction and a count held as text", () => {
+      expect(reasonOf(VIEW, declaring({ fetches: 0 }))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: MAX_FETCH_COUNT + 1 }))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: 2.5 }))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: "3" }))).toBe("unknown-value");
+    });
+
+    it("refuses `declared` with no count, with another member, and a count that stands outside it", () => {
+      expect(reasonOf(VIEW, declaring({}))).toBe("unknown-value");
+      expect(reasonOf(VIEW, declaring({ fetches: 3, readers: [NODE_B] }))).toBe("unknown-field");
+      expect(reasonOf(VIEW, declaring({ fetches: 3, note: "fetched by many teams" }))).toBe("unknown-field");
+      // A count beside the computed members would read as one of them.
+      expect(reasonOf(VIEW, { ...view, nodes: [{ ...first, fetches: 3 }, second] })).toBe("unknown-field");
+    });
   });
 
   it("gives view entries the shape the match rule reads", () => {
@@ -428,6 +493,43 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
     }
     const notice: Route = INDEX_ROUTES.notice;
     expect(notice.key).toBeUndefined();
+  });
+});
+
+describe("the note on a patch commit (R46, KTD44)", () => {
+  const note = { version: "1", commit: PATCH_COMMIT, findings: [sha("a")], model: "claude-sonnet-5-5", recording: sha("b") };
+
+  it("is kept at one ref of a fork, which a reader fetches by this name", () => {
+    expect(NOTES_REF).toBe("refs/notes/cairnfield");
+  });
+
+  it("names the commit, its findings, the model and the recording, and the prompt when the recording names one", () => {
+    expect(reasonOf(PATCH_NOTE, note)).toBe("ok");
+    expect(reasonOf(PATCH_NOTE, { ...note, prompt: sha("c") })).toBe("ok");
+    expect(reasonOf(PATCH_NOTE, { ...note, model: "none" })).toBe("ok");
+    expect(reasonOf(PATCH_NOTE, { ...note, findings: [sha("a"), sha("d")] })).toBe("ok");
+    for (const field of ["commit", "findings", "model", "recording"]) {
+      const { [field]: _taken, ...rest } = note as { readonly [field: string]: unknown };
+      expect(reasonOf(PATCH_NOTE, rest), field).toBe("unknown-value");
+    }
+    const { version: _none, ...unversioned } = note;
+    expect(reasonOf(PATCH_NOTE, unversioned)).toBe("unsupported-version");
+  });
+
+  it("refuses a field of its own, such as a count of tool calls, and a value that is no hash and no listed model", () => {
+    expect(reasonOf(PATCH_NOTE, { ...note, toolCalls: 12 })).toBe("unknown-field");
+    expect(reasonOf(PATCH_NOTE, { ...note, model: "a model of our own" })).toBe("unknown-value");
+    expect(reasonOf(PATCH_NOTE, { ...note, prompt: "Read this file first." })).toBe("unknown-value");
+    expect(reasonOf(PATCH_NOTE, { ...note, recording: PATCH_COMMIT })).toBe("unknown-value");
+    expect(reasonOf(PATCH_NOTE, { ...note, commit: "main" })).toBe("unknown-value");
+    // The findings are a set, as a patch record's are: sorted, with at least one.
+    expect(reasonOf(PATCH_NOTE, { ...note, findings: [sha("d"), sha("a")] })).toBe("unknown-value");
+    expect(reasonOf(PATCH_NOTE, { ...note, findings: [] })).toBe("unknown-value");
+  });
+
+  it("holds only record kinds, so no field of it can hold free text", () => {
+    for (const kind of kindsIn(PATCH_NOTE)) expect(RECORD_KINDS).toContain(kind.kind);
+    expect(fieldNamesIn(PATCH_NOTE).sort()).toEqual(["commit", "findings", "model", "prompt", "recording", "version"]);
   });
 });
 

@@ -1,19 +1,21 @@
 // `patch`: writes a patch for one finding of the team's own (R24).
 //
 // The command publishes a patch claim (R15), gets edits, and turns them into a commit on
-// the pinned commit that it checks and pushes to the team's fork. Then it publishes the
+// the pinned commit that it checks and pushes to the team's fork. It attaches a note to
+// the commit there, which says how the commit was made (R46). Then it publishes the
 // patch record. The edits come from the bundled agent, or from a recording with
 // `--replay` (KTD18). Both take the same path from there on, so a replay repeats every
-// record ID and the commit hash of the live run.
+// record ID, the commit hash and the note of the live run.
 //
 // The agent reads one checkout and is given one target. It is given nothing from another
 // team, and it pushes nothing: the command does (R18, R19).
 
 import { readFile } from "node:fs/promises";
-import { SCHEMA_VERSION, isSha256, recordPath } from "@cairnfield/protocol";
+import { SCHEMA_VERSION, isSha256, recordPath, sha256Hex } from "@cairnfield/protocol";
 import type { Finding, Model, Patch } from "@cairnfield/protocol";
 import { MODEL_KEY, runAgent } from "../agents/live.ts";
 import { readRecording, recordingFile, saveRecording } from "../agents/replay.ts";
+import type { Recording } from "../agents/replay.ts";
 import { checkoutTools } from "../agents/tools.ts";
 import { readListing } from "../checkout.ts";
 import type { Listing } from "../checkout.ts";
@@ -27,6 +29,7 @@ import type { Outcome } from "../outcome.ts";
 import { commitPatch, pushPatch } from "../patch/commit.ts";
 import { ANSWER_SCHEMA, draftPatch } from "../patch/edits.ts";
 import type { Drafted } from "../patch/edits.ts";
+import { attachNote } from "../patch/note.ts";
 import { adminKey, nodeFailed, nodeListing, readRecord, writableFork } from "../services.ts";
 import { claim } from "./claim.ts";
 import { publish } from "./publish.ts";
@@ -42,23 +45,32 @@ export interface PatchRequest {
 
 const PROMPT = new URL("../agents/prompts/patch.md", import.meta.url);
 
-/**
- * Runs the patch agent on one finding of a checkout. Returns the edits that passed the
- * patch checks as a draft, or the code of what stopped it: `no-edits` when the agent gave
- * none, or the code of the second answer that failed the checks.
- */
+/** What a run of the patch agent gave. */
+export interface Written {
+  /**
+   * The edits that passed the patch checks, as a draft, or the code of what stopped the
+   * run: `no-edits` when the agent gave none, or the code of the second answer that
+   * failed the checks.
+   */
+  readonly drafted: Drafted;
+  /** The SHA-256 of the prompt the agent ran under, as the run's recording names it (KTD44). */
+  readonly prompt: string;
+}
+
+/** Runs the patch agent on one finding of a checkout. */
 export async function writeEdits(
   io: Io,
   home: Home,
   listing: Listing,
   finding: Finding,
   model: { readonly key: string; readonly name: string },
-): Promise<Drafted> {
+): Promise<Written> {
   const { path, start, end } = finding.location;
+  const system = await readFile(PROMPT, "utf8");
   const written = await runAgent(io, {
     key: model.key,
     model: model.name,
-    system: await readFile(PROMPT, "utf8"),
+    system,
     tools: checkoutTools(home, listing, { path, start, end, observation: finding.observation }),
     answer: ANSWER_SCHEMA,
     check: async (answer) => {
@@ -67,7 +79,8 @@ export async function writeEdits(
       return drafted.ok || drafted.reason === "no-edits" ? { ok: true, value: drafted } : drafted;
     },
   });
-  return written.ok ? written.value : written;
+  // The hash is of the text the agent was given, read once.
+  return { drafted: written.ok ? written.value : written, prompt: await sha256Hex(new TextEncoder().encode(system)) };
 }
 
 export async function patch(io: Io, home: Home, request: PatchRequest): Promise<Outcome> {
@@ -121,30 +134,37 @@ export async function patch(io: Io, home: Home, request: PatchRequest): Promise<
   // When a later step stops, the output still names the claim that was published.
   const { code, output } = await outcomeOf(async () => {
     const model: Model = from.recorded ? from.recorded.model : from.name;
-    const drafted = from.recorded
-      ? await draftPatch(home, listing, finding, { edits: from.recorded.edits })
+    // A replay drafts the edits its recording holds. A live run asks the agent for them.
+    const run = from.recorded
+      ? { drafted: await draftPatch(home, listing, finding, { edits: from.recorded.edits }), recorded: from.recorded }
       : await writeEdits(io, home, listing, finding, from);
+    const { drafted } = run;
     // Fail closed: edits that were refused publish nothing (KTD19).
     if (!drafted.ok) return stop(EXIT.invalid, "edits-refused", { reason: drafted.reason });
-    // Saved before the push, so a run that stops after this can be finished with `--replay`.
-    if (!from.recorded) {
-      await saveRecording(file, { version: SCHEMA_VERSION, component, finding: id, claim: made.number, model, edits: [...drafted.edits] });
+    // A replay goes on with the recording it read, and hashes no prompt. A live run makes its own, which names the prompt its agent ran under (KTD44).
+    let saved: Recording;
+    if ("recorded" in run) saved = run.recorded;
+    else {
+      saved = { version: SCHEMA_VERSION, component, finding: id, claim: made.number, model, prompt: run.prompt, edits: [...drafted.edits] };
+      // Saved before the push, so a run that stops after this can be finished with `--replay`.
+      await saveRecording(file, saved);
     }
 
     const access = await writableFork(io, home, key, component);
     const { patchId, kind, size, paths } = drafted.facts;
-    const commit = await withScratch(io, async (scratch) => {
+    const { commit, note } = await withScratch(io, async (scratch) => {
       await fetchCommit(scratch, access, component);
       const built = await commitPatch(scratch, component, drafted);
       await pushPatch(scratch, access, component, patchId, built);
-      return built;
+      // The note says what the recording says, so a replay writes the note of its live run (R46).
+      return { commit: built, note: await attachNote(io, scratch, access, built, [id], saved) };
     });
 
-    // The fork holds the commit before the record that announces it is published.
+    // The fork holds the commit and its note before the record that announces the commit is published (R46).
     const record: Patch = { version: SCHEMA_VERSION, type: "patch", component, commit, findings: [id], claim: made.claim, model };
     const announced = await addRecord(home, record);
     const published = await outcomeOf(() => publish(io, home, [recordPath(record, announced)]));
-    return done({ patch: announced, commit, patchId, kind, size, paths, recording, ...published.output }, published.code);
+    return done({ patch: announced, commit, patchId, kind, size, paths, recording, note, ...published.output }, published.code);
   });
   return done({ ...made, ...output }, code);
 }

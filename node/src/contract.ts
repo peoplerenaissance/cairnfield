@@ -14,6 +14,7 @@ export const PATHS = {
   patch: "patch",
   blob: "blob",
   readToken: "read-token",
+  fetches: "fetches",
   importCopy: "admin/import",
   createTeamRepo: "admin/team-repo",
   createFork: "admin/fork",
@@ -89,10 +90,24 @@ function queryOf<const N extends string>(url: URL, names: readonly N[]): { reado
 // The public queries (KTD7). Each reader gives nothing for a query the contract does not allow.
 
 const RECORD_TYPES = ["claim", "finding", "re-check", "counter-finding", "patch", "patch-re-check", "recipe"];
-/** The path of a record file in the team repo (KTD1). */
-const RECORD_PATH = new RegExp(`^records/[0-9a-f]{40}/(?:${RECORD_TYPES.join("|")})/[0-9a-f]{64}\\.json$`);
+/** The path of a record file in the team repo (KTD1). It captures the component, the type and the ID. */
+const RECORD_PATH = new RegExp(`^records/([0-9a-f]{40})/(${RECORD_TYPES.join("|")})/([0-9a-f]{64})\\.json$`);
 /** The folder of the team repo that holds the records. */
 export const RECORDS_FOLDER = "records";
+
+/** What a record path names (KTD1). The node reads no record, so this is all it knows of one. */
+export interface RecordPath {
+  readonly path: string;
+  readonly component: string;
+  readonly type: string;
+  readonly id: string;
+}
+
+/** The parts of a record path, or nothing for a path that is none. */
+export function recordPath(path: string): RecordPath | undefined {
+  const [, component, type, id] = RECORD_PATH.exec(path) ?? [];
+  return component === undefined || type === undefined || id === undefined ? undefined : { path, component, type, id };
+}
 
 export function listingQuery(url: URL): object | undefined {
   return queryOf(url, []);
@@ -114,6 +129,11 @@ export function blobQuery(url: URL): { readonly component: string; readonly blob
 }
 
 export function readTokenQuery(url: URL): { readonly component: string } | undefined {
+  const query = queryOf(url, ["component"]);
+  return query && isGitHash(query.component) ? query : undefined;
+}
+
+export function fetchesQuery(url: URL): { readonly component: string } | undefined {
   const query = queryOf(url, ["component"]);
   return query && isGitHash(query.component) ? query : undefined;
 }
@@ -198,6 +218,15 @@ export interface RepoToken {
   readonly remote: string;
   readonly token: string;
   readonly expires: number;
+}
+
+/** A fork's fetch count is at most this (R45), and the node stops counting there. */
+export const MAX_FETCH_COUNT = 1_000_000_000;
+
+/** How often the fork of a component was fetched over Git, as this node counted it (R45). It is never zero. */
+export interface NodeFetches {
+  readonly component: string;
+  readonly fetches: number;
 }
 
 /**

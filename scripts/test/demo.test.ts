@@ -29,6 +29,9 @@ const TEAM_B_KEY = "the-admin-key-of-team-b";
 const RESET_KEY = "the-reset-key";
 const OUT_OF_SCOPE_RECORD = "7badde119b758271ae71d03e5cee57e241ec4b2b28f0009018d792ec25ed9df9";
 const HIDDEN_INSTRUCTION = "981ae3aa8aadd84d9f44c609c4302727d91b4d381b92c124d7216879aa665b08";
+/** The commit Team B builds by hand, which an index rejects (KTD26). */
+const OUT_OF_SCOPE_COMMIT = (JSON.parse(readFileSync(`${FIXTURES}out-of-scope/COMMIT.json`, "utf8")) as { readonly commit: string }).commit;
+const NOTES_REF = "refs/notes/cairnfield";
 /** The names a script or the command reads a key under. */
 const KEY_NAMES = ["CAIRNFIELD_ADMIN_KEY", "CAIRNFIELD_REGISTRATION_KEY", "ANTHROPIC_API_KEY", "TEAM_A_ADMIN_KEY", "TEAM_B_ADMIN_KEY", "CAIRNFIELD_RESET_KEY"];
 
@@ -113,6 +116,20 @@ const patchRefs = (at: Site, component: string): string[] =>
 
 const headOf = (at: Site): string => git(at.repo("team"), ["rev-parse", TEAM_BRANCH]);
 
+/** The notes a team's fork of a component holds: the commit its notes ref points to, and the commits that have a note. Nothing for a fork with no notes ref. */
+function notesOf(at: Site, component: string): { readonly head: string; readonly commits: readonly string[] } | undefined {
+  const fork = at.repo(`fork-${component}`);
+  if (git(fork, ["for-each-ref", "--format=%(refname)", "refs/notes/"]) !== NOTES_REF) return undefined;
+  return { head: git(fork, ["rev-parse", NOTES_REF]), commits: git(fork, ["ls-tree", "--name-only", NOTES_REF]).split("\n") };
+}
+
+/** What each `patch` said it did with the note of its commit, among the lines the scripts said from one of them on. */
+const notesSaid = (from: number): unknown[] =>
+  said
+    .slice(from)
+    .flatMap((line) => /^team-[ab]> (.*)$/.exec(line)?.[1] ?? [])
+    .flatMap((printed) => (JSON.parse(printed) as { readonly note?: unknown }).note ?? []);
+
 /** Everything a script told the operator, on either stream, holds no key, no token and no Git remote. */
 function expectNothingSecretSaid(): void {
   const told = [...said, ...on.warnings].join("\n");
@@ -154,6 +171,16 @@ describe("the demo script", () => {
     expect(view?.patches.map((group) => group.patches.map(({ patchId }) => patchId).sort()).sort((a, b) => b.length - a.length)).toEqual([[anyHost, everyVariable].sort(), [hiddenInstruction]]);
     expect(view?.rejected).toEqual([{ node: TEAM_B, hash: OUT_OF_SCOPE_RECORD, type: "patch", reason: "patch-out-of-scope" }]);
     expect(view?.pending).toEqual([]);
+    // Each team's fork holds a note for each commit its `patch` pushed, and none for the commit Team B built by hand (R46).
+    const patchCommits = (node: string): string[] => entries.flatMap(({ records }) => records.filter((held) => held.node === node).map(({ record }) => record.commit)).sort();
+    const notes = { "team-a": notesOf(on, commits.first), "team-b": notesOf(teamB, commits.first) };
+    expect(notes["team-a"]?.commits).toEqual(patchCommits(NODE));
+    expect(notes["team-b"]?.commits).toEqual(patchCommits(TEAM_B));
+    expect(patchCommits(NODE)).toHaveLength(2);
+    expect(patchCommits(TEAM_B)).toHaveLength(2);
+    expect(git(teamB.repo(`fork-${commits.first}`), ["cat-file", "-t", OUT_OF_SCOPE_COMMIT])).toBe("commit");
+    expect(notes["team-b"]?.commits).not.toContain(OUT_OF_SCOPE_COMMIT);
+    expect(notesSaid(0)).toEqual(["written", "written", "written", "written"]);
     // Each claim was published before its patch, and its patch closed it.
     expect(view?.claims.map(({ node, state }) => `${node} ${state}`).sort()).toEqual([`${NODE} closed`, `${NODE} closed`, `${TEAM_B} closed`, `${TEAM_B} closed`]);
     // The script held the three claims on the page before the patches closed them.
@@ -170,6 +197,8 @@ describe("the demo script", () => {
     expect(printed("team-a", "carry")["leftBehind"]).toEqual([everyVariable]);
     expect(recordAt(on, published(on).find((path) => path.startsWith(`records/${commits.later}/recipe/`)) ?? "")).toMatchObject({ tree: shown.trees.later, patches: [anyHost, hiddenInstruction].sort() });
     expect(new Set(Object.values(shown.trees)).size).toBe(3);
+    // `carry` attaches no note to the commits it builds.
+    expect(notesOf(on, commits.later)).toBeUndefined();
 
     // No model was called, and each node was asked for a token with its own key and no other.
     expect(on.requests.filter(({ url }) => url.startsWith(MODEL_API))).toEqual([]);
@@ -205,9 +234,14 @@ describe("the demo script", () => {
     expectNothingSecretSaid();
 
     // From the reset state the demo gives the same record IDs, patch IDs and file-tree hashes.
+    const replayed = said.length;
     const again = await demo(await stage());
 
     expect(again).toEqual(shown);
+    // The reset left the forks as they were, so each replay found its own note and no notes ref moved.
+    expect({ "team-a": notesOf(on, commits.first), "team-b": notesOf(teamB, commits.first) }).toEqual(notes);
+    expect(notesSaid(replayed)).toEqual(["already-there", "already-there", "already-there", "already-there"]);
+    expect(notesOf(on, commits.later)).toBeUndefined();
     expect(on.requests.filter(({ url }) => url.startsWith(MODEL_API))).toEqual([]);
   });
 

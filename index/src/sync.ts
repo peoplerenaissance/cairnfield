@@ -11,19 +11,21 @@
 // A patch record that still waits is looked at once more when a sync stores a finding it
 // names as valid, and at the syncs of its node, which each take a pass of the node's
 // waiting patch records in turn.
+//
+// A sync ends by asking the node for its count of the fetches of each fork whose
+// component is registered and in the node's listing (see `fetches.ts`). A count is no
+// record. No answer to that question fails the sync, and no error in storing one does.
 
 import { MAX_LISTING_ENTRIES, MAX_RECORDS_PER_COMPONENT, canonicalJson, compare, parseRecordPath, sha256Hex, validateRecordFile } from "@cairnfield/protocol";
 import type { RecordType } from "@cairnfield/protocol";
 import type { Env } from "./env.ts";
-import { readListing, readRecordFile } from "./fetch.ts";
+import { FETCH_AHEAD, readListing, readRecordFile } from "./fetch.ts";
 import type { ReadFailure } from "./fetch.ts";
+import { readFetchCounts } from "./fetches.ts";
 import { goOnAfter, lookAtPatches, lookOnceAtPatches, patchesWaitingFor, waitingPatchesOf } from "./patches.ts";
 import type { PatchName } from "./patches.ts";
 import { Copy, PASS_RECORDS, bump, judge, reasonAndCited } from "./records.ts";
 import type { ComponentState, StoredRecord } from "./records.ts";
-
-/** Record files are fetched this many at a time: as many connections as one invocation holds open at once. */
-const FETCH_AHEAD = 6;
 
 export type SyncOutcome =
   /** `more` says the node holds records that this pass did not get to. */
@@ -131,6 +133,8 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   }
   // In a fixed order, so two passes over one listing take the same files.
   unseen.sort((a, b) => compare(a.path, b.path));
+  // The registered components the listing names, whether or not the pass reads a record of one.
+  const listed = [...perComponent.keys()].filter((component) => states.has(component)).sort(compare);
 
   const copies = new Map<string, Copy>();
   const statements: D1PreparedStatement[] = [];
@@ -223,5 +227,14 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   const waiting = await waitingPatchesOf(env, node);
   await lookAgain(waiting);
   await goOnAfter(env, node, waiting);
+  // Last, once everything about the node's records is written and queued: what the node
+  // says of its fetches changes none of it, and neither does a count the database did
+  // not take. The counts of an earlier sync stay, and the node's next sync asks again.
+  try {
+    await readFetchCounts(env, node, held.syncs, listed);
+  } catch {
+    // A code and a registered URL. Nothing of the error is logged.
+    console.warn(JSON.stringify({ event: "counts-failed", node, reason: "not-stored" }));
+  }
   return failure === undefined ? { ok: true, head, stored, more: !complete } : { ok: false, reason: failure };
 }

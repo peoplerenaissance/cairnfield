@@ -1,6 +1,6 @@
 # Cairnfield team node
 
-A team node is the one piece of Cairnfield a team hosts: a Cloudflare Worker that keeps the team's repos in the team's own Artifacts namespace. It serves the team's records and patch commits over HTTP, and its base URL is the team's identity.
+A team node is the one piece of Cairnfield a team hosts: a Cloudflare Worker that keeps the team's repos in the team's own Artifacts namespace. It serves the team's records and patch commits over HTTP, and its base URL is the team's identity. At that address it shows a page that lists the team's records.
 
 ## What you need
 
@@ -35,6 +35,8 @@ In the account that Wrangler is logged in to:
 - the Artifacts namespace `cairnfield-node`
 - the Workflow `cairnfield-node-on-push`
 - the trigger that starts that Workflow on each push to that namespace
+- the Workflow `cairnfield-node-on-fetch`
+- the two triggers that start that Workflow on each fetch and each clone from that namespace
 - the custom domain, when you give one
 
 It updates each of these that is already there. With `--domain`, it switches off the node's address on `workers.dev`, because Wrangler gives a Worker with a custom domain no address there. It deletes nothing.
@@ -65,6 +67,22 @@ curl https://node.team-a.example/records
 ```
 
 A new node answers with status 404 and `{"error":"not-found"}`, because it has no team repo yet. A node the team has published from answers with its listing. The script reads this address once after the deploy and says whether the node answered. A new address can take a few minutes to start.
+
+The node's own address shows a page for a person:
+
+```
+https://node.team-a.example/
+```
+
+The page lists the records the team repo holds, by component, and each record links to its file on the node. On a new node it says that the team has published nothing yet. It is the team's own list: nothing on it was checked, and no index and no command reads it. The node keeps the page for 30 seconds, so a record can take that long to show.
+
+The node counts how often each fork it holds is fetched over Git, and serves the count:
+
+```sh
+curl "https://node.team-a.example/fetches?component=<component commit>"
+```
+
+It answers `{"component":"<component commit>","fetches":3}`. A fork with no counted fetch has no count, and the node answers with status 404 and `{"error":"not-found"}`. The node counts from when it begins to count: a fetch from before it was deployed with the two triggers above is in no count. It forgets a fork's count when the fork is made anew. The count is the node's own statement. It names no reader, your own command's fetches are in it, and anyone can raise it. A node with an index address sends the index a notice after each fetch it counts, as it does after a push.
 
 Then name the node in the `cairnfield.json` of the folder you work in:
 

@@ -171,6 +171,7 @@ describe("the setup script, given the node's address", () => {
     await setupNode(on.io, ["--url", NODE]);
 
     const trigger = "the trigger that starts that Workflow on each push to that namespace";
+    const fetchTriggers = "the two triggers that start that Workflow on each fetch and each clone from that namespace";
     const named: readonly (readonly [said: string, held: string])[] = [
       ["the Worker cairnfield-node", '"name": "cairnfield-node"'],
       ["Durable Object class ReadTokens", '"class_name": "ReadTokens"'],
@@ -179,6 +180,10 @@ describe("the setup script, given the node's address", () => {
       [trigger, '"type": "cf.artifacts.repo.pushed"'],
       [trigger, '"filter": { "namespace": "cairnfield-node" }'],
       [trigger, '"workflow_name": "cairnfield-node-on-push"'],
+      ["the Workflow cairnfield-node-on-fetch", '"name": "cairnfield-node-on-fetch"'],
+      [fetchTriggers, '"type": "cf.artifacts.repo.fetched"'],
+      [fetchTriggers, '"type": "cf.artifacts.repo.cloned"'],
+      [fetchTriggers, '"workflow_name": "cairnfield-node-on-fetch"'],
     ];
     for (const [said, held] of named) {
       expect(on.textBeforeDeploy()).toContain(said);

@@ -1,7 +1,8 @@
 // Team nodes for a test, behind `fetch`. A fake node serves the routes of the node
 // contract that the index reads: its head with a listing of its record files, one file
-// at a commit, a patch commit's parent and changed paths, and one blob of a fork (KTD7).
-// Like a real node, it validates nothing. Every host is invented.
+// at a commit, a patch commit's parent and changed paths, one blob of a fork, and its
+// count of a fork's fetches (KTD7). Like a real node, it validates nothing. Every host
+// is invented.
 
 import { DELETED_BLOB, DELETED_MODE, gitBlobHash, isGitHash, parseRecordPath, recordId, recordPath, sha256Hex } from "@cairnfield/protocol";
 import type { AnyRecord } from "@cairnfield/protocol";
@@ -49,10 +50,14 @@ export class FakeNode {
   onListing: (() => Promise<void>) | undefined;
   /** Called each time a record file is read, before it is returned. */
   onFile: (() => Promise<void>) | undefined;
+  /** Called each time a count of fetches is read, once the answer is made and before it is returned. */
+  onFetches: (() => Promise<void>) | undefined;
   /** Answers a request in place of the node, or throws as a network would. */
   respond: ((url: URL) => Response | undefined) | undefined;
   readonly #files = new Map<string, Held>();
   readonly #forks = new Map<string, Fork>();
+  /** The fetches the node has counted for its fork of each component. A fork with no counted fetch has no entry. */
+  readonly #fetches = new Map<string, number>();
 
   constructor(url: string) {
     this.url = url;
@@ -122,6 +127,15 @@ export class FakeNode {
     this.#fork(component).blobs.set(blob, encoder.encode(content));
   }
 
+  /**
+   * Sets how many fetches of its fork of a component the node has counted (R45). With no
+   * number the node has counted none, as after its fork was made anew.
+   */
+  counted(component: string, fetches?: number): void {
+    if (fetches === undefined) this.#fetches.delete(component);
+    else this.#fetches.set(component, fetches);
+  }
+
   async #commit(): Promise<void> {
     const name = await sha256Hex(encoder.encode(`${this.url} ${this.commits.length}`));
     this.commits.push(name.slice(0, 40));
@@ -162,6 +176,14 @@ export class FakeNode {
       const blob = url.searchParams.get("blob");
       const content = isGitHash(blob) ? fork?.blobs.get(blob) : undefined;
       return content ? new Response(content, { headers: { "content-type": "application/octet-stream" } }) : notFound();
+    }
+    if (route === "fetches") {
+      // A fork with no counted fetch has no count, and the node says so as it does for a path it does not serve.
+      const component = url.searchParams.get("component");
+      const fetches = isGitHash(component) ? this.#fetches.get(component) : undefined;
+      const counted = fetches === undefined ? notFound() : Response.json({ component, fetches });
+      await this.onFetches?.();
+      return counted;
     }
     return notFound();
   }
