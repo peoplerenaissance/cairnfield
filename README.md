@@ -26,6 +26,10 @@ Many teams review the same AI tools, each alone, and keep the results private. C
 
 Each team hosts one piece, its node: a Cloudflare Worker that keeps the team's repos in the team's own Artifacts namespace. The `cairnfield` command runs on the team's machine. It validates, pushes, runs the patch agent and builds copies. A team working alone needs its node and the command, and no index.
 
+[![The parts of Cairnfield and the Cloudflare service behind each. A team's machine runs the cairnfield command. The command pushes to the team's node: a Worker with an Artifacts namespace, a Durable Object and a Workflow. An index reads each node: a Worker with an Artifacts namespace of its own, a D1 database, a Queue and static assets.](reference/architecture.png)](reference/architecture.png)
+
+The drawing shows one team's node in full, a second team's node and an index, with the Cloudflare service behind each part. Its two node addresses are invented. Select the drawing to see it at full size.
+
 ## Try it
 
 | To | Go to | You need |
@@ -445,7 +449,7 @@ We would not deploy from the records repo. A push there would become a deploy, a
 | `index/` | The index: a Cloudflare Worker that reads registered nodes over HTTP, checks their records against its own copy of each component and serves one view per component commit. It serves data and never instructions. `index/src/page/` holds the two public pages, which draw a view or the list of components for a person. `npm run build` in `index/` writes the pages to `dist/`, and the Worker serves them from there. |
 | `cli/` | The `cairnfield` command: it pins a component, validates the outbox of record files, publishes it to the team's node, writes patches with a bundled agent, builds the team's patched copy, keeps the team's verdicts, checks an installed copy and carries the team's own findings and patches to a newer commit. |
 | `skills/` | The skill file for a team's own review agent: how to write finding records and check them with `validate`. |
-| `reference/` | The protocol, the threat model with the disclosure policy, and the platform notes. |
+| `reference/` | The protocol, the threat model with the disclosure policy, the platform notes and the architecture drawing. |
 | `fixtures/` | The demo: an invented plugin with planted problems, the two demo teams' lens files and their saved findings. Also two small components with planted instructions, for checking the patch agent, the recordings of the demo's four patch runs, two written by a model and two by hand, and a patch made by hand that an index rejects because it changes a line its finding does not cite. Not for installing. |
 | `sim/` | A placeholder. The scale run is not in the prototype. |
 | `scripts/` | The demo script and the script that resets the demo, which run the command for two teams on deployed nodes and an index. Also a check of a deployed node against the protocol's node contract. |
@@ -457,6 +461,8 @@ To see the site locally, run `nvm use` and `npm run dev:site` in the repo root. 
 ## Credit
 
 Cairnfield borrows three ideas: audits published per organization with a local policy (cargo-vet), publishing from your own repo into a rebuildable aggregate (cargo-crev), and a pinned original plus a list of patches (Nix, quilt, patch-package).
+
+The architecture drawing uses product icons from the [Cloudflare Docs](https://github.com/cloudflare/cloudflare-docs/tree/production/src/icons), under the [Creative Commons Attribution 4.0 license](https://github.com/cloudflare/cloudflare-docs/blob/production/LICENSE). Each icon is recolored in orange.
 
 ## License
 
