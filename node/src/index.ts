@@ -9,21 +9,22 @@ import type { Store } from "./artifacts.ts";
 import {
   PATHS,
   blobQuery,
+  fetchesQuery,
   fileQuery,
   listingQuery,
   patchQuery,
   readTokenQuery,
   refusal,
 } from "./contract.ts";
-import type { NodeListing, NodePatch } from "./contract.ts";
+import type { NodeFetches, NodeListing, NodePatch } from "./contract.ts";
 import type { Env } from "./env.ts";
 import { page } from "./page.ts";
 import { changedFiles, recordFiles } from "./tree.ts";
 
-// The Workflow that a push starts and the object that keeps a fork's read token. The
-// Wrangler config names both classes.
+// The Workflows that a push and a fetch start, and the object that keeps a fork's read
+// token and its fetch count. The Wrangler config names the three classes.
 export { ReadTokens } from "./read-tokens.ts";
-export { OnPush } from "./workflow.ts";
+export { OnFetch, OnPush } from "./workflow.ts";
 
 /** The head commit of the team repo with every file under its records folder. */
 async function listing(store: Store): Promise<Response> {
@@ -88,6 +89,19 @@ async function readToken(env: Env, context: ExecutionContext, component: string)
 
 function noop(): void {}
 
+/**
+ * How often the fork of a component was fetched over Git, as this node counted it (R45).
+ * The answer comes from the fork's object alone: the route reads no repo and writes
+ * nothing. A fork with no counted fetch has no count, and so has a component with no
+ * fork. That is not a count of zero, so the node answers that it found none.
+ */
+async function fetches(env: Env, component: string): Promise<Response> {
+  const kept = env.READ_TOKENS.get(env.READ_TOKENS.idFromName(forkOf(component)));
+  const counted = await kept.fetchCount();
+  if (counted === undefined) return refusal("not-found");
+  return Response.json({ component, fetches: counted } satisfies NodeFetches);
+}
+
 /** The path of the node's own page (R47): the node's address itself. It is no route of the contract, so `PATHS` does not hold it. */
 const PAGE = "";
 
@@ -111,6 +125,10 @@ async function serve(path: string, url: URL, env: Env, context: ExecutionContext
   if (path === PATHS.readToken) {
     const query = readTokenQuery(url);
     return query ? readToken(env, context, query.component) : refusal("bad-request");
+  }
+  if (path === PATHS.fetches) {
+    const query = fetchesQuery(url);
+    return query ? fetches(env, query.component) : refusal("bad-request");
   }
   return refusal("not-found");
 }

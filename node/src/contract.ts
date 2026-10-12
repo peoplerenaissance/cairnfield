@@ -14,6 +14,7 @@ export const PATHS = {
   patch: "patch",
   blob: "blob",
   readToken: "read-token",
+  fetches: "fetches",
   importCopy: "admin/import",
   createTeamRepo: "admin/team-repo",
   createFork: "admin/fork",
@@ -132,6 +133,11 @@ export function readTokenQuery(url: URL): { readonly component: string } | undef
   return query && isGitHash(query.component) ? query : undefined;
 }
 
+export function fetchesQuery(url: URL): { readonly component: string } | undefined {
+  const query = queryOf(url, ["component"]);
+  return query && isGitHash(query.component) ? query : undefined;
+}
+
 // The admin requests (KTD10). Each reader gives nothing for a body the contract does not allow.
 
 /** Imports a component copy by Git URL and branch, and pins a commit. */
@@ -212,6 +218,15 @@ export interface RepoToken {
   readonly remote: string;
   readonly token: string;
   readonly expires: number;
+}
+
+/** A fork's fetch count is at most this (R45), and the node stops counting there. */
+export const MAX_FETCH_COUNT = 1_000_000_000;
+
+/** How often the fork of a component was fetched over Git, as this node counted it (R45). It is never zero. */
+export interface NodeFetches {
+  readonly component: string;
+  readonly fetches: number;
 }
 
 /**

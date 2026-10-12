@@ -6,7 +6,7 @@ import type { ReadTokens } from "./read-tokens.ts";
 export interface Env {
   /** The team's own Artifacts namespace (R6, KTD9). */
   readonly ARTIFACTS: Store;
-  /** The one read token kept per fork, in an object named after the fork (KTD7). */
+  /** The one read token kept per fork and the fork's fetch count, in an object named after the fork (KTD7, KTD43). */
   readonly READ_TOKENS: DurableObjectNamespace<ReadTokens>;
   /** The node's own base URL, which is its identity (KTD8). */
   readonly NODE_URL: string;

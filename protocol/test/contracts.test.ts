@@ -7,6 +7,7 @@ import {
   COMPONENT_LIST,
   INDEX_REFUSAL,
   INDEX_ROUTES,
+  NODE_FETCHES,
   NODE_LISTING,
   NODE_PATCH,
   NODE_ROUTES,
@@ -21,10 +22,10 @@ import {
 } from "../src/contracts.ts";
 import type { Projection, Route, View } from "../src/contracts.ts";
 import { DELETED_BLOB, DELETED_MODE } from "../src/enums.ts";
-import { object, sha256, shape, text, url } from "../src/fields.ts";
+import { gitHash, object, sha256, shape, text, url } from "../src/fields.ts";
 import type { ContractKind } from "../src/fields.ts";
 import { jsonSchemaOf } from "../src/json-schema.ts";
-import { MAX_LISTING_ENTRIES } from "../src/limits.ts";
+import { MAX_FETCH_COUNT, MAX_LISTING_ENTRIES } from "../src/limits.ts";
 import { matchGroups } from "../src/match.ts";
 import { RECORD_SHAPES } from "../src/schemas.ts";
 import { conforms } from "../src/validate.ts";
@@ -140,6 +141,40 @@ describe("node contract (KTD7, KTD10)", () => {
     expect(reasonOf(REPO_TOKEN, { ...body, remote: "ext::sh -c id" })).toBe("unknown-value");
     expect(reasonOf(REPO_TOKEN, { ...body, token: "two words" })).toBe("unknown-value");
     expect(reasonOf(REPO_TOKEN, { ...body, token: "" })).toBe("unknown-value");
+  });
+
+  describe("a fork's fetch count (R45)", () => {
+    const counted = { component: COMPONENT, fetches: 3 };
+
+    it("has a public route of its own, which takes a component", () => {
+      expect(NODE_ROUTES.fetches).toEqual({
+        method: "GET",
+        path: "fetches",
+        query: { component: gitHash() },
+        response: NODE_FETCHES,
+      });
+    });
+
+    it("names its component and is a whole number from 1 to the limit", () => {
+      expect(reasonOf(NODE_FETCHES, counted)).toBe("ok");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: 1 })).toBe("ok");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: MAX_FETCH_COUNT })).toBe("ok");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: MAX_FETCH_COUNT + 1 })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: 2.5 })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: "3" })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { ...counted, component: "main" })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { fetches: 3 })).toBe("unknown-value");
+      expect(reasonOf(NODE_FETCHES, { component: COMPONENT })).toBe("unknown-value");
+    });
+
+    it("is never zero, because a fork with no counted fetch has no count", () => {
+      expect(reasonOf(NODE_FETCHES, { ...counted, fetches: 0 })).toBe("unknown-value");
+    });
+
+    it("is refused with a member the contract does not name", () => {
+      expect(reasonOf(NODE_FETCHES, { ...counted, readers: [NODE_B] })).toBe("unknown-field");
+      expect(reasonOf(NODE_FETCHES, { ...counted, note: "fetched by many teams" })).toBe("unknown-field");
+    });
   });
 
   it("sends the admin key in a header on every admin route and on no public route", () => {

@@ -106,6 +106,7 @@ A node is storage with a small HTTP contract. It validates nothing. The shapes a
 | `patch` | `GET patch?component=&commit=` | A patch commit's parent and its changed paths, each with its mode and blob |
 | `blob` | `GET blob?component=&blob=` | The bytes of one blob of a fork |
 | `readToken` | `GET read-token?component=` | A read token for the fork of a component |
+| `fetches` | `GET fetches?component=` | How often the fork of a component was fetched over Git, as the node counted it |
 | `importCopy` | `POST admin/import` | Starts the import of a component, and says whether the copy is ready |
 | `createTeamRepo` | `POST admin/team-repo` | Creates the team repo |
 | `createFork` | `POST admin/fork` | Forks a component copy |
@@ -279,6 +280,8 @@ Until the index holds its own copy, the page of a component commit shows no coun
 
 **R44.** On a terminal, the demo script and the reset script print what a viewer of a recording can follow: each step heading in bold, each team's lines in a color of its own, each JSON result indented over several lines with its keys, strings and numbers colored, and the diff `assemble` prints with added lines in green and removed lines in red. A hash is shown whole and no result is cut. When the output is not a terminal, and under `NO_COLOR`, every line is plain: one line for each command and each result, and a plain diff. The command itself does not change, and its standard output stays JSON.
 
+**R45.** A node counts the fetches of each fork it holds, and serves the count at `GET fetches?component=`. It counts the events Artifacts sends for a fetch or a clone of the fork over Git, and KTD43 holds what was seen of them. A fetch with a token from the node's admin routes counts as one with the public read token does, so a team's own fetches are in its count. A read of the fork through the node's routes is no fetch, and neither is a listing of the fork's refs. An event names the fork and nothing else. So a count belongs to one team and one component. It names no reader and no patch, and anyone can raise it. A fork with no counted fetch has no count, and the node answers `not-found`: a missing count is not a count of zero. The node states the count, and nothing checks it. The count is outside the replay promise of R20, so a reset and a second play of the demo may give another number.
+
 **R47.** A node answers `GET /` with an HTML page that lists what its team repo holds: each component, and under it each record by its type and ID, as a link to that record's file on the same node. The page draws only what the record path pattern admits of a file's path, the team repo's head, the node's own address and the time the page was drawn. It reads no record file. It says in fixed words that it is the team's own list and that nothing on it was checked, and it tells a reader nothing to do. It runs no script, takes nothing from the request and draws a bounded number of entries. For the page, a node walks its team repo at most once in 30 seconds per isolate, and the page it keeps never serves the `records` route. Every answer the node's Worker builds carries `x-content-type-options: nosniff`.
 
 ## Decisions
@@ -314,11 +317,12 @@ A reference is resolved when a view is built. A patch shows only while every fin
 | A served blob | 256 KB |
 | A node listing | 5,000 entries, and 500 records per component |
 | A fetch from another team's fork | 16 MB of objects, a first value |
+| A node's count of the fetches of one fork | 1 to 1,000,000,000, a first value |
 | A repo or fork name | Starts with a lower-case letter or a digit, then lower-case letters, digits, dots, underscores or hyphens. At most 100 characters, a first value |
 | A namespace name | The same rule, with 2 to 63 characters |
 | A branch name | Letters, digits, dots, underscores, hyphens and slashes. It never starts with a hyphen. At most 200 characters, a first value |
 
-**KTD7.** The node is storage with a small HTTP contract. It returns its head commit with a listing of record files, serves a record file at a given commit, serves a patch commit's parent and changed paths with their modes and blobs, serves a blob of a fork, and gives a read token for a fork only. It validates nothing. A refusal is a code: `bad-request`, `unauthorized`, `not-found`, `not-ready` or `refused`. `node/src/contract.ts` holds the node's own copy of the contract. The page a node serves at its own address stands outside the contract (R47, KTD45).
+**KTD7.** The node is storage with a small HTTP contract. It returns its head commit with a listing of record files, serves a record file at a given commit, serves a patch commit's parent and changed paths with their modes and blobs, serves a blob of a fork, gives a read token for a fork only, and gives its count of a fork's fetches (R45). It validates nothing. A refusal is a code: `bad-request`, `unauthorized`, `not-found`, `not-ready` or `refused`. `node/src/contract.ts` holds the node's own copy of the contract. The page a node serves at its own address stands outside the contract (R47, KTD45).
 
 The node keeps one read token per fork, in a Durable Object named after the fork, and serves that one until five minutes before it expires. So the public route cannot mint without bound.
 
@@ -326,7 +330,7 @@ The cost of this design is trust. The index trusts a node for a patch commit's p
 
 **KTD8.** A node's identity is its base URL. Organization counts are counts of registered node URLs. The URL has one accepted spelling: lower-case `https://`, a lower-case hostname of at most 253 characters that is a name and never an address, with no dot at its end and no Punycode label, and no credentials, query, fragment or last slash. A port is allowed when it is not 443 and has no zero in front. A node under a path adds parts of lower-case letters, digits, dots, underscores and hyphens (KTD24). The library refuses every other spelling, and the JSON Schema pattern states the same rule. Nothing rewrites a node URL, so two strings never name one node. The index refuses a registration whose URL is already registered.
 
-**KTD9.** Each node has its own Artifacts namespace. The push trigger filters by namespace, so one team's push never starts another team's Workflow.
+**KTD9.** Each node has its own Artifacts namespace. The push trigger filters by namespace, and so do the two fetch triggers (KTD43). So one team's push or fetch never starts another team's Workflow.
 
 **KTD10.** A node's admin routes need its admin key, sent in a header. The command calls them to import a component copy, create the team repo and a fork, and get repo tokens. Each node has its own key, set by hand as a Worker secret. A node with no key set refuses every admin call.
 
@@ -422,6 +426,16 @@ The carried records go out through the outbox. Nothing is carried from another t
 **KTD40.** The index is optional in the command's config. With no index address, `pin` registers nothing, `publish` sends no notice, and assembly at level 0 or 1 reads only the team's own repo. `view` and level 2 need an index and end with exit code 6 without one. A node's index address is optional too, and its Workflow sends no notice without one. A team that adds an index later runs `pin` again for each pinned commit, which registers its node and that commit.
 
 **KTD41.** The demo script renders its own lines for a terminal, and the command knows nothing of it. Every line a script says passes through one function, and one function writes the command and result lines, so the renderer tells a line's kind by its prefix. The script decides once for each stream whether to paint: never under `NO_COLOR`, and otherwise only when the stream is a terminal whose own check says it shows colors. A stream that does not paint gets the plain lines unchanged. A result is colored by walking the parsed value and never by matching its text, because a value can hold another team's record fields. The diff is colored line by line, with the counts of each hunk header telling content from a file header.
+
+**KTD43.** A node counts a fetch from an event of its own namespace, and holds no Cloudflare API token to do it. Beside the push trigger, its Wrangler config states two more, for `cf.artifacts.repo.fetched` and `cf.artifacts.repo.cloned`, each filtered by the node's namespace (KTD9). Both start one Workflow, which is not the push Workflow. It counts an event only when the type is one of the two, the event has an ID, and the repo name is `fork-` and a commit hash. An event for the team repo or for a component copy counts nothing and sends no notice.
+
+The count lives in the fork's Durable Object, beside the kept read token (KTD7). The object counts an event under its ID and remembers the last 100 IDs it counted. So an event that arrives twice, or a Workflow step that runs twice, adds one. The count stops at 1,000,000,000 (KTD6). When a fork is made anew, the node forgets the count with the token. The route answers `{ component, fetches }` from the object alone: it reads no repo and writes nothing. It starts an object for any component it is asked about, as the read-token route does.
+
+A counted fetch then sends the index the notice a push sends (R7), because the index reads a node only after a notice, and a fetch pushes nothing. The count is kept before the notice is sent, so a notice that fails loses no count.
+
+**Observed on Oct 12, 2026**, on the live service, with Wrangler 4.147.0. A config with triggers for the three event types deployed. It was the probe's own, with one Workflow as the target of all three. The node's config has two Workflows, and only a dry run has checked it. A `git fetch --depth=1` of one commit sent one `cloned` event when the repo it fetched into held nothing, and one `fetched` event when that repo already held a commit. An event came some seconds after its fetch: 3.5, 3.6 and 5.4 seconds in three cases. A fetch with a write token sent the event as a fetch with a read token did. A plain `git clone` sent one `cloned` event. `git ls-remote` sent no event, and neither did `readCommit`, `readTree`, `readBlob`, `readFile` or `log` on the binding. So a node's own routes raise no count, and neither does an index that reads the node. A repo that was only pushed to got neither event. Each event held an ID, its type and a source with the namespace and the repo name, and its inner payload was empty. Of 38 events no two had the same ID, and each Workflow instance had its event's ID as its own.
+
+**Not known.** What a fetch that brings nothing new sends, and whether one event can arrive twice. `platform-notes.md` holds the whole check.
 
 **KTD45.** The node's page is a string the Worker builds, at `/`, outside the node contract. It comes from the walk the listing makes. It draws the component, the type and the ID that the record path pattern captures, the head, the node's base URL when that is the Worker's own origin in the accepted spelling (KTD8), and the time of the walk. It escapes every value. A file under `records/` whose path the pattern does not admit is not drawn. Components come in ascending order of commit, and a component's records in ascending order of type and then of ID. The page draws at most 20 components and 50 records of a component, so it holds at most 1,000 links, and it gives the number of the rest.
 

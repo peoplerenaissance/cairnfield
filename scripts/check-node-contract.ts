@@ -28,7 +28,7 @@ import {
   isCommit,
   isNodeUrl,
 } from "@cairnfield/protocol";
-import type { ContractKind, NodeListing, NodePatch, RepoToken, Route } from "@cairnfield/protocol";
+import type { ContractKind, NodeFetches, NodeListing, NodePatch, RepoToken, Route } from "@cairnfield/protocol";
 
 const TIMEOUT_MS = 20_000;
 /** The script reads at most this many record files and blobs. */
@@ -202,6 +202,24 @@ async function checkReadToken(): Promise<void> {
   }
 }
 
+async function checkFetches(): Promise<void> {
+  const route = NODE_ROUTES.fetches;
+  // A node from before the route answers `not-found` for every call to its path. A node
+  // that has the route refuses these two as bad requests.
+  checkRefusal("fetch count with no component", await call(route), "bad-request");
+  checkRefusal("fetch count with a second name", await call(route, { component, repo: "team" }), "bad-request");
+
+  const answer = await call(route, { component });
+  // A fork with no counted fetch has no count, which is not a count of zero (R45).
+  if (answer.status >= 400) return checkRefusal("fetch count, with no fetch counted", answer, "not-found");
+  const why = misfit(answer, route.response);
+  if (why !== undefined) return fail("fetch count", why);
+  const counted = answer.json as NodeFetches;
+  if (counted.component !== component) return fail("fetch count", "the answer names another component");
+  // The number is the node's own statement, and this script cannot check it.
+  pass(`fetch count (${counted.fetches})`);
+}
+
 async function checkAdmin(): Promise<void> {
   // Each admin route with a body its contract allows. None of these reaches Artifacts on
   // a node that checks the key first.
@@ -232,7 +250,7 @@ async function checkAdmin(): Promise<void> {
   checkRefusal("write token for the component copy", refused, "refused");
 }
 
-for (const check of [checkRecords, checkPatch, checkReadToken, checkAdmin]) {
+for (const check of [checkRecords, checkPatch, checkReadToken, checkFetches, checkAdmin]) {
   try {
     await check();
   } catch (error) {
