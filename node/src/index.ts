@@ -129,7 +129,8 @@ async function answer(request: Request, env: Env, context: ExecutionContext): Pr
 export default {
   async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
     const response = await answer(request, env, context);
-    // Every answer names its own type, and no browser is left to guess another (R47).
+    // Every answer the Worker builds names its own type, and no browser is left to guess another (R47).
+    // A route that throws is answered by the platform, and no header is set on that answer.
     response.headers.set("x-content-type-options", "nosniff");
     return response;
   },

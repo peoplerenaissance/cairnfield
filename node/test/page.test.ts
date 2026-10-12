@@ -354,6 +354,42 @@ describe("the node's page", () => {
     expect(again.links).toHaveLength(2);
   });
 
+  it("serves the last page a walk gave through one failed walk after another, until a walk succeeds", async () => {
+    const { artifacts, node, team } = await published(filesAt([CLAIM]));
+    const kept = await read(node.get(""));
+
+    // Artifacts fails for longer than the node keeps a page. Each walk asks it once, and each serves the page of the last walk that ended well.
+    for (const seconds of [31, 62, 93]) {
+      vi.setSystemTime(START + seconds * SECOND);
+      artifacts.getFailures = 1;
+      const failed = await read(node.get(""));
+      expect([failed.status, failed.html]).toEqual([200, kept.html]);
+      expect(artifacts.getFailures).toBe(0);
+    }
+
+    vi.setSystemTime(START + 124 * SECOND);
+    const later = await artifacts.push(team, "main", filesAt([CLAIM, FINDING]));
+    const again = await read(node.get(""));
+    expect(again.status).toBe(200);
+    expect(again.texts).toContain(later);
+    expect(drawnAt(again)).toBe(START + 124 * SECOND);
+  });
+
+  it("answers a failed walk without waiting on a walk before it that never ended", async () => {
+    const { artifacts, node } = await published(filesAt([CLAIM]));
+    // Artifacts never answers the first walk, so the page that walk would give is never there.
+    artifacts.hangs = true;
+    void node.get("");
+
+    // The node has kept that walk for its 30 seconds. The next one fails, and it has no page of an earlier walk to serve.
+    vi.setSystemTime(START + 31 * SECOND);
+    artifacts.hangs = false;
+    artifacts.getFailures = 1;
+    const failed = await read(node.get(""));
+    expect(failed.status).toBe(503);
+    expect(drawnAt(failed)).toBe(START + 31 * SECOND);
+  });
+
   it("answers 503 with fixed words when Artifacts fails and no page is kept, and keeps that answer for 30 seconds", async () => {
     const { artifacts, node, head } = await published(filesAt([CLAIM]));
     artifacts.getFailures = 1;
@@ -369,10 +405,17 @@ describe("the node's page", () => {
     const second = await read(node.get(""));
     expect([second.status, second.html]).toEqual([503, failed.html]);
 
+    // A second failure once that time has passed is a new answer, with its own time.
     vi.setSystemTime(START + 31 * SECOND);
+    artifacts.getFailures = 1;
     const third = await read(node.get(""));
-    expect(third.status).toBe(200);
-    expect(third.texts).toContain(head);
+    expect(third.status).toBe(503);
+    expect(drawnAt(third)).toBe(START + 31 * SECOND);
+
+    vi.setSystemTime(START + 62 * SECOND);
+    const fourth = await read(node.get(""));
+    expect(fourth.status).toBe(200);
+    expect(fourth.texts).toContain(head);
   });
 
   it("draws 20 of 21 components, and gives the number of the one it did not draw", async () => {

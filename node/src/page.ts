@@ -212,18 +212,23 @@ interface Page {
 // promise, so requests that arrive during a walk wait for that walk and start none.
 let kept: { readonly at: number; readonly page: Promise<Page> } | undefined;
 
-/** The page of a walk that begins at `at`. `last` is the page kept before it. */
-async function drawn(env: Env, at: number, last: Promise<Page> | undefined): Promise<Page> {
+// The page of the last walk that ended well. It is kept as a value and not as the promise
+// of its walk, so a walk that fails waits on no walk before it: one that never ended
+// would hold every failed walk after it.
+let lastRead: Page | undefined;
+
+/** The page of a walk that begins at `at`. */
+async function drawn(env: Env, at: number): Promise<Page> {
   // The address is drawn only in the one spelling in which it is this Worker's origin (KTD8).
   const address = isNodeOrigin(env.NODE_URL) ? env.NODE_URL : undefined;
   try {
-    return { status: 200, html: documentOf(address, at, await listed(env.ARTIFACTS)) };
+    lastRead = { status: 200, html: documentOf(address, at, await listed(env.ARTIFACTS)) };
+    return lastRead;
   } catch {
     // Artifacts failed. The last page that came from a walk is served on: it says when it
     // was drawn. With none, the answer says in fixed words that the repo could not be read.
     // Either is kept as any page is, so a failing Artifacts is asked once in that time.
-    const before = await last;
-    if (before?.status === 200) return before;
+    if (lastRead) return lastRead;
     const lines = [`<p class="none">${escaped(WORDS.unreadable)}</p>`];
     return { status: 503, html: documentOf(address, at, { head: undefined, lines }) };
   }
@@ -233,7 +238,7 @@ async function drawn(env: Env, at: number, last: Promise<Page> | undefined): Pro
 function current(env: Env, context: ExecutionContext): Promise<Page> {
   const now = Date.now();
   if (kept && now - kept.at < KEPT_FOR) return kept.page;
-  const walked = drawn(env, now, kept?.page);
+  const walked = drawn(env, now);
   kept = { at: now, page: walked };
   // The walk runs in the request that started it, and the others wait on it. A reader
   // who goes away must not take it along, so that request lives until the page is drawn.

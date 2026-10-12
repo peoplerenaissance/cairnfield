@@ -168,6 +168,8 @@ export class FakeArtifacts implements Store {
   importFailure: ArtifactsErrorCode | undefined;
   /** Set by a test: this many `get` calls fail first, as when the service has an error. */
   getFailures = 0;
+  /** Set by a test: `get` never answers, as when the service hangs. */
+  hangs = false;
   /** Set by a test: every tree gives its children in reverse. A reader that needs an order makes its own. */
   reversedTrees = false;
   readonly #repos = new Map<string, RepoState>();
@@ -185,6 +187,7 @@ export class FakeArtifacts implements Store {
   }
 
   async get(name: string): Promise<ArtifactsRepo> {
+    if (this.hangs) return new Promise(() => {});
     if (this.getFailures > 0) {
       this.getFailures -= 1;
       throw failure("INTERNAL_ERROR");

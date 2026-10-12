@@ -113,7 +113,7 @@ A node is storage with a small HTTP contract. It validates nothing. The shapes a
 
 The four `admin/` routes need the node's admin key, in the header `x-cairnfield-admin-key`.
 
-A node also serves a page at its own address, `GET /`, which lists what its team repo holds. The page is not part of the contract, and no index and no command reads it. Every answer of a node carries `x-content-type-options: nosniff`.
+A node also serves a page at its own address, `GET /`, which lists what its team repo holds. The page is not part of the contract, and no index and no command reads it. Every answer the node's Worker builds carries `x-content-type-options: nosniff`. When a route throws, the platform answers with an error page of its own, and the Worker sets no header on that.
 
 ## The index routes
 
@@ -277,7 +277,7 @@ Until the index holds its own copy, the page of a component commit shows no coun
 
 **R44.** On a terminal, the demo script and the reset script print what a viewer of a recording can follow: each step heading in bold, each team's lines in a color of its own, each JSON result indented over several lines with its keys, strings and numbers colored, and the diff `assemble` prints with added lines in green and removed lines in red. A hash is shown whole and no result is cut. When the output is not a terminal, and under `NO_COLOR`, every line is plain: one line for each command and each result, and a plain diff. The command itself does not change, and its standard output stays JSON.
 
-**R47.** A node answers `GET /` with an HTML page that lists what its team repo holds: each component, and under it each record by its type and ID, as a link to that record's file on the same node. The page draws only what the record path pattern admits of a file's path, the team repo's head, the node's own address and the time the page was drawn. It reads no record file. It says in fixed words that it is the team's own list and that nothing on it was checked, and it tells a reader nothing to do. It runs no script, takes nothing from the request and draws a bounded number of entries. For the page, a node walks its team repo at most once in 30 seconds per isolate, and the page it keeps never serves the `records` route. Every answer of a node carries `x-content-type-options: nosniff`.
+**R47.** A node answers `GET /` with an HTML page that lists what its team repo holds: each component, and under it each record by its type and ID, as a link to that record's file on the same node. The page draws only what the record path pattern admits of a file's path, the team repo's head, the node's own address and the time the page was drawn. It reads no record file. It says in fixed words that it is the team's own list and that nothing on it was checked, and it tells a reader nothing to do. It runs no script, takes nothing from the request and draws a bounded number of entries. For the page, a node walks its team repo at most once in 30 seconds per isolate, and the page it keeps never serves the `records` route. Every answer the node's Worker builds carries `x-content-type-options: nosniff`.
 
 ## Decisions
 
@@ -425,9 +425,9 @@ The carried records go out through the outbox. Nothing is carried from another t
 
 The page's `content-security-policy` is `default-src 'none'` with the SHA-256 hash of the page's one style, `base-uri 'none'`, `form-action 'none'` and `frame-ancestors 'none'`. The style is written into the page because the node has no assets binding and no build step. `cache-control` is `no-store`: the kept page already bounds the reads, and a browser's copy on top would show a reader an older page. `x-robots-tag` is `noindex, nofollow`, because each record link costs the node two reads of the binding that nothing keeps. `referrer-policy` is `no-referrer`. A request with any query is refused as `bad-request`, so nothing a caller sends reaches the kept page.
 
-The rendered page is kept in the isolate, as a promise, for 30 seconds. Requests that arrive together then walk the repo once. The request that starts a walk hands the promise to `waitUntil`, so a reader who leaves does not end a walk that others wait on. The page gives the time of its walk, so a reader can tell the age of a kept page. No cache stands in front of the Worker, so a `records` answer is never a kept one.
+The rendered page is kept in the isolate, as a promise, for 30 seconds. Requests that arrive together then walk the repo once. The request that starts a walk hands the promise to `waitUntil`, so a reader who leaves does not end a walk that others wait on. Requests that share one walk were seen in local workerd only, and `platform-notes.md` holds what was seen. The page gives the time of its walk, so a reader can tell the age of a kept page. No cache stands in front of the Worker, so a `records` answer is never a kept one.
 
-A node with no team repo, with one still being made or with one that has no push answers 200 and says that nothing is published yet. A head with no record path under it answers 200 and says that the team repo holds no record. When Artifacts fails, the node serves the last page that a walk gave. With no such page it answers 503 with fixed words. A failed walk is kept for the same 30 seconds, so a failing Artifacts is asked once in that time.
+A node with no team repo, with one still being made or with one that has no push answers 200 and says that nothing is published yet. A head with no record path under it answers 200 and says that the team repo holds no record. When Artifacts fails, the node serves the last page that a walk gave. It keeps that page as a value, so a failed walk waits on no walk before it. With no such page it answers 503 with fixed words. A failed walk is kept for the same 30 seconds, so a failing Artifacts is asked once in that time.
 
 ## Examples
 
