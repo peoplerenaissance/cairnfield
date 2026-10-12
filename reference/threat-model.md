@@ -124,8 +124,8 @@ A patched copy is read as an approval.
 Teams that use the same model miss the same things, so agreement looks stronger than it is.
 
 - **The design.** Every finding and re-check records the model and the checks used, and the page shows that spread.
-- **Builds in part.** A finding, a re-check, a counter-finding, a patch record and a patch re-check each name a model from a closed list. A finding also names its kind of check. A view carries the records. The author declares the model, and nothing checks it.
-- **Does not build.** The display. The page shows no model. No lens rule discounts agreement between identical setups.
+- **Builds in part.** A finding, a re-check, a counter-finding, a patch record and a patch re-check each name a model from a closed list. A finding also names its kind of check. A view carries the records. The author declares the model, and nothing checks it. The page shows the model of each patch record beside the team that published it, under the word "declared" and in a dashed outline, as it draws everything unconfirmed.
+- **Does not build.** The rest of the display. The page shows the model of no finding, re-check, counter-finding or patch re-check. No lens rule discounts agreement between identical setups.
 
 ### Anchoring
 
@@ -179,7 +179,7 @@ A party registers work or sends requests to exhaust a public Worker. This threat
 - **A team's records all go through one branch of one repo.** The command pushes with pull and retry. Artifacts guidance prefers a repo per agent to one shared repo. Contention stays within a team, because the command pushes and the agents do not.
 - **`view` trusts the index for two things.** It takes the index at its word for which node a record came from and which content a path holds. `assemble` does not: it reads each record and each commit from the node itself.
 
-These parts of the design are described here and not built: domain verification, maintainer flags, the display of models used, removal of a contributor from an index, and the unreviewed list, a team's local list of components it uses and has not reviewed.
+These parts of the design are described here and not built: domain verification, maintainer flags, removal of a contributor from an index, and the unreviewed list, a team's local list of components it uses and has not reviewed. The display of models used is built in part: the page shows the model that a patch record declares, and the model of no other record.
 
 ## Not solved by the design
 

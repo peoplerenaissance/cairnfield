@@ -248,6 +248,8 @@ const KIND: { readonly [K in PatchKind]: string } = {
 
 const PENDING = "The index has this record and has not finished checking it.";
 const NOT_CHECKED = "The team published this hash of its copy's files. The index has not built the copy, so it has not checked the hash.";
+/** What "declared" means before the model of a patch record: the team states the value, and no check of the index reaches it (R14). */
+const DECLARED = "This team's record states which model, if any, wrote the patch. The index cannot check that, and has not.";
 
 /** Why the index refuses a record, by the reason it stores (KTD31). Each says what the check found. */
 const REFUSED: { readonly [R in RejectionReason]: string } = {
@@ -524,6 +526,15 @@ function patch(reading: Reading, entry: PatchEntry): Drawing {
           el("li", {}, el("span", { class: "lines" }, "line ", String(oldStart)), el("span", { class: "removed" }, "−", String(removed)), el("span", { class: "added" }, "+", String(added))),
         ),
       ),
+    ),
+    // What each record of the patch declares, a line for each: its team, then the word and the model as one label (R14). The teams
+    // stand in the order of the row above. A model is drawn as the record holds it: with its hyphens as spaces it would read as another name.
+    el(
+      "ul",
+      { class: "declarations" },
+      authors
+        .flatMap((author) => entry.records.filter(({ node }) => node === author))
+        .map(({ node, record }) => el("li", { class: "declared" }, organization(reading, node), explained(focusable("", "declared ", code(record.model)), DECLARED))),
     ),
     entry.rechecks.length === 0
       ? undefined
