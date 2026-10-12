@@ -4,7 +4,7 @@
 import { ACCEPTED, COMPONENT_LIST, COMPONENT_STATUS, INDEX_REFUSAL, NODE_REGISTERED, VIEW, conforms, recordId } from "@cairnfield/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { syncNode } from "../src/sync.ts";
-import { BRANCH, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced, threeComponents } from "./bench.ts";
+import { BRANCH, FILES, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced, threeComponents } from "./bench.ts";
 import type { Answer } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
@@ -479,6 +479,23 @@ describe("the list of the index's components (KTD12)", () => {
     expect(listed).toEqual({ status: 200, body: { version: "1", components } });
     expect(conforms(COMPONENT_LIST, listed.body)).toBeUndefined();
     for (const { component, state } of components) expect((await on.view(component)).state).toBe(state);
+  });
+
+  it("keeps a failed component where it was first registered when it is registered again", async () => {
+    const on = bench();
+    const ready = await on.artifacts.host(UPSTREAM, BRANCH, FILES, "c3".repeat(20));
+    // The remote holds no such branch, so this import is refused.
+    const failed = { url: UPSTREAM, branch: "gone", commit: "b2".repeat(20) };
+    await on.registerComponent(failed);
+    await on.deliver();
+    await on.component(FILES, ready);
+    const listed = async (): Promise<unknown[]> => ((await on.call("GET", "/view")).body as { components: { component: string; state: string }[] }).components.map(({ component, state }) => [component, state]);
+    expect(await listed()).toEqual([[failed.commit, "failed"], [ready, "ready"]]);
+
+    // Registered again a minute later, it starts over. Its time is set again, and its place in the list is not.
+    clockAt(START + MINUTE);
+    expect(await on.registerComponent(failed)).toEqual({ status: 200, body: { version: "1", component: failed.commit, state: "importing" } });
+    expect(await listed()).toEqual([[failed.commit, "importing"], [ready, "ready"]]);
   });
 
   it("refuses a query of any kind, the one the view of a component takes among them, and any other method", async () => {

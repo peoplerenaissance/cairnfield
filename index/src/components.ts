@@ -53,9 +53,13 @@ export function componentOf(env: Env, component: string): Promise<Component | nu
 /** What the list of an index's components says of one of them. */
 type Listed = Pick<Component, "component" | "url" | "branch" | "state">;
 
-/** Every registered component, in the order they were registered. Those registered at one time keep the order of their rows. */
+/**
+ * Every registered component, in the order they were first registered. A row is written
+ * once and never taken away, so the order of the rows is that order. `registered_at` is
+ * not: registering a failed component again sets it again.
+ */
 export async function registeredComponents(env: Env): Promise<Listed[]> {
-  const { results } = await env.DB.prepare("SELECT component, url, branch, state FROM components ORDER BY registered_at, rowid").all<Listed>();
+  const { results } = await env.DB.prepare("SELECT component, url, branch, state FROM components ORDER BY rowid").all<Listed>();
   return results;
 }
 

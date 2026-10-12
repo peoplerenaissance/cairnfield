@@ -162,7 +162,7 @@ The library also holds the rule that reads criteria against a lens, `countsAgain
 
 **R14.** The index serves two pages: its own, at `/`, and one per component commit, at `/components/<commit>`.
 
-The index's own page says in one paragraph what an index is and what it is not. Under it the page lists the components the index holds, in the order they were registered. Each has its Git URL, its branch, its commit as a link to that commit's page, and its import state.
+The index's own page says in one paragraph what an index is and what it is not. Under it the page lists the components the index holds, in the order they were first registered. A failed component that is registered again keeps its place. Each has its Git URL, its branch, its commit as a link to that commit's page, and its import state.
 
 The page of a component commit says in one line what it is. It shows live claims, work that is being checked, findings by criterion, patches, recipes and rejected work, in that order.
 
