@@ -153,6 +153,17 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - Import by branch from a public HTTPS remote, and no Wrangler command for import or fork.
 - The fields of the push payload.
 
+## A walk shared between requests
+
+**Observed on Oct 12, 2026, in local workerd only.** The runtime was workerd 1.20260815.1 through Miniflare, at the compatibility date `2026-08-15`. The Worker kept a promise in module state, as the node's page does, and a slow service binding stood in for Artifacts.
+
+- Two requests that arrived while a first request's reads ran got that walk's answer when it ended, about 1.2 seconds in.
+- They still got it when the first request's reader left 200 ms in, before the walk ended.
+- The same run without the hand-off to `waitUntil` gave the same answers. So the local runtime does not show what the hand-off adds.
+- A request after the walk got the kept answer at once.
+
+**Not known.** Whether a deployed Worker does the same, and what the hand-off adds there. No deployed node serves the page yet. Two requests for a node's page, sent together to an isolate that keeps none, would show it.
+
 ## Platform limits
 
 **Documentation, not run.**

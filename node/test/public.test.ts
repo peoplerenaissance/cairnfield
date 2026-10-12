@@ -383,9 +383,37 @@ describe("a query the contract does not allow", () => {
 });
 
 describe("a route the contract does not have", () => {
+  // The node's own address is no route of the contract either. `page.test.ts` holds what it answers.
   it("is not found", async () => {
     const { node } = await nodeWithTeamRepo();
-    expect(await answer(node.get(""))).toEqual(NOT_FOUND);
     expect(await answer(node.get("instructions"))).toEqual(NOT_FOUND);
+  });
+});
+
+describe("every answer of the node", () => {
+  it("tells a browser not to guess its type (R47): the listing, a record, a patch commit, a blob, a read token, an admin answer and each refusal", async () => {
+    const { artifacts, node, pinned, fork } = await nodeWithFork();
+    const team = await repoOf(node.admin("team-repo"));
+    const head = await artifacts.push(team, "main", { [FINDING]: FINDING_TEXT });
+    const edited = { content: "echo sync is off\n", mode: "100755" };
+    const commit = await artifacts.push(fork, PATCH_REF(pinned), { ...PLUGIN, "skills/sync/run.sh": edited }, pinned);
+
+    const answers: readonly (readonly [what: string, status: number, asked: Promise<Response>])[] = [
+      ["the listing", 200, node.get("records")],
+      ["a record", 200, node.get(`file?commit=${head}&path=${FINDING}`)],
+      ["a patch commit", 200, node.get(`patch?component=${pinned}&commit=${commit}`)],
+      ["a blob", 200, node.get(`blob?component=${pinned}&blob=${await blobHash("echo sync is off\n")}`)],
+      ["a read token", 200, node.get(`read-token?component=${pinned}`)],
+      ["an admin answer", 200, node.admin("team-repo")],
+      ["a path the contract does not have", 404, node.get("instructions")],
+      ["a query the contract does not allow", 400, node.get("records?since=1")],
+      ["another method", 404, node.post("records")],
+      ["an admin call with no key", 401, node.admin("team-repo", undefined, null)],
+    ];
+    for (const [what, status, asked] of answers) {
+      const response = await asked;
+      expect(response.status, what).toBe(status);
+      expect(response.headers.get("x-content-type-options"), what).toBe("nosniff");
+    }
   });
 });

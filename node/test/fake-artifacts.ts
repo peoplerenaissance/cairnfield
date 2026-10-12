@@ -3,6 +3,7 @@
 // It copies the behavior of the service that the node depends on (Appendix B and M of
 // the plan):
 // - an import and a fork return at once and finish later, and `get()` throws until then;
+// - `get()` throws in the same way while a repo is still being created;
 // - every create, import and fork returns a token with write scope that lives 24 hours;
 // - an imported repo reports `main` as its default branch, whatever branch it holds;
 // - a fork copies only the default branch unless `defaultBranchOnly` is false;
@@ -115,7 +116,7 @@ export interface SeenToken {
 }
 
 class RepoState {
-  status: "ready" | "importing" | "forking" = "ready";
+  status: "ready" | "creating" | "importing" | "forking" = "ready";
   readonly refs = new Map<string, string>();
   readonly objects: Objects = new Map();
   readonly tokens: IssuedToken[] = [];
@@ -165,6 +166,12 @@ export class FakeArtifacts implements Store {
   tokenFailures = 0;
   /** Set by a test: every import fails with this code, as when Artifacts refuses the remote. */
   importFailure: ArtifactsErrorCode | undefined;
+  /** Set by a test: this many `get` calls fail first, as when the service has an error. */
+  getFailures = 0;
+  /** Set by a test: `get` never answers, as when the service hangs. */
+  hangs = false;
+  /** Set by a test: every tree gives its children in reverse. A reader that needs an order makes its own. */
+  reversedTrees = false;
   readonly #repos = new Map<string, RepoState>();
   readonly #upstreams = new Map<string, RepoState>();
   #serial = 0;
@@ -180,8 +187,14 @@ export class FakeArtifacts implements Store {
   }
 
   async get(name: string): Promise<ArtifactsRepo> {
+    if (this.hangs) return new Promise(() => {});
+    if (this.getFailures > 0) {
+      this.getFailures -= 1;
+      throw failure("INTERNAL_ERROR");
+    }
     const state = this.#repos.get(name);
     if (!state) throw failure("NOT_FOUND");
+    if (state.status === "creating") throw failure("CREATE_IN_PROGRESS");
     if (state.status === "importing") throw failure("IMPORT_IN_PROGRESS");
     if (state.status === "forking") throw failure("FORK_IN_PROGRESS");
     return this.#handle(state);
@@ -235,7 +248,12 @@ export class FakeArtifacts implements Store {
     this.#repos.delete(repo);
   }
 
-  /** Every import and fork in progress finishes. */
+  /** A repo is still being created, as the service may say of one that `create` has just returned. */
+  unfinished(repo: string): void {
+    this.#state(repo).status = "creating";
+  }
+
+  /** Every create, import and fork in progress finishes. */
   finish(): void {
     for (const state of this.#repos.values()) state.status = "ready";
   }
@@ -369,7 +387,9 @@ export class FakeArtifacts implements Store {
       readTree: async (hash) => {
         state.treeReads.push(hash);
         const object = state.objects.get(hash);
-        return object?.kind === "tree" ? object.entries.map((child) => ({ ...child })) : null;
+        if (object?.kind !== "tree") return null;
+        const children = object.entries.map((child) => ({ ...child }));
+        return this.reversedTrees ? children.reverse() : children;
       },
       readCommit: async (hash) => {
         const object = state.objects.get(hash);

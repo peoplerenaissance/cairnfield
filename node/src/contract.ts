@@ -89,10 +89,24 @@ function queryOf<const N extends string>(url: URL, names: readonly N[]): { reado
 // The public queries (KTD7). Each reader gives nothing for a query the contract does not allow.
 
 const RECORD_TYPES = ["claim", "finding", "re-check", "counter-finding", "patch", "patch-re-check", "recipe"];
-/** The path of a record file in the team repo (KTD1). */
-const RECORD_PATH = new RegExp(`^records/[0-9a-f]{40}/(?:${RECORD_TYPES.join("|")})/[0-9a-f]{64}\\.json$`);
+/** The path of a record file in the team repo (KTD1). It captures the component, the type and the ID. */
+const RECORD_PATH = new RegExp(`^records/([0-9a-f]{40})/(${RECORD_TYPES.join("|")})/([0-9a-f]{64})\\.json$`);
 /** The folder of the team repo that holds the records. */
 export const RECORDS_FOLDER = "records";
+
+/** What a record path names (KTD1). The node reads no record, so this is all it knows of one. */
+export interface RecordPath {
+  readonly path: string;
+  readonly component: string;
+  readonly type: string;
+  readonly id: string;
+}
+
+/** The parts of a record path, or nothing for a path that is none. */
+export function recordPath(path: string): RecordPath | undefined {
+  const [, component, type, id] = RECORD_PATH.exec(path) ?? [];
+  return component === undefined || type === undefined || id === undefined ? undefined : { path, component, type, id };
+}
 
 export function listingQuery(url: URL): object | undefined {
   return queryOf(url, []);

@@ -1,14 +1,13 @@
 // The team node Worker (R6, R7): storage with a small HTTP contract (KTD7). It holds a
 // team's repos in the team's own Artifacts namespace, serves its records and patch
-// commits, and validates none of them.
+// commits, and validates none of them. At its own address it answers with a page that
+// lists the records (R47).
 
 import { admin } from "./admin.ts";
 import { TEAM_REPO, forkOf, issueToken, open } from "./artifacts.ts";
 import type { Store } from "./artifacts.ts";
 import {
   PATHS,
-  RECORDS_FOLDER,
-  TEAM_BRANCH,
   blobQuery,
   fileQuery,
   listingQuery,
@@ -18,7 +17,8 @@ import {
 } from "./contract.ts";
 import type { NodeListing, NodePatch } from "./contract.ts";
 import type { Env } from "./env.ts";
-import { changedFiles, filesUnder } from "./tree.ts";
+import { page } from "./page.ts";
+import { changedFiles, recordFiles } from "./tree.ts";
 
 // The Workflow that a push starts and the object that keeps a fork's read token. The
 // Wrangler config names both classes.
@@ -29,14 +29,10 @@ export { OnPush } from "./workflow.ts";
 async function listing(store: Store): Promise<Response> {
   const team = await open(store, TEAM_REPO);
   if (typeof team === "string") return refusal(team);
-  // The branch is named, because `log()` reads `HEAD` otherwise (KTD36).
-  const [head] = await team.log({ ref: TEAM_BRANCH, limit: 1 });
-  if (!head) return refusal("not-found");
-  const root = (await team.readTree(head.treeHash)) ?? [];
-  const folder = root.find((child) => child.name === RECORDS_FOLDER && child.type === "tree");
-  const files = folder ? await filesUnder(team, folder.hash, `${RECORDS_FOLDER}/`) : [];
-  const records = files.map(({ path, blob }) => ({ path, blob }));
-  return Response.json({ head: head.hash, records } satisfies NodeListing);
+  const held = await recordFiles(team);
+  if (!held) return refusal("not-found");
+  const records = held.files.map(({ path, blob }) => ({ path, blob }));
+  return Response.json({ head: held.head, records } satisfies NodeListing);
 }
 
 /** A record file at a given commit. A record is immutable, so a commit names its content for good (KTD1). */
@@ -92,6 +88,9 @@ async function readToken(env: Env, context: ExecutionContext, component: string)
 
 function noop(): void {}
 
+/** The path of the node's own page (R47): the node's address itself. It is no route of the contract, so `PATHS` does not hold it. */
+const PAGE = "";
+
 async function serve(path: string, url: URL, env: Env, context: ExecutionContext): Promise<Response> {
   const store = env.ARTIFACTS;
   if (path === PATHS.listing) {
@@ -116,13 +115,23 @@ async function serve(path: string, url: URL, env: Env, context: ExecutionContext
   return refusal("not-found");
 }
 
+async function answer(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url);
+  // A route path is relative to the node's base URL, and a deployed node lives at the root of its host.
+  const path = url.pathname.slice(1);
+  if (path.startsWith("admin/")) return admin(request, path, env);
+  if (request.method !== "GET") return refusal("not-found");
+  // The page takes no query, as the listing takes none, so nothing a caller sends reaches the page the node keeps (KTD45).
+  if (path === PAGE) return listingQuery(url) ? page(env, context) : refusal("bad-request");
+  return serve(path, url, env, context);
+}
+
 export default {
   async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    // A route path is relative to the node's base URL, and a deployed node lives at the root of its host.
-    const path = url.pathname.slice(1);
-    if (path.startsWith("admin/")) return admin(request, path, env);
-    if (request.method !== "GET") return refusal("not-found");
-    return serve(path, url, env, context);
+    const response = await answer(request, env, context);
+    // Every answer the Worker builds names its own type, and no browser is left to guess another (R47).
+    // A route that throws is answered by the platform, and no header is set on that answer.
+    response.headers.set("x-content-type-options", "nosniff");
+    return response;
   },
 } satisfies ExportedHandler<Env>;

@@ -1,6 +1,6 @@
 # Cairnfield team node
 
-A team node is the one piece of Cairnfield a team hosts: a Cloudflare Worker that keeps the team's repos in the team's own Artifacts namespace. It serves the team's records and patch commits over HTTP, and its base URL is the team's identity.
+A team node is the one piece of Cairnfield a team hosts: a Cloudflare Worker that keeps the team's repos in the team's own Artifacts namespace. It serves the team's records and patch commits over HTTP, and its base URL is the team's identity. At that address it shows a page that lists the team's records.
 
 ## What you need
 
@@ -65,6 +65,14 @@ curl https://node.team-a.example/records
 ```
 
 A new node answers with status 404 and `{"error":"not-found"}`, because it has no team repo yet. A node the team has published from answers with its listing. The script reads this address once after the deploy and says whether the node answered. A new address can take a few minutes to start.
+
+The node's own address shows a page for a person:
+
+```
+https://node.team-a.example/
+```
+
+The page lists the records the team repo holds, by component, and each record links to its file on the node. On a new node it says that the team has published nothing yet. It is the team's own list: nothing on it was checked, and no index and no command reads it. The node keeps the page for 30 seconds, so a record can take that long to show.
 
 Then name the node in the `cairnfield.json` of the folder you work in:
 
