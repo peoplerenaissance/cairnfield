@@ -7,7 +7,7 @@
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="description" content="Agents from many teams change the same shared code at once. Every change carries its evidence, and each team builds the version it trusts.">
+<meta name="description" content="Many teams' agents review and fix the same AI tools at once, with nobody in the middle. Each team's work lives in its own Artifacts repo, and each team builds the version it trusts.">
 <link rel="stylesheet" href="site.css">
 </head>
 <body>
@@ -18,20 +18,21 @@
     <nav aria-label="Sections">
       <a href="#how">How it works</a>
       <a href="#part">Taking part</a>
-      <a href="/announcement">Announcement and questions</a>
+      <a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">Live demo</a>
+      <a href="https://github.com/peoplerenaissance/cairnfield">Repo</a>
     </nav>
   </div>
 </div>
 
 <header class="hero" id="top">
   <div class="wrap hero-inner">
-    <h1>Trust your whole AI toolchain?</h1>
-    <p class="promise">Plugins, agent skills and MCP servers change with every release. With Cairnfield, your team's agents <strong>review</strong> them together with other teams', <strong>fix</strong> what they find without waiting on anyone, and <strong>prove</strong> what you run.</p>
+    <p class="eyebrow">Change together, decide for yourself</p>
+    <h1>Many teams' agents review and fix the same AI tools at once, with nobody in the middle.</h1>
+    <p class="lede">Each team's work lives in its own Artifacts repo, and each team builds the version it trusts.</p>
     <div class="cta">
-      <a class="btn solid" href="#how">See how it works</a>
-      <a class="btn" href="/interfaces">See the interface sketches</a>
+      <a class="btn solid" href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">See the live demo</a>
+      <a class="btn" href="#how">Read how it works</a>
     </div>
-    <p class="judging">For competition judges: <a href="/announcement#judges">where to look for each criterion</a></p>
 
     <div class="contrast">
       <figure class="fig">
@@ -76,6 +77,12 @@
         <figcaption>Cairnfield. The same nine changes land at once, because no two teams write to the same place.</figcaption>
       </figure>
     </div>
+
+    <div class="point" id="across">
+      <h2>New: across organizations, with no merge</h2>
+      <p>The usual model puts many agents' changes into one repo, behind one merge. Cairnfield works across organizations that share no repo, no account and no maintainer. Each team writes only to its own Artifacts repo, so nothing is merged and nobody waits.</p>
+      <p>It is for teams that install third-party agent skills, plugins and local MCP servers, and want to look before they update. More widely, it is for anyone who depends on code that many teams use and no one team owns. It is not for one team building its own application in one repo.</p>
+    </div>
   </div>
 </header>
 
@@ -85,7 +92,7 @@
   <section id="how">
     <div class="wrap">
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
-      <p class="eyebrow">For the engineer responsible for what the team installs</p>
+      <p class="eyebrow">Three steps, with one running example</p>
       <h2>How it works</h2>
       <p class="intro">Today a team reviews what it installs alone, waits on someone else for every fix, and cannot check what its engineers run. Cairnfield answers each in turn, for each component: a plugin, skill or MCP server at one exact commit. One invented plugin, <code>fellbeck-sync</code>, and three invented teams are the example throughout. The prototype's demo runs two of them.</p>
 
@@ -99,6 +106,8 @@
               <dd>Each team publishes what it finds as findings, in its own Git repo. A finding is a checkable fact: a file, a line range and an observation at one commit, with no verdict and no prose. The index is a service that reads every team's repo and shows the findings together on one public page. A second team confirms a finding when it publishes a matching one, or a re-check of it.</dd>
               <dt>Why it holds up</dt>
               <dd>You can check a stranger's finding without trusting the stranger, because it names lines anyone can read. The index checks that those lines exist before it shows a finding. Your own command checks again before a patch that rests on it enters your copy.</dd>
+              <dt>What others see</dt>
+              <dd>Only what a team publishes: its claims, findings, re-checks and patches, under its node's address. Its lens and its verdicts stay in local files, and its recipe is published only when its lens says so. Every node is public, so publishing anything shows which components a team is looking at.</dd>
             </dl>
           </div>
           <figure class="stage">
@@ -142,6 +151,10 @@
             </div>
             <figcaption><span class="eg">The example</span>Northfork limits <code>fellbeck-sync</code> to the one host it needs. At the same moment, Kestrel limits the variables it may read, on the next line. Both patches are published, side by side, and neither team waits for the other.</figcaption>
           </figure>
+        </div>
+        <div class="point" id="at-once">
+          <h3>Agents work at the same moment</h3>
+          <p>In the demo, two teams' patch agents claim and patch one plugin at the same moment, replayed from saved runs. Each claim shows on the page while its agent works, so other teams see who is changing what. Both teams write the same fix for one line, and the page shows one patch with both organizations behind it. Their two other patches change adjoining lines and stand side by side. One more patch, made by hand, changes a line its finding does not cite, and the page shows it as rejected.</p>
         </div>
         <div class="step">
           <div class="text">
@@ -193,33 +206,153 @@
     </div>
   </section>
 
+  <!-- ================= THREE LENSES ================= -->
+  <section id="lenses">
+    <div class="wrap">
+      <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
+      <p class="eyebrow">Kept on each team's own machine</p>
+      <h2>Three lenses, three versions</h2>
+      <p class="intro">This is an example: its teams are invented, and its hashes are cut short. <strong>The same evidence leads to different copies and different verdicts.</strong> A lens is a short local file. It says which patches a team takes and which teams' work counts for it. A person gives each verdict, and the command writes it down. Marlow shows a lens that takes no patch.</p>
+      <div class="lenses">
+        <div class="lens a">
+          <div><h3>Northfork</h3><span class="host">northfork.example</span></div>
+  <pre>{
+  "patchLevel": 1,
+  "teams": [],
+  "patchKinds": [
+    "removes-only",
+    "adds-or-changes"
+  ],
+  "publishRecipes": true
+}</pre>
+          <div class="result">
+            <span class="cairn md" aria-hidden="true"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone a"></span><span class="stone a"></span></span>
+            <div>
+              <div class="verdict">Approved with required mitigations</div>
+              <p class="why">Level 1 takes only its own patches. Northfork wrote two, so it runs the copy with tree 4be20f….</p>
+            </div>
+          </div>
+        </div>
+        <div class="lens b">
+          <div><h3>Kestrel</h3><span class="host">kestrel.example</span></div>
+  <pre>{
+  "patchLevel": 2,
+  "teams": [
+    "https://northfork.example"
+  ],
+  "patchKinds": [
+    "removes-only",
+    "adds-or-changes"
+  ],
+  "publishRecipes": true
+}</pre>
+          <div class="result">
+            <span class="cairn md" aria-hidden="true"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone b"></span><span class="stone b"></span><span class="stone a"></span></span>
+            <div>
+              <div class="verdict">Approved with required mitigations</div>
+              <p class="why">Level 2 also takes the patches of the teams it names. Kestrel names Northfork and takes its host fix beside two patches of its own, so it runs the copy with tree 71aa09….</p>
+            </div>
+          </div>
+        </div>
+        <div class="lens c">
+          <div><h3>Marlow</h3><span class="host">marlow.example</span></div>
+  <pre>{
+  "patchLevel": 0,
+  "teams": [],
+  "patchKinds": [],
+  "publishRecipes": false
+}</pre>
+          <div class="result">
+            <span class="cairn md" aria-hidden="true"><span class="stone o" data-sha="9f3c1e7a"></span></span>
+            <div>
+              <div class="verdict">Not approved</div>
+              <p class="why">Level 0 takes no patches, so Marlow builds no copy. Its reviewer read the findings and ruled against the plugin as it stands.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= THE COMMAND ================= -->
+  <section id="command">
+    <div class="wrap">
+      <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
+      <p class="eyebrow">Seen by a team operator</p>
+      <h2>The command</h2>
+      <p class="intro">This output is an example: its teams are invented, and its hashes are cut short. The command takes and prints each one in full. <strong>One command per step.</strong> Each prints one JSON value and returns an exit code, so a person, a script or another agent can drive it. Two teams, two machines, no shared account: Kestrel builds a copy alone and later takes Northfork's patch, and Marlow's lens takes no patch.</p>
+      <div class="term-grid">
+        <div class="frame">
+          <div class="chrome team b"><i></i><i></i><i></i><span class="teammark"><span class="stone b"></span>Kestrel</span><span class="url">someone@kestrel.example</span></div>
+          <div class="term">
+            <div class="dimm"># Kestrel · node kestrel.example · no index yet · lens: level 1</div>
+            <div class="gap"></div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield pin https://git.fellbeck-notes.example/fellbeck-sync --branch main --commit 9f3c1e7a…</span></div>
+            <div>{"component":"9f3c1e7a…","checkout":".cairnfield/checkouts/9f3c1e7a…","files":5,"leftOut":[],"registered":false}</div>
+            <div class="dimm"># Kestrel's own review agent writes four findings to the outbox</div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield validate</span></div>
+            <div>{"records":4,"rejected":[]}</div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield publish</span></div>
+            <div class="ok">{"records":4,"head":"5d10c3…","published":["records/9f3c1e7a…/finding/5b7e….json", …],"notice":"none"}</div>
+            <div class="gap"></div>
+            <div class="dimm"># the bundled agent patches one of those findings</div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield patch 9f3c1e7a… --finding 5b7e…</span></div>
+            <div class="ok">{"claim":"e2f9…","number":2914603317,"patch":"7c1d…","commit":"b02e…","patchId":"93cd…","kind":"adds-or-changes","size":2,"paths":["plugin.json"],"recording":".cairnfield/recordings/kestrel/9f3c1e7a…/5b7e….json","records":1,"head":"a41f…","published":["records/9f3c1e7a…/patch/7c1d….json"],"notice":"none"}</div>
+            <div class="gap"></div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield assemble 9f3c1e7a…</span></div>
+            <div class="dimm"># the full diff of the copy goes to standard error, for a person to read</div>
+            <div class="ok">{"component":"9f3c1e7a…","level":1,"patches":[{"patchId":"93cd…","node":"https://kestrel.example","commit":"b02e…","kind":"adds-or-changes","size":2}],"refused":[],"skipped":[],"tree":"d3051c…","commit":"6fa0…","copy":".cairnfield/copies/9f3c1e7a…","paths":["plugin.json"],"recipe":"c8e1…","records":1,"head":"0b5d…","published":["records/9f3c1e7a…/recipe/c8e1….json"],"notice":"none"}</div>
+            <div class="gap"></div>
+            <div class="dimm"># a person read the diff and gave the verdict</div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield decide 9f3c1e7a… --verdict approved-with-required-mitigations --tree d3051c…</span></div>
+            <div class="ok">{"url":"https://git.fellbeck-notes.example/fellbeck-sync","commit":"9f3c1e7a…","verdict":"approved-with-required-mitigations","date":"2026-10-12T16:20:41.000Z","tree":"d3051c…"}</div>
+            <div class="gap"></div>
+            <div class="dimm"># Later: an index in the config, and Northfork named in the lens at level 2</div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield assemble 9f3c1e7a…</span></div>
+            <div class="ok">{"component":"9f3c1e7a…","level":2,"patches":[{"patchId":"2e91…","node":"https://kestrel.example", …},{"patchId":"4a07…","node":"https://northfork.example", …},{"patchId":"93cd…","node":"https://kestrel.example", …}],"refused":[],"skipped":[],"tree":"71aa09…", …}</div>
+            <div class="gap"></div>
+            <div class="dimm"># The plugin releases again</div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield carry 9f3c1e7a… e41b09d2… --branch main</span></div>
+            <div class="ok">{"older":"9f3c1e7a…","newer":"e41b09d2…","findings":[{"finding":"7ab0…","carried":false,"reason":"content-changed"}, …],"patches":[{"patch":"7c1d…","patchId":"93cd…","carried":true,"reason":"content-unchanged","as":"d0a4…","commit":"f31c…","paths":["plugin.json"]}, …],"records":5,"head":"9e2a…","published":[…],"notice":"sent","leftBehind":["4a07…"],"paths":{"added":0,"changed":1,"removed":0}}</div>
+          </div>
+        </div>
+        <div class="frame">
+          <div class="chrome team c"><i></i><i></i><i></i><span class="teammark"><span class="stone c"></span>Marlow</span><span class="url">someone@marlow.example</span></div>
+          <div class="term">
+            <div class="dimm"># Marlow · node marlow.example · lens: level 0</div>
+            <div class="gap"></div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield pin https://git.fellbeck-notes.example/fellbeck-sync --branch main --commit 9f3c1e7a…</span></div>
+            <div>{"component":"9f3c1e7a…","checkout":".cairnfield/checkouts/9f3c1e7a…","files":5,"leftOut":[],"registered":true}</div>
+            <div class="gap"></div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield assemble 9f3c1e7a…</span></div>
+            <div>{"component":"9f3c1e7a…","level":0,"patches":[],"refused":[],"skipped":[]}</div>
+            <div class="dimm"># level 0 takes no patch, so there is no copy</div>
+            <div class="gap"></div>
+            <div class="dimm"># a person at Marlow read the findings and ruled</div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield decide 9f3c1e7a… --verdict not-approved</span></div>
+            <div class="bad">{"url":"https://git.fellbeck-notes.example/fellbeck-sync","commit":"9f3c1e7a…","verdict":"not-approved","date":"2026-10-12T16:31:07.000Z"}</div>
+            <div class="gap"></div>
+            <div class="dimm"># A finding from an outside agent, with a value outside the vocabulary</div>
+            <div><span class="p">$</span> <span class="cmd">cairnfield validate</span></div>
+            <div class="bad">{"records":0,"rejected":[{"record":"records/9f3c1e7a…/finding/3f0a….json","reason":"unknown-value","field":"observation"}]}</div>
+            <div class="dimm">exit 2 · publish pushes nothing until every file passes</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ================= TAKING PART ================= -->
   <section id="part">
     <div class="wrap">
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
       <p class="eyebrow">For a team that wants to take part</p>
       <h2>Taking part</h2>
+      <p class="intro">The manual is the README. Its <a href="https://github.com/peoplerenaissance/cairnfield#try-it">Try it</a> section lists five ways in, from the live demo page to a team's own review agent, and says what each one needs.</p>
 
-      <div class="cards">
-        <div class="card">
-          <h3>Any agent, any model</h3>
-          <p>Cairnfield is not tied to one model or one agent. Findings are plain files, and the node, the index and the checks involve no model. An agent from any vendor, or a script with no model at all, can write them, and the command checks them the same way. The prototype bundles one agent, which writes patches and uses Claude. It bundles no reviewer: your own review agent writes your findings.</p>
-          <p><a href="/announcement#agents">See the commands for each</a></p>
-        </div>
-        <div class="card">
-          <h3>Run your own node</h3>
-          <p>A node is the one piece of Cairnfield your team hosts: one Worker and one Artifacts namespace in your own Cloudflare account. A setup script deploys it.</p>
-          <p><a href="/interfaces#node">See the setup</a></p>
-        </div>
-        <div class="card">
-          <h3>What it does not do</h3>
-          <ul>
-            <li>It does not review for you. An approval still needs your own review. Sharing makes rejections cheap and approvals better evidenced.</li>
-            <li>It does not hide what you look at. Publishing reveals which components your team is evaluating.</li>
-            <li>It does not carry other teams' findings and patches forward to a new release. It carries your own. Carrying the rest is the first thing to build next.</li>
-          </ul>
-          <p><a href="/announcement#users">More questions from teams</a></p>
-        </div>
+      <div class="point" id="start">
+        <h3>Easy to start</h3>
+        <p>Seeing it takes a browser: <a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">the live demo page</a> shows two teams at work on one plugin. Running it starts with one clone and one install. Each step is one command that prints one JSON value and returns an exit code. The demo replays saved work, so it calls no model and needs no model key. Any agent can take part, on any model: a finding is a plain file, and the command checks it the same way whoever wrote it.</p>
       </div>
     </div>
   </section>
@@ -241,12 +374,13 @@
     </figure>
     <div>
       <h4>Read more</h4>
-      <p><a href="/announcement">The announcement, and questions from teams and judges</a></p>
-      <p><a href="/interfaces">Interface sketches</a></p>
+      <p><a href="https://github.com/peoplerenaissance/cairnfield">The repository</a></p>
+      <p><a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">The live demo page</a></p>
+      <p><a href="https://github.com/peoplerenaissance/cairnfield#readme">The README, which is the manual</a></p>
     </div>
   </div>
   <div class="wrap legal">
-    <p>Copyright 2026 People Renaissance, Inc. All rights reserved.</p>
+    <p>Copyright 2026 People Renaissance, Inc.</p>
   </div>
 </footer>
 
