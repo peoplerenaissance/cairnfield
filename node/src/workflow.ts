@@ -85,6 +85,8 @@ export class OnFetch extends WorkflowEntrypoint<Env> {
   override async run(sent: Readonly<WorkflowEvent<unknown>>, step: WorkflowStep): Promise<void> {
     const fetched = fetchOf(sent.payload);
     if (!fetched) return;
+    // An event names a fork by its repo's name alone. One that arrives after the fork was
+    // deleted and made anew counts for the new fork: nothing in it tells the two apart (KTD43).
     const kept = this.env.READ_TOKENS.get(this.env.READ_TOKENS.idFromName(forkOf(fetched.component)));
     // The count is kept before the notice is sent, so a notice that fails loses no count.
     // The fork's object counts the event under its ID, so a step that runs again adds nothing.

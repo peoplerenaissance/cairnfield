@@ -43,6 +43,25 @@ function dropped(db: D1Database, node: string, component: string, syncs: number)
 }
 
 /**
+ * The most components one sync asks a node about. Each costs one read of the node and two
+ * statements, and a sync is one invocation, which may make a set number of both. So the
+ * bound is this number and not the index's limit on components, which whoever runs the
+ * index sets.
+ */
+export const PASS_COUNTS = 60;
+
+/**
+ * The components one sync asks about: all of them, or the run of them whose turn it is.
+ * The runs follow each other around the list with the number of the node's syncs, so a
+ * node that lists more than one pass takes is asked about all of them over several syncs.
+ */
+export function inTurn(components: readonly string[], syncs: number): readonly string[] {
+  if (components.length <= PASS_COUNTS) return components;
+  const from = (syncs * PASS_COUNTS) % components.length;
+  return [...components.slice(from), ...components.slice(0, from)].slice(0, PASS_COUNTS);
+}
+
+/**
  * Asks a node for its count of the fetches of its fork of each of these components, and
  * stores what it says. `syncs` names the sync that asks, by the number of syncs of the
  * node that had started when it did. The writes go in one batch, each with the change to
@@ -51,8 +70,9 @@ function dropped(db: D1Database, node: string, component: string, syncs: number)
 export async function readFetchCounts(env: Env, node: string, syncs: number, components: readonly string[]): Promise<void> {
   const db = env.DB;
   const statements: D1PreparedStatement[] = [];
-  for (let at = 0; at < components.length; at += FETCH_AHEAD) {
-    const answers = await Promise.all(components.slice(at, at + FETCH_AHEAD).map(async (component) => ({ component, said: await readFetches(node, component) })));
+  const asked = inTurn(components, syncs);
+  for (let at = 0; at < asked.length; at += FETCH_AHEAD) {
+    const answers = await Promise.all(asked.slice(at, at + FETCH_AHEAD).map(async (component) => ({ component, said: await readFetches(node, component) })));
     for (const { component, said } of answers) {
       // No answer the index can use: what it holds for the component stays.
       if (!said) continue;

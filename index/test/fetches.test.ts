@@ -5,6 +5,7 @@
 import { VIEW, conforms } from "@cairnfield/protocol";
 import { env } from "cloudflare:workers";
 import { describe, expect, it, vi } from "vitest";
+import { PASS_COUNTS, inTurn } from "../src/fetches.ts";
 import { syncNode } from "../src/sync.ts";
 import { FILES, NODE_A, README, RESET_HEADER, RESET_KEY, UPSTREAM, bench, finding, freshIndexForEachTest, onReadme, synced } from "./bench.ts";
 import type { Bench } from "./bench.ts";
@@ -319,6 +320,34 @@ describe("the counts of a node whose listing names more components than one roun
       expect(view.viewVersion).toBe(version + moved);
     }
     expect(await held()).toEqual(told.flatMap(({ component, shows }) => (shows === undefined ? [] : [{ node: NODE_A, component, fetches: shows }])));
+  });
+});
+
+describe("the counts of a node whose listing names more components than one sync asks about (KTD43)", () => {
+  /** This many components, each a commit hash of its own, in the order of a listing. */
+  const components = (count: number): string[] => Array.from({ length: count }, (_, at) => at.toString(16).padStart(40, "0"));
+
+  it("asks about every component in each sync while the listing names no more than one pass takes", () => {
+    const all = components(PASS_COUNTS);
+    for (const syncs of [0, 1, 2, 7]) expect(inTurn(all, syncs)).toEqual(all);
+    expect(inTurn([], 3)).toEqual([]);
+  });
+
+  it("asks about one pass of them in each sync, and about all of them over the syncs that follow each other", () => {
+    for (const count of [PASS_COUNTS + 1, 2 * PASS_COUNTS, 2 * PASS_COUNTS + 7, 10 * PASS_COUNTS - 1]) {
+      const all = components(count);
+      const rounds = Math.ceil(count / PASS_COUNTS);
+      // Wherever the count of syncs stands, the syncs from there cover the list in as few passes as it has.
+      for (const first of [0, 1, 5, 1000]) {
+        const asked = Array.from({ length: rounds }, (_, at) => inTurn(all, first + at));
+        // One sync asks about one pass of them and names none twice: its reads and its writes have a bound.
+        for (const pass of asked) {
+          expect(pass).toHaveLength(PASS_COUNTS);
+          expect(new Set(pass).size).toBe(PASS_COUNTS);
+        }
+        expect([...new Set(asked.flat())].sort()).toEqual(all);
+      }
+    }
   });
 });
 
