@@ -505,6 +505,23 @@ describe("patches (R16)", () => {
     expect(tagsOf(entry)).toEqual(["removes only", "confirmed by 2"]);
   });
 
+  it("draws a line for each record of a team that has two records of one patch", async () => {
+    const { on, one, component } = await twoNodes();
+    // One team wrote one patch and published two records of it. Each record names a model of its own.
+    const cited = await one.publish(finding(component));
+    const commit = await one.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }]);
+    for (const model of ["claude-sonnet-5-5", "other"]) await one.publish({ ...patchRecord(component, commit, cited), model });
+    await synced(on, NODE_A);
+
+    const [entry, ...more] = withClass(byId(await pageOf(on, component), "patches"), "patch");
+    expect(more).toEqual([]);
+    // Both lines name the one team. The view gives the two records in the order of their IDs, so the lines are compared in an order of the test's own.
+    expect(declaredOf(entry).sort()).toEqual([
+      [asShown(NODE_A), "declared ", "claude-sonnet-5-5", DECLARED],
+      [asShown(NODE_A), "declared ", "other", DECLARED],
+    ]);
+  });
+
   it("gives a declared line a class of its own and no status label, and the stylesheet draws that class with a dashed outline and never a solid one", async () => {
     const { on, one, component } = await twoNodes();
     await publishPatch(one, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
