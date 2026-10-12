@@ -134,7 +134,7 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   // In a fixed order, so two passes over one listing take the same files.
   unseen.sort((a, b) => compare(a.path, b.path));
   // The registered components the listing names, whether or not the pass reads a record of one.
-  const named = [...perComponent.keys()].filter((component) => states.has(component)).sort(compare);
+  const listed = [...perComponent.keys()].filter((component) => states.has(component)).sort(compare);
 
   const copies = new Map<string, Copy>();
   const statements: D1PreparedStatement[] = [];
@@ -229,6 +229,6 @@ export async function syncNode(env: Env, node: string): Promise<SyncOutcome> {
   await goOnAfter(env, node, waiting);
   // Last, once everything about the node's records is written and queued: what the node
   // says of its fetches changes none of it.
-  await readFetchCounts(env, node, held.syncs, named);
+  await readFetchCounts(env, node, held.syncs, listed);
   return failure === undefined ? { ok: true, head, stored, more: !complete } : { ok: false, reason: failure };
 }
