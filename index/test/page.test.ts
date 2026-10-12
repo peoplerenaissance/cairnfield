@@ -715,6 +715,8 @@ describe("the index's own page (R14, KTD14)", () => {
       [UPSTREAM, "gone", "b2b2b2b2", "import failed"],
     ]);
     expect(rows.map(tagsOf)).toEqual([["imported"], ["importing"], ["import failed"]]);
+    // The outline of a label carries meaning: solid for a copy the index holds, dashed for one it does not hold yet, and the rejected one for an import that failed.
+    expect(rows.map((row) => withClass(row, "tag").map((tag) => tag.attributes["class"]))).toEqual([["tag"], ["tag un"], ["tag rej"]]);
     // The state is never drawn as the index stores it: "ready" would read as an all-clear.
     expect(textOf(body)).not.toMatch(/ready/i);
     expect(textOf(status)).not.toMatch(/ready/i);
@@ -776,6 +778,17 @@ describe("the index's own page (R14, KTD14)", () => {
         if (name === "href") expect([gitUrl, `/components/${component}`]).toContain(value);
         else expect(value).not.toMatch(/[<>"]/);
       }
+    }
+  });
+
+  it("keeps the link of a commit on the index, whatever the list gives as the commit", () => {
+    // The index holds a component only by its full commit hash. The page is handed these as an index that held another value would serve them.
+    for (const component of ["//git.fellbeck-tools.example/x", "javascript:alert(1)", "../../view", "\\\\git.fellbeck-tools.example/x"]) {
+      const page = drawnFrom([{ component, url: UPSTREAM, branch: BRANCH, state: "ready" }]);
+      const [toPage = ""] = linksOf(page).filter((href) => href !== UPSTREAM);
+      expect(toPage).toBe(`/components/${component}`);
+      // Read as a browser reads it, the link leads nowhere but the index.
+      expect(new URL(toPage, INDEX).origin).toBe(INDEX);
     }
   });
 
@@ -1073,7 +1086,7 @@ describe("the pages' addresses on the index (KTD14)", () => {
     expect(addressesIn(html).links).toEqual(["/", SITE, REPO]);
   });
 
-  it("covers AE3: answers the index's own address with its page, under the policy of a component's page", async () => {
+  it("answers the index's own address with its page, under the policy of a component's page", async () => {
     const on = bench();
     const component = await on.component();
 
