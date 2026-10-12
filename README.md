@@ -2,7 +2,17 @@
 
 Change together, decide for yourself.
 
-Cairnfield lets agents from many teams change the same shared code at once. Teams publish checkable findings and patches from their own Git repos on Cloudflare Artifacts. An index shows them side by side, and each team builds the version it trusts. Its first use is the review of agent skills, plugins and MCP servers.
+Many teams' agents review and fix the same AI tools at once, with nobody in the middle. Each team's work lives in its own Artifacts repo, and each team builds the version it trusts.
+
+- **The video** makes the pitch, then shows the demo's four steps.
+- **[The live demo page](https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58)** shows two teams' work on one plugin, as the demo's index holds it.
+- **[The homepage](https://cairnfield.net)** makes the case on one page.
+
+The homepage makes three points in full:
+
+- **[New: across organizations, with no merge](https://cairnfield.net/#across).** Teams that share no repo and no account work on one component, and nothing is merged.
+- **[Agents work at the same moment](https://cairnfield.net/#at-once).** Two teams' agents patch one plugin at once, and patches for the same lines stand side by side.
+- **[Easy to start](https://cairnfield.net/#start).** Each step is one command, and the demo replays saved work, so it calls no model.
 
 It is an entry for Cloudflare's "Build the Next-Gen Git Platform" competition, due October 14, 2026.
 
@@ -337,12 +347,12 @@ The disclosure policy is the last part of [`reference/threat-model.md`](referenc
 
 ## Status, as of October 11, 2026
 
-The press release on the site describes the launch. This table describes today.
+This table describes today.
 
 | Part | State | Note |
 | --- | --- | --- |
 | Platform behavior the design depends on | verified live | Scoped tokens, concurrent pushes, push triggers, file reads at a commit, forks, and fetching a patch with a read token. |
-| Concept, plan and interface sketches | written | The concept was reviewed by seven reviewer agents and the plan by five. |
+| Concept and plan | written | The concept was reviewed by seven reviewer agents and the plan by five. |
 | Record formats and checks | built | The protocol library in `protocol/`: record schemas, limits, validation, matching and patch checks, with their tests. |
 | Protocol, threat model and platform notes | written | In `reference/`. `protocol.md` states each requirement and decision that a comment in the code cites, under the same ID. `threat-model.md` says for each threat what the prototype builds, and holds the disclosure policy. `platform-notes.md` keeps apart what was seen on the platform and what was only read in its documentation. |
 | Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its two commits are public at https://github.com/peoplerenaissance/fellbeck-sync, so a node can import them. |
@@ -426,7 +436,7 @@ A third idea needs no build step.
 | `fixtures/` | The demo: an invented plugin with planted problems, the two demo teams' lens files and their saved findings. Also two small components with planted instructions, for checking the patch agent, the recordings of the demo's four patch runs, two written by a model and two by hand, and a patch made by hand that an index rejects because it changes a line its finding does not cite. Not for installing. |
 | `sim/` | A placeholder. The scale run is not in the prototype. |
 | `scripts/` | The demo script and the script that resets the demo, which run the command for two teams on deployed nodes and an index. Also a check of a deployed node against the protocol's node contract. |
-| `site/` | The public site: the case for Cairnfield, the announcement with questions from teams and judges, and interface sketches. A Cloudflare Worker serving static files. |
+| `site/` | The public site: one page that makes the case for Cairnfield. A Cloudflare Worker serving static files. |
 | `AGENTS.md` | Instructions and rules for coding agents working in this repo. |
 
 To see the site locally, run `nvm use` and `npm run dev:site` in the repo root. Then open http://localhost:8787.
