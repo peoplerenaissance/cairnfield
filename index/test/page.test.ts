@@ -82,6 +82,19 @@ const PROTOCOL = "https://github.com/peoplerenaissance/cairnfield/blob/main/refe
 /** The status labels on an element, each as a reader reads it. */
 const tagsOf = (root: Drawing | undefined): string[] => withClass(root, "tag").map(textOf);
 
+/** What the word "declared" means before the model of a patch record. The page shows it while the word and the model are pointed at or focused. */
+const DECLARED = "This team's record states which model, if any, wrote the patch. The index cannot check that, and has not.";
+
+/** The lines under an element that say what a team's record declares, each as its texts: the team, the word, the value and what the word means. */
+const declaredOf = (root: Drawing | undefined): string[][] => withClass(root, "declared").map(texts);
+
+/** What the stylesheet sets for one selector, in every rule that names it alone or in a list: each property with its value. */
+function styledAs(styles: string, selector: string): string[][] {
+  const rules = [...styles.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const named = rules.filter(([, selectors = ""]) => selectors.split(",").some((one) => one.trim() === selector));
+  return named.flatMap(([, , set = ""]) => set.split(";").flatMap((one) => (one.includes(":") ? [[one.slice(0, one.indexOf(":")).trim(), one.slice(one.indexOf(":") + 1).trim()]] : [])));
+}
+
 /** The counts at the head of a page, each as its number and the word for what it counts. */
 const countsOf = (root: Drawing | undefined): string[][] =>
   withClass(root, "counts").flatMap((list) => list.children.filter(isElement)).map((count) => [textOf(theOne(withTag(count, "dd"), "")), texts(theOne(withTag(count, "dt"), ""))[0] ?? ""]);
@@ -464,6 +477,78 @@ describe("patches (R16)", () => {
     expect([`#finding-${first.finding}`, `#finding-${second.finding}`]).toContain(target);
   });
 
+  it("draws the model each team's record of a patch declares: a line for each record, with its team, the word 'declared' and the model as the record holds it", async () => {
+    const { on, one, other, component } = await twoNodes();
+    // Both teams wrote the same patch. The first team's record names a model, and the second team's says that no model wrote it.
+    for (const [node, where, model] of [[one, {}, "claude-sonnet-5-5"], [other, { location: { path: SKILL, start: 2, end: 3 } }, "none"]] as const) {
+      const cited = await node.publish(finding(component, where));
+      await node.publish({ ...patchRecord(component, await node.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }]), cited), model });
+    }
+    await synced(on, NODE_A);
+    await synced(on, NODE_B);
+    const view = await on.view(component);
+    const place = placeAt(`/components/${component}`);
+
+    const [entry, ...more] = withClass(byId(firstDrawing(place, view), "patches"), "patch");
+    expect(more).toEqual([]);
+    // Each model stands beside the team whose record names it. It is the record's value whole: an enumerated value has its hyphens turned to spaces, and a model does not.
+    const lines = [
+      [asShown(NODE_A), "declared ", "claude-sonnet-5-5", DECLARED],
+      [asShown(NODE_B), "declared ", "none", DECLARED],
+    ];
+    expect(declaredOf(entry)).toEqual(lines);
+    // The lines stand in the order of the teams' addresses, as the teams above them do, whatever the order of the records in the view.
+    const turned = { ...view, patches: view.patches.map((group) => ({ patches: group.patches.map((held) => ({ ...held, records: [...held.records].reverse() })) })) };
+    expect(turned.patches[0]?.patches[0]?.records.map(({ node }) => node)).not.toEqual(view.patches[0]?.patches[0]?.records.map(({ node }) => node));
+    expect(declaredOf(byId(firstDrawing(place, turned), "patches"))).toEqual(lines);
+    // What a record declares is no status label: the entry keeps the two it had.
+    expect(tagsOf(entry)).toEqual(["removes only", "confirmed by 2"]);
+  });
+
+  it("gives a declared line a class of its own and no status label, and the stylesheet draws that class with a dashed outline and never a solid one", async () => {
+    const { on, one, component } = await twoNodes();
+    await publishPatch(one, component, {}, [{ path: SKILL, content: SKILL_FIXED }]);
+    await synced(on, NODE_A);
+
+    const [entry] = withClass(byId(await pageOf(on, component), "patches"), "patch");
+    const [line, ...more] = withClass(entry, "declared");
+    expect(more).toEqual([]);
+    expect(line?.attributes["class"]).toBe("declared");
+    // Nothing in the line is a status label, so the labels of the entry are its kind and its confirmation alone.
+    expect(withClass(line, "tag")).toEqual([]);
+    expect(tagsOf(entry)).toEqual(["removes only", "unconfirmed"]);
+    // The word and the model are one label with its meaning beside it. The label is the one part of the line that can be focused, so the meaning shows without a pointer too.
+    expect(withClass(line, "tip").map(textOf)).toEqual([DECLARED]);
+    expect(elements(line).filter((element) => element.attributes["tabindex"] !== undefined).map((element) => [textOf(element), element.attributes["tabindex"]])).toEqual([["declared none", "0"]]);
+
+    // An outline carries meaning. A team states a declared value and the index cannot check it, so its outline is dashed, as an unconfirmed label's is. Solid is for what is confirmed or checked.
+    const outline = styledAs(env.PAGE_FILES["styles.css"] ?? "", ".declared").filter(([property = ""]) => property.startsWith("border"));
+    expect(outline.filter(([, value = ""]) => /\bdashed\b/.test(value))).not.toEqual([]);
+    expect(outline.filter(([, value = ""]) => /\b(?:solid|dotted|double)\b/.test(value))).toEqual([]);
+  });
+
+  it("draws the model of a patch that was carried to a later commit, on the page of that commit", async () => {
+    const on = bench();
+    const node = new FakeNode(NODE_A);
+    nodesBehindFetch(node);
+    const first = await on.component();
+    // A later commit of the component that leaves the skill file as it was.
+    const later = await on.component({ ...FILES, [README]: `${README_TEXT}line 81\n` });
+    expect(later).not.toBe(first);
+    await on.registerNode(NODE_A);
+    // A model wrote the patch at the first commit. The team's command built it again on the later one, and the record it wrote there keeps the model of the first.
+    for (const component of [first, later]) {
+      const cited = await node.publish(finding(component));
+      await node.publish({ ...patchRecord(component, await node.patchCommit(component, [{ path: SKILL, content: SKILL_FIXED }]), cited), model: "claude-haiku-4-5-20251001" });
+    }
+    await synced(on, NODE_A);
+
+    const [entry, ...more] = withClass(byId(await pageOf(on, later), "patches"), "patch");
+    expect(more).toEqual([]);
+    expect(entry?.attributes["id"]).toBe(`patch-${await idOf(SKILL_TEXT, SKILL_FIXED)}`);
+    expect(declaredOf(entry)).toEqual([[asShown(NODE_A), "declared ", "claude-haiku-4-5-20251001", DECLARED]]);
+  });
+
   it("links a patch once to each finding its records name, when they name two, and in one order on every read", async () => {
     const { on, one, other, component } = await twoNodes();
     // Line 3 of the skill file hides an instruction, and the instruction names a host. Each team saw both and took the line out.
@@ -541,10 +626,12 @@ describe("patches (R16)", () => {
     expect(textOf(alone)).not.toContain("side by side");
   });
 
-  it("shows each patch with its team, its kind, its changed lines and a link to its finding on the page", async () => {
+  it("shows each patch with its team, its kind, its changed lines, the model its record declares and a link to its finding on the page", async () => {
     const { on, one, component } = await twoNodes();
     const made = await publishPatch(one, component, onReadme(12), [{ path: README, content: edited(README_TEXT, { 12: "line twelve" }) }]);
     await synced(on, NODE_A);
+    // A person wrote the patch record, so the model it names is `none`.
+    expect((await on.view(component)).patches[0]?.patches[0]?.records.map(({ record }) => record.model)).toEqual(["none"]);
 
     const page = await pageOf(on, component);
     const [entry] = withClass(byId(page, "patches"), "patch");
@@ -553,6 +640,8 @@ describe("patches (R16)", () => {
     // One line taken out and one put in, at line 12 of the readme.
     expect(textOf(entry)).toContain(README);
     expect(textOf(entry)).toContain("line 12−1+1");
+    // A record whose model is `none` says so on the page, as it does in the record.
+    expect(declaredOf(entry)).toEqual([[asShown(NODE_A), "declared ", "none", DECLARED]]);
     expect(linksOf(entry)).toContain(`#finding-${made.finding}`);
     // The link leads to that finding's entry, which stands in the findings section.
     expect(elements(byId(page, "findings"))).toContain(byId(page, `finding-${made.finding}`));
@@ -1433,18 +1522,18 @@ describe("the demo on the page (R27)", () => {
     const skill = fixture(`demo-plugin/first/${PLUGIN_SKILL}`);
     const manifest = fixture(`demo-plugin/first/${MANIFEST}`);
 
-    // Both teams take the hidden line out, each in a commit of its own.
+    // Both teams take the hidden line out, each in a commit of its own. In the demo each of the two is written by hand, so its record names the model `none`.
     const withoutLine = edited(skill, { 41: undefined });
     for (const [node, cited] of [[teamA, ofA], [teamB, ofB]] as const) {
       const commit = await node.patchCommit(component, [{ path: PLUGIN_SKILL, content: withoutLine }]);
-      await node.publish(patchRecord(component, commit, [cited(PLUGIN_SKILL)]));
+      await node.publish({ ...patchRecord(component, commit, [cited(PLUGIN_SKILL)]), model: "none" });
     }
-    // The first team narrows the hosts on line 12 of the manifest, and the second the variables on line 13.
+    // The first team narrows the hosts on line 12 of the manifest, and the second the variables on line 13. In the demo a model wrote each of the two, and its record names that model.
     const hosts = edited(manifest, { 12: '    "network": { "hosts": ["api.fellbeck-notes.example"] },' });
     const variables = edited(manifest, { 13: '    "env": { "read": ["FELLBECK_TOKEN"] }' });
     const done = { version: "1", type: "claim", component, kind: "patch", number: 1, findings: [ofA(MANIFEST)], intent: "new" };
-    await teamA.publish(done, { ...patchRecord(component, await teamA.patchCommit(component, [{ path: MANIFEST, content: hosts }]), [ofA(MANIFEST)]), claim: await recordId(done) });
-    await teamB.publish(patchRecord(component, await teamB.patchCommit(component, [{ path: MANIFEST, content: variables }]), [ofB(MANIFEST)]));
+    await teamA.publish(done, { ...patchRecord(component, await teamA.patchCommit(component, [{ path: MANIFEST, content: hosts }]), [ofA(MANIFEST)]), claim: await recordId(done), model: "claude-sonnet-5-5" });
+    await teamB.publish({ ...patchRecord(component, await teamB.patchCommit(component, [{ path: MANIFEST, content: variables }]), [ofB(MANIFEST)]), model: "claude-sonnet-5-5" });
     // Two agents still run: one patches the off switch, the other reviews the code.
     await teamA.publish({ version: "1", type: "claim", component, kind: "patch", number: 2, findings: [ofA(SWITCH)], intent: "new" });
     await teamB.publish({ version: "1", type: "claim", component, kind: "review", number: 1, check: "code" });
@@ -1489,6 +1578,15 @@ describe("the demo on the page (R27)", () => {
     expect(withClass(sideBySide, "patch").map((entry) => entry.attributes["id"]).sort()).toEqual([`patch-${patches.hosts}`, `patch-${patches.variables}`].sort());
     expect(textOf(byId(page, `patch-${patches.hosts}`))).toContain(asShown(NODE_A));
     expect(textOf(byId(page, `patch-${patches.variables}`))).toContain(asShown(NODE_B));
+    // Each patch shows the model its record declares, beside the team that published the record: both teams' records of the shared patch, and the one record of each of the other two.
+    expect(declaredOf(shared)).toEqual([
+      [asShown(NODE_A), "declared ", "none", DECLARED],
+      [asShown(NODE_B), "declared ", "none", DECLARED],
+    ]);
+    expect(declaredOf(byId(page, `patch-${patches.hosts}`))).toEqual([[asShown(NODE_A), "declared ", "claude-sonnet-5-5", DECLARED]]);
+    expect(declaredOf(byId(page, `patch-${patches.variables}`))).toEqual([[asShown(NODE_B), "declared ", "claude-sonnet-5-5", DECLARED]]);
+    // No other part of the page says what a record declares.
+    expect(declaredOf(page)).toHaveLength(4);
 
     const [refused] = withTag(byId(page, "rejected"), "li");
     expect(textOf(refused)).toContain(asShown(NODE_B));
@@ -1546,6 +1644,7 @@ describe("the demo on the page (R27)", () => {
       "Written by: ",
       "−",
       "+",
+      "declared ",
       "patch ",
       "for ",
       "Recipes",
@@ -1589,6 +1688,7 @@ describe("the demo on the page (R27)", () => {
       "Fewer than two organizations stand behind this patch. An organization stands behind a patch by writing the same one, or by re-checking it and finding that it resolves its finding.",
       "This patch only takes lines out. It adds no line and changes no file's mode.",
       "This patch adds or rewrites lines, or changes a file's mode.",
+      DECLARED,
       "The team published this hash of its copy's files. The index has not built the copy, so it has not checked the hash.",
       "The patch adds a file, changes content that its findings do not cite, or changes lines outside the ones they cite.",
     ];
