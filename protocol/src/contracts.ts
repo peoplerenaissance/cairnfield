@@ -186,7 +186,8 @@ export const NOTES_REF = "refs/notes/cairnfield";
  * record names, the model, the SHA-256 of the recording's canonical JSON and, when the
  * recording names one, the SHA-256 of the prompt the agent ran under. A note is no
  * record: its team can write it again, and nothing checks it. Its fields are record
- * kinds all the same, so it can hold no free text (R2).
+ * kinds all the same, so the note `patch` writes holds no free text (R2). A note that a
+ * reader fetches is any bytes its team pushed, until the reader holds it to this shape.
  */
 export const PATCH_NOTE = object({
   version: version(),
