@@ -4,7 +4,7 @@
 import { ACCEPTED, COMPONENT_LIST, COMPONENT_STATUS, INDEX_REFUSAL, NODE_REGISTERED, VIEW, conforms, recordId } from "@cairnfield/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { syncNode } from "../src/sync.ts";
-import { BRANCH, FILES, HOST, NODE_A, NODE_B, NODE_C, README, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced } from "./bench.ts";
+import { BRANCH, HOST, NODE_A, NODE_B, NODE_C, REGISTRATION_HEADER, REGISTRATION_KEY, RESET_HEADER, RESET_KEY, SCRIPT_TEXT, SKILL, START, SYNC_HOST, UPSTREAM, bench, claim, clockAt, finding, freshIndexForEachTest, synced, threeComponents } from "./bench.ts";
 import type { Answer } from "./bench.ts";
 import { blobHash } from "./fake-artifacts.ts";
 import { FakeNode, nodesBehindFetch } from "./fake-node.ts";
@@ -474,22 +474,7 @@ describe("the list of the index's components (KTD12)", () => {
   });
 
   it("names every component in the order they were registered, each with its Git URL, its branch and the state its view gives", async () => {
-    const other = "https://git.fellbeck-tools.example/another-plugin.git";
-    const on = bench({ GIT_URLS: `${UPSTREAM} ${other}` });
-    // The commits are named so that no order of their hashes is the order they are registered in.
-    const ready = await on.component(FILES, "c3".repeat(20));
-    const importing = await on.artifacts.host(other, "next", { [README]: "# Another plugin\n" }, "a1".repeat(20));
-    await on.registerComponent({ url: other, branch: "next", commit: importing });
-    // The remote holds no such branch, so this import is refused.
-    const failed = "b2".repeat(20);
-    await on.registerComponent({ url: UPSTREAM, branch: "gone", commit: failed });
-    await on.deliver();
-
-    const components = [
-      { component: ready, url: UPSTREAM, branch: BRANCH, state: "ready" },
-      { component: importing, url: other, branch: "next", state: "importing" },
-      { component: failed, url: UPSTREAM, branch: "gone", state: "failed" },
-    ];
+    const { on, components } = await threeComponents();
     const listed = await on.call("GET", "/view");
     expect(listed).toEqual({ status: 200, body: { version: "1", components } });
     expect(conforms(COMPONENT_LIST, listed.body)).toBeUndefined();

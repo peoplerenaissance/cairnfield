@@ -465,7 +465,7 @@ type Listed = ComponentList["components"][number];
 
 /**
  * The import state of a listed component, in words, with the class of its label. The
- * index stores the first as `ready`, which would read as an all-clear (R14). The object
+ * index stores an imported copy as `ready`, which would read as an all-clear (R14). The object
  * must name every state, so the type check fails when that list changes.
  */
 const IMPORT: { readonly [S in Listed["state"]]: { readonly label: string; readonly tag: string } } = {
