@@ -211,4 +211,4 @@ So the policy is: tell the maintainer first, and delay publishing. Until then, d
 
 The same rule holds: tell the maintainer first, and delay publishing. That matters most for a flaw that lets someone push to a team's repos, read a key, or make an index or the command accept work that the checks should refuse.
 
-> **To be completed by the maintainer before release:** the private address or form for these reports. Until this line is replaced, the project names no private channel.
+Report such a flaw in private, through GitHub's form: the **Security** tab of this repository, then **Report a vulnerability**. Only the reporter and the maintainers see a report. [`SECURITY.md`](../SECURITY.md) says what to send and what to expect: the maintainers answer on best effort, and the project pays no bounty.

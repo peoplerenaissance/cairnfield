@@ -50,6 +50,15 @@ export function componentOf(env: Env, component: string): Promise<Component | nu
   return env.DB.prepare("SELECT * FROM components WHERE component = ?").bind(component).first<Component>();
 }
 
+/** What the list of an index's components says of one of them. */
+type Listed = Pick<Component, "component" | "url" | "branch" | "state">;
+
+/** Every registered component, in the order they were registered. Those registered at one time keep the order of their rows. */
+export async function registeredComponents(env: Env): Promise<Listed[]> {
+  const { results } = await env.DB.prepare("SELECT component, url, branch, state FROM components ORDER BY registered_at, rowid").all<Listed>();
+  return results;
+}
+
 /** What one walk of a copy's tree has met so far: the folders below the commit's tree, and the files. */
 interface Walked {
   folders: number;

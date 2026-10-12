@@ -220,6 +220,14 @@ export const COMPONENT_LOOKUP = shape({
     MAX_VIEW_ENTRIES,
   ),
 });
+/** Every component an index holds, in the order they were registered, each with its Git URL and branch (KTD12). */
+export const COMPONENT_LIST = shape({
+  version: version(),
+  components: listOf(
+    shape({ component: gitHash(), url: url(), branch: name("branch"), state: oneOf(COMPONENT_STATES) }),
+    MAX_VIEW_ENTRIES,
+  ),
+});
 
 /** A notice is an unauthenticated hint that names one node. The index always pulls from the registered URL (KTD11). */
 export const NOTICE = shape({ node: nodeUrl() });
@@ -398,6 +406,8 @@ export const INDEX_ROUTES = {
     response: COMPONENT_STATUS,
   },
   lookup: { method: "GET", path: "/components", query: { url: url() }, response: COMPONENT_LOOKUP },
+  // The list takes no query. `lookup` holds the `GET` of `/components`, so the list has a path of its own.
+  list: { method: "GET", path: "/view", response: COMPONENT_LIST },
   notice: { method: "POST", path: "/notices", request: NOTICE, response: ACCEPTED },
   // `teams` narrows the view to the nodes it lists (KTD38). It is given once for each node.
   view: {

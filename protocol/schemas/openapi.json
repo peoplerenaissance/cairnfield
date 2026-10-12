@@ -421,6 +421,81 @@
         }
       }
     },
+    "/view": {
+      "get": {
+        "operationId": "list",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "const": "1"
+                    },
+                    "components": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "component": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{40}$"
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                            "maxLength": 2048
+                          },
+                          "branch": {
+                            "type": "string",
+                            "pattern": "^(?!-)(?!.*\\.\\.)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+                            "maxLength": 200
+                          },
+                          "state": {
+                            "enum": [
+                              "importing",
+                              "ready",
+                              "failed"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "component",
+                          "url",
+                          "branch",
+                          "state"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 50000
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "components"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/notices": {
       "post": {
         "operationId": "notice",

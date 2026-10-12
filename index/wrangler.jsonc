@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   // The index (R9 to R14): it reads registered nodes over HTTP and builds one validated
-  // view per component commit, with a page that draws it. It serves data and never
-  // instructions (R35).
+  // view per component commit, with a page that draws it. It lists the components it
+  // holds on a page of its own. It serves data and never instructions (R35).
   "name": "cairnfield-index",
   "main": "src/index.ts",
   // The newest date that both runtimes in this package know: the one Wrangler deploys
@@ -10,11 +10,11 @@
   "compatibility_date": "2026-08-15",
   // A call to a node in the same account goes to its public URL (KTD28).
   "compatibility_flags": ["global_fetch_strictly_public"],
-  // The page of a component commit and the files it loads (R14, KTD14). `npm run build`
+  // The two pages and the files they load (R14, KTD14). `npm run build`
   // writes them to `dist/page/`, which Git ignores, and `npm run deploy` builds first.
   // Every request goes to the Worker first: it alone decides what is served under which
   // path, and sets the content security policy on each answer. A file is served under
-  // its own name, so the Worker asks for `page.html` as it is.
+  // its own name, so the Worker asks for `root.html` and `page.html` as they are.
   "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true, "html_handling": "none" },
   // The index's own component copies. Records are checked against these, never against
   // a node's copy (R9, KTD12).

@@ -21,6 +21,8 @@ export const NODE_B = "https://node.team-b.example";
 export const NODE_C = "https://node.team-c.example";
 /** The repo a component is imported from. */
 export const UPSTREAM = "https://git.fellbeck-tools.example/fellbeck-sync.git";
+/** A second repo, for an index that holds components of more than one. */
+export const OTHER_UPSTREAM = "https://git.fellbeck-tools.example/another-plugin.git";
 export const BRANCH = "main";
 /** Not real keys. */
 export const REGISTRATION_KEY = "test-registration-key";
@@ -245,6 +247,27 @@ export function bench(settings: Settings = {}): Bench {
 export async function synced(on: Bench, node: string): Promise<void> {
   await on.notice(node);
   await on.drain();
+}
+
+/** An index that holds three components, each in a state of its own. They are listed here in the order they were registered. */
+export async function threeComponents(): Promise<{ on: Bench; components: { component: string; url: string; branch: string; state: string }[] }> {
+  const on = bench({ GIT_URLS: `${UPSTREAM} ${OTHER_UPSTREAM}` });
+  // The commits are named so that no order of their hashes is the order they are registered in.
+  const ready = await on.component(FILES, "c3".repeat(20));
+  const importing = await on.artifacts.host(OTHER_UPSTREAM, "next", { [README]: "# Another plugin\n" }, "a1".repeat(20));
+  await on.registerComponent({ url: OTHER_UPSTREAM, branch: "next", commit: importing });
+  // The remote holds no such branch, so this import is refused.
+  const failed = "b2".repeat(20);
+  await on.registerComponent({ url: UPSTREAM, branch: "gone", commit: failed });
+  await on.deliver();
+  return {
+    on,
+    components: [
+      { component: ready, url: UPSTREAM, branch: BRANCH, state: "ready" },
+      { component: importing, url: OTHER_UPSTREAM, branch: "next", state: "importing" },
+      { component: failed, url: UPSTREAM, branch: "gone", state: "failed" },
+    ],
+  };
 }
 
 // Records, as a team writes them by hand.
