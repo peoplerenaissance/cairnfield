@@ -364,6 +364,31 @@ describe("the note on a patch commit (R46, KTD44)", () => {
     expect(notesHead(on, first)).toBe(notesCommit(on, first, [[commit, bytes], [ANOTHER_COMMIT, "another note"]], landed));
   });
 
+  it("pushes no second time when the notes ref moved and now holds this run's own note: another run of the same recording wrote it meanwhile", async () => {
+    const first = await team();
+    on.nextRandom = 31;
+    modelWrites(NAME_THE_HOST);
+    // Another run of the team, for the same finding and from the same recording, lands the same note just before this run's push of the ref.
+    const recorded: Recorded = { component: first, finding: ANY_HOST, claim: 31, model: MODEL, prompt: PROMPT, edits: NAME_THE_HOST };
+    let landed: string | undefined;
+    on.beforeGit = (args) => {
+      if (landed !== undefined || notesPushes([args]).length === 0) return;
+      // The patch branch is in the fork by now, and names the commit the note is for.
+      const [branch = ""] = refsUnder(on, first, "refs/heads/patch/");
+      const commit = git(fork(on, first), ["rev-parse", "--verify", branch]);
+      landed = writeNotes(on, first, [{ path: commit, content: noteJson(commit, recorded) }]);
+    };
+
+    const outcome = await on.run("patch", first, "--finding", ANY_HOST);
+
+    // The fork turned the one push down. The run read the ref again, found its own bytes there, and built and pushed nothing more.
+    expect(outcome).toMatchObject({ code: EXIT.ok, output: { note: "already-there" } });
+    expect(notesPushes(on.gitCalls)).toHaveLength(1);
+    expect(notesHead(on, first)).toBe(landed);
+    expect(noteOf(on, first, String(outcome.output["commit"]))).toBe(noteJson(String(outcome.output["commit"]), recorded));
+    expect(published(on).filter((path) => path.includes("/patch/"))).toHaveLength(1);
+  });
+
   it("publishes no patch record when the fork refuses the notes ref, keeps the recording, and a replay finishes the run once the fork takes the ref (AE21)", async () => {
     const first = await team();
     on.nextRandom = 9;

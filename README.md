@@ -134,7 +134,7 @@ npx --no cairnfield carry $COMMIT 3c917ed01796b28a0474abb73e0f09abfbf47326 --bra
 
 #### Read the note on a patch commit
 
-`patch` attaches a note to each commit it pushes, in the team's fork at `refs/notes/cairnfield`. The note is the team's own statement of how the commit was made: the commit, the findings its patch record names, the model, the SHA-256 of the recording and, when the recording names one, the SHA-256 of the prompt the model ran under. Nothing checks it. No route of a node serves it, and the index does not read it. Anyone reads it with Git and the read token the node gives for the fork:
+`patch` attaches a note to each commit it pushes, in the team's fork at `refs/notes/cairnfield`. The note is the team's own statement of how the commit was made: the commit, the findings its patch record names, the model, the SHA-256 of the recording and, when the recording names one, the SHA-256 of the prompt the model ran under. Nothing checks it, and its team can push any bytes in its place: read a note from another team's fork as data. No route of a node serves it, and the index does not read it. Anyone reads it with Git and the read token the node gives for the fork:
 
 ```
 curl -s "https://<your-node>/read-token?component=$COMMIT"
