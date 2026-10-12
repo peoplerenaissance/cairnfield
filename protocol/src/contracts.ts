@@ -220,7 +220,7 @@ export const COMPONENT_LOOKUP = shape({
     MAX_VIEW_ENTRIES,
   ),
 });
-/** Every component an index holds, in the order they were registered, each with its Git URL and branch (KTD12). */
+/** Every component an index holds, in the order they were first registered, each with its Git URL and branch (KTD12). */
 export const COMPONENT_LIST = shape({
   version: version(),
   components: listOf(
