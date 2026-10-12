@@ -573,6 +573,9 @@ describe("every answer of the index (R13, R35)", () => {
     held(await on.call("POST", "/reset", undefined, [RESET_HEADER, RESET_KEY]), ACCEPTED);
     held(await on.call("GET", "/view"), COMPONENT_LIST);
     held(await on.call("GET", "/view?hint=1"), COMPONENT_LIST);
-    held(await on.call("GET", "/"), ACCEPTED);
+    // The index's own address answers a page and no JSON. Its words are written in the repo, and the page's tests list them.
+    const page = await on.get("/");
+    expect([page.status, page.headers.get("content-type")]).toEqual([200, "text/html; charset=utf-8"]);
+    held(await on.call("GET", "/hints"), ACCEPTED);
   });
 });

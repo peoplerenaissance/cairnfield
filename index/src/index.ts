@@ -1,13 +1,15 @@
 // The index Worker (R9 to R14): it registers nodes and components, takes push notices,
 // reads the nodes over HTTP and serves one validated view per component commit, with a
-// page that draws that view for a person. It also lists the components it holds.
+// page that draws that view for a person. It also lists the components it holds, with a
+// page of its own that draws the list.
 //
-// The index serves data and never instructions (R35). Every answer but the page and its
-// files is JSON in a shape of the protocol, with the schema version, and a refusal is a
-// code from a closed list. The page reads the view and nothing else (KTD14).
+// The index serves data and never instructions (R35). Every answer but the two pages and
+// their files is JSON in a shape of the protocol, with the schema version, and a refusal
+// is a code from a closed list. A page's script reads the view or the list and nothing
+// else, and the words a page holds apart from that are written in the repo (KTD14).
 
 import { INDEX_ROUTES, REGISTRATION_KEY_HEADER, RESET_KEY_HEADER, conforms, isCommit } from "@cairnfield/protocol";
-import { PAGE, PAGE_FILE, pageFile } from "./assets.ts";
+import { PAGE, PAGE_FILE, ROOT, pageFile } from "./assets.ts";
 import { registeredComponents } from "./components.ts";
 import type { Env } from "./env.ts";
 import { jsonOf, readUpTo } from "./fetch.ts";
@@ -58,6 +60,8 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     if (request.method === "GET") {
+      // The index's own page, at the index's own address. The query of the address is the page's to read, and it passes none on.
+      if (path === "/") return pageFile(env, request, ROOT);
       if (path === INDEX_ROUTES.list.path) return list(env, url);
       const viewed = VIEW_PATH.exec(path);
       if (viewed) return view(env, url, viewed[1] ?? "");

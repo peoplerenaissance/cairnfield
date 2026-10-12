@@ -1,6 +1,7 @@
-/* The page of one component commit. The colors and the stones are the project's own, as
-   the microsite draws them. The index stands alone, so it holds its own copy of the few
-   it needs, and it loads no font: its policy allows files from its own origin only.
+/* The index's two pages: its own, and the page of one component commit. The colors and
+   the stones are the project's own, as the microsite draws them. The index stands alone,
+   so it holds its own copy of the few it needs, and it loads no font: its policy allows
+   files from its own origin only.
 
    An outline carries meaning. Solid is confirmed or checked. Dashed is unconfirmed: a
    finding or a patch with one organization behind it, a record still being checked, a
@@ -35,14 +36,23 @@ code { font-family: var(--mono); font-size: 0.86em; background: rgba(30, 42, 46,
 ul { list-style: none; margin: 0; padding: 0; }
 p { margin: 0; }
 
-/* ---------- top bar: what this is, and when the view was read ---------- */
-.bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 20px; padding: 8px clamp(14px, 3vw, 28px); background: var(--paper); border-bottom: 1px solid var(--line); }
+/* ---------- top bar: what this is, a way to the index's own page, and when the view was read ---------- */
+.bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 8px clamp(14px, 3vw, 28px); background: var(--paper); border-bottom: 1px solid var(--line); }
 .mark { font: 600 16px/1.2 var(--body); letter-spacing: -0.01em; }
 .mark span { font: 500 12px/1 var(--mono); color: var(--muted); margin-left: 6px; }
+/* The link sits beside the mark, so the bar stays one row on a phone. */
+.bar a { font: 500 12px/1.4 var(--mono); margin-right: auto; }
 .status { font: 500 12px/1.4 var(--mono); color: var(--muted); }
 .status.stale { color: var(--ink); background: var(--note); border: 1px solid #E8D79A; border-radius: 5px; padding: 3px 8px; }
 
-#view { max-width: 1440px; margin: 0 auto; padding: 14px clamp(14px, 3vw, 28px) 48px; }
+/* ---------- a page's own words and links: written in its file, above and below what its script draws ---------- */
+.intro { max-width: 1440px; margin: 0 auto; padding: 16px clamp(14px, 3vw, 28px) 0; }
+.intro h1 { margin-bottom: 6px; }
+.intro p { max-width: 72ch; font-size: 13.5px; color: var(--muted); }
+.intro h1 + p { font-size: 15px; color: var(--ink); }
+.links { display: flex; flex-wrap: wrap; gap: 4px 20px; max-width: 1440px; margin: 0 auto; padding: 0 clamp(14px, 3vw, 28px) 40px; font-size: 13px; color: var(--muted); }
+
+#view { max-width: 1440px; margin: 0 auto; padding: 14px clamp(14px, 3vw, 28px) 24px; }
 .notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; background: var(--note); border: 1px solid #E8D79A; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 13.5px; }
 noscript .notice { margin: 14px clamp(14px, 3vw, 28px); }
 
@@ -101,6 +111,11 @@ h3 code { font-weight: 500; background: var(--fog); padding: 3px 6px; }
 .row:first-child { border-top: 0; padding-top: 0; }
 .row:last-child { padding-bottom: 0; }
 .row .tag { margin-left: auto; }
+
+/* ---------- the index's own page: a row for each component ---------- */
+.repo { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
+.branch, .row > a { font-size: 13px; }
+.branch { color: var(--muted); }
 
 /* ---------- findings ---------- */
 .finding { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line-soft); }

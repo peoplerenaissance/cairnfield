@@ -95,7 +95,7 @@ The four `admin/` routes need the node's admin key, in the header `x-cairnfield-
 | `description` | `GET /openapi.json` | Nothing | Described only |
 | `schema` | `GET /schemas/{type}.json` | Nothing | Described only |
 
-The index also serves a page for each component commit, at `GET /components/{component}`, which reads that commit's view. The index's own page reads `GET /view` in the same way. Neither page is part of the contract. Every JSON answer carries the schema version, and a refusal is a code from a closed list.
+The index also serves a page for each component commit, at `GET /components/{component}`, which reads that commit's view. The index's own page, at `GET /`, reads `GET /view` in the same way. Neither page is part of the contract. Every JSON answer carries the schema version, and a refusal is a code from a closed list.
 
 ## Matching and confirmation
 
@@ -160,16 +160,31 @@ The library also holds the rule that reads criteria against a lens, `countsAgain
 
 **R13.** The view of a component commit carries everything the page shows. It holds data and no prose. The library also describes a lookup by Git URL and a projection that holds only criteria and hosts. The index in this repo serves neither.
 
-**R14.** The index serves one page per component commit, at `/components/<commit>`. It shows live claims, work that is being checked, findings by criterion, patches, recipes and rejected work, in that order. Each state has words of its own, and none reads as an all-clear.
+**R14.** The index serves two pages: its own, at `/`, and one per component commit, at `/components/<commit>`.
 
-| State | The page says |
+The index's own page says in one paragraph what an index is and what it is not. Under it the page lists the components the index holds, in the order they were registered. Each has its Git URL, its branch, its commit as a link to that commit's page, and its import state.
+
+The page of a component commit says in one line what it is. It shows live claims, work that is being checked, findings by criterion, patches, recipes and rejected work, in that order.
+
+Both pages link to the project's site and to its repo, and the page of a component commit links to the index's own page.
+
+Each state has words of its own, and none reads as an all-clear.
+
+| State | The page of a component commit says |
 | --- | --- |
 | The commit is not registered | "No reviews published for this version" |
 | The index is importing its copy | "The index is still importing this version" |
 | The import failed | "The index could not import this version" |
 | The copy is ready and there are no findings | "No findings published", and "This is not a statement that the version is safe." |
 
-Until the index holds its own copy, the page shows no count of findings or patches and no section of checked work.
+Until the index holds its own copy, the page of a component commit shows no count of findings or patches and no section of checked work.
+
+| State | The index's own page says |
+| --- | --- |
+| The index holds no component | "No component registered" |
+| The index is importing a component's copy | "importing" |
+| The import failed | "import failed" |
+| The copy is ready | "imported", and never "ready" |
 
 **R15.** A claim says that work has started. The page shows live claims only. The index shows a claim as closed when a finding or a patch record from the same node cites it. A record from another node closes nothing. A claim expires a set time after the index received it.
 
@@ -282,7 +297,9 @@ The index neither fetches nor stores a record of a component that is not registe
 
 **KTD13.** The index keeps the last commit it read per node, and the commit at which it read each record. It detects no history rewrite: a view's `historyRewritten` field is always false. A rebuild drops every record and reads every node again. It does not rebuild claim state. A claim first seen in a rebuild counts as expired.
 
-**KTD14.** The page draws only what the view holds, and reads the view every 2 seconds. People and agents then see the same data. The page is served with a content security policy that allows no script or style written into the page and loads files from its own origin only. Every value from a record or a registration is set as text. A link leaves the page only for an HTTPS address.
+**KTD14.** A page's script draws only what its data endpoint holds, and reads that endpoint every 2 seconds: the view on the page of a component commit, and the list at `GET /view` on the index's own page. People and agents then see the same data. Each page is served with a content security policy that allows no script or style written into the page and loads files from its own origin only. Every value from a record or a registration is set as text. A link made from such a value leaves the index only for an HTTPS address.
+
+A page's own fixed text and links are written in the repo, in the page's HTML file, outside the element its script draws in. They are what R14 names: what an index is and is not, the line that says what the page of a component commit is, and the links to the site, the repo and the index's own page. They come from no record, a reader with scripts off still sees them, and they tell a reader nothing to do.
 
 **KTD15.** A claim expires a set time after the index receives it, by the index's clock. The default is 15 minutes, and `CLAIM_TTL_SECONDS` sets another at deploy. The page shows live claims only. A closed or expired claim keeps its state in the view. Claims are for display. No command behavior depends on one.
 
