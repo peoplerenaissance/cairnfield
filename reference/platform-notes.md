@@ -90,7 +90,41 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - A Workflow step called an outside host over HTTP.
 - `wrangler queues subscription create --source artifacts.repo` fails, because it has no flags for the namespace and the repo that the API requires.
 
-**Not known.** Whether the trigger honors the Workflow creation limit of 100 per second, and what it uses as the instance ID.
+**Not known.** Whether the trigger honors the Workflow creation limit of 100 per second. The second check below saw what it uses as the instance ID.
+
+## Artifacts events, second check
+
+**Observed on Oct 12, 2026**, against a live Artifacts namespace made for the check. A throwaway Worker was deployed with Wrangler 4.147.0. Its Workflow kept each event it was started with. Each row of the check had a repo of its own, so an event named the row it came from. Every repo was pushed to first, and one repo was only pushed to, as the control. The run waited 90 seconds after its last operation.
+
+### The trigger
+
+- A config with three `triggers.events` entries deployed: `cf.artifacts.repo.pushed`, `cf.artifacts.repo.fetched` and `cf.artifacts.repo.cloned`. Each had the shape of the push trigger above, with a namespace filter, and one Workflow was the target of all three. Wrangler printed `event triggers: 3`.
+- The run kept 17 events. Each had an `id`, all 17 were distinct, and each Workflow instance's ID was its event's `id`. The events-schemas page shows no event ID.
+
+### What sent an event
+
+| Operation | Token | Event |
+| --- | --- | --- |
+| `git fetch --depth=1 <remote> <commit hash>` into an empty bare repo | read | One `cloned`, 3.6 seconds later |
+| The same fetch | write | One `cloned`, 5.4 seconds later |
+| `git clone` | read | One `cloned`, 2.8 seconds later |
+| `git fetch <remote> refs/notes/cairnfield:refs/notes/cairnfield` into an empty bare repo | read | One `cloned`, 2.8 seconds later |
+| `git ls-remote` | read | None |
+| `readCommit`, `readTree`, `readBlob`, `readFile` and `log` on the binding, each on a repo of its own | | None. Each read found what it asked for |
+| `git push` of a branch | write | One `pushed`, 1.9 to 6.8 seconds later |
+| `git push` of `refs/notes/cairnfield` | write | One `pushed` that names the ref, with no commit in `commits` |
+| Nothing but the first push, on the control repo | | No `cloned` and no `fetched` |
+
+- A `cloned` event's payload held `id`, `type`, `source` with `namespace` and `repoName`, and an inner `payload` with no member. It names the repo, and nothing about who fetched or what.
+- No `fetched` event arrived. Every fetch of the check went into a repo that held nothing, and each came as `cloned`.
+
+### The notes ref
+
+- A write token pushed `refs/notes/cairnfield`.
+- A read token then listed that ref with `git ls-remote` and fetched it. The fetched ref was the commit that was pushed. Its tree held one entry, named by the commit the note was on.
+- A push of the notes ref sends a `pushed` event, as the table says. So a node's push Workflow starts on it.
+
+**Not known.** Whether a fetch into a repo that already holds commits sends `fetched`, `cloned` or nothing. Whether one event can arrive twice. What a subscription for one repo delivers to a queue: the check did not need one and did not try it.
 
 ## Deployed nodes and index
 
@@ -228,3 +262,5 @@ The demo's two nodes and its index run as separate Workers in one Cloudflare acc
 The check of Oct 4 left a namespace with five repos, a Worker with its Workflow, a KV namespace and a queue. All were deleted on Oct 9, 2026. No part of Cairnfield used them.
 
 A report to Cloudflare that a read-only repo accepts pushes was drafted and not sent.
+
+The check of Oct 12 deleted its eleven repos, its Worker and its Workflow at the end of its run. It left its namespace, empty, to be deleted in the dashboard: Wrangler 4.147 has no command that deletes a namespace. It did not look at its three event triggers, because Wrangler lists none.
