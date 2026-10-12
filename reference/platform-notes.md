@@ -94,7 +94,7 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 
 ## Artifacts events, second check
 
-**Observed on Oct 12, 2026**, against a live Artifacts namespace made for the check. A throwaway Worker was deployed with Wrangler 4.147.0. Its Workflow kept each event it was started with. Each row of the check had a repo of its own, so an event named the row it came from. Every repo was pushed to first, and one repo was only pushed to, as the control. A run waited 90 seconds after its last operation. The check ran to its end twice, and both runs agreed. A run between the two stopped early: about a minute after the Worker was deployed again under the name it had just been deleted from, `workers.dev` answered one request with a 404 of its own, after three requests had reached the Worker.
+**Observed on Oct 12, 2026**, against a live Artifacts namespace made for the check. A throwaway Worker was deployed with Wrangler 4.147.0. Its Workflow kept each event it was started with. Each row of the check had a repo of its own, so an event named the row it came from. Every repo was pushed to first, and one repo was only pushed to, as the control. A run waited 90 seconds after its last operation. The check ran to its end twice, and both runs agreed. The row for a second fetch, into a repo that already held a commit, was in the second run only. A run between the two stopped early: about a minute after the Worker was deployed again under the name it had just been deleted from, `workers.dev` answered one request with a 404 of its own, after three requests had reached the Worker.
 
 ### The trigger
 
