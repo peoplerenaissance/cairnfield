@@ -8,7 +8,7 @@
     "test": "vitest run",
     "types": "wrangler types --strict-vars=false",
     "typecheck": "npm run types && tsc -p tsconfig.json && tsc -p src/page/tsconfig.json --noEmit",
-    "build": "rm -rf dist && tsc -p src/page/tsconfig.json && cp src/page/root.html src/page/page.html src/page/styles.css dist/page/ && ls dist/page/root.html dist/page/page.html dist/page/styles.css dist/page/poll.js dist/page/render.js",
+    "build": "rm -rf dist && tsc -p src/page/tsconfig.json && cp src/page/root.html src/page/page.html src/page/styles.css src/page/favicon.ico src/page/favicon.svg src/page/apple-touch-icon.png dist/page/ && mkdir dist/page/fonts && cp src/page/fonts/*.woff2 src/page/fonts/*.ttf dist/page/fonts/ && ls dist/page/root.html dist/page/page.html dist/page/styles.css dist/page/poll.js dist/page/map.js dist/page/render.js dist/page/favicon.ico dist/page/favicon.svg dist/page/apple-touch-icon.png dist/page/fonts/routed-gothic.ttf dist/page/fonts/hanken-grotesk.woff2 dist/page/fonts/spline-sans-mono.woff2",
     "check": "npm run build && wrangler deploy --dry-run",
     "migrate": "wrangler d1 migrations apply cairnfield-index --remote",
     "deploy": "npm run build && wrangler deploy --var \"GIT_URLS:${GIT_URLS:?set GIT_URLS to the Git URLs this index may import, with a space between two}\" ${CLAIM_TTL_SECONDS:+--var CLAIM_TTL_SECONDS:$CLAIM_TTL_SECONDS}"

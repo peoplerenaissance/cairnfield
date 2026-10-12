@@ -1,12 +1,17 @@
-/* The index's two pages: its own, and the page of one component commit. The colors and
-   the stones are the project's own, as the microsite draws them. The index stands alone,
-   so it holds its own copy of the few it needs, and it loads no font: its policy allows
-   files from its own origin only.
+/* The index's two pages: its own, and the page of one component commit. The colors, the
+   faces, the stones and the map behind the page are the project's own, as the microsite
+   draws them. The index stands alone, so it holds its own copy of each: the three fonts
+   are in `fonts/`, and `map.ts` draws the map. Its policy allows files from its own
+   origin only. The one image a page loads is its icon, so this file names none.
 
    An outline carries meaning. Solid is confirmed or checked. Dashed is unconfirmed: a
    finding or a patch with one organization behind it, a record still being checked, a
    tree hash that is published and not checked. Nothing here is dotted. Every status has
    a text label, and the color only repeats it. */
+
+@font-face { font-family: "Routed Gothic"; src: url("fonts/routed-gothic.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Hanken Grotesk"; src: url("fonts/hanken-grotesk.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Spline Sans Mono"; src: url("fonts/spline-sans-mono.woff2") format("woff2"); font-weight: 400 600; font-style: normal; font-display: swap; }
 
 :root {
   --fog: #EDF0EE;
@@ -15,157 +20,276 @@
   --muted: #5B6B70;
   --line: #C9D1CC;
   --line-soft: #DDE3DF;
-  --slate: #5E6C76; --slate-ink: #46535C;
-  --sandstone: #C9AE84; --sandstone-ink: #7E5F2A;
-  --ironstone: #A0624A; --ironstone-ink: #84472E;
-  --drift: #34383B; --drift-ink: #34383B;
+  --slate: #5E6C76;
+  --sandstone: #C9AE84;
+  --ironstone: #A0624A;
+  --drift: #34383B;
   --add: #E4EFD6;
   --del: #F6DFE3;
-  --note: #FFF6D6;
+  --note: #FFF6D6; --note-line: #E8D79A;
+  --display: "Routed Gothic", "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
   --body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
   --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* The space at each side of the page, and between two blocks of it. */
+  --gutter: clamp(16px, 4vw, 48px);
+  --gap: 20px;
 }
 
 * { box-sizing: border-box; }
-html { scroll-padding-top: 52px; }
-body { margin: 0; background: var(--fog); color: var(--ink); font: 400 15px/1.45 var(--body); }
+html { scroll-padding-top: 72px; }
+/* The page is a column as tall as the window, so its footer stands at the foot of a short page. */
+body { margin: 0; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: var(--fog); color: var(--ink); font: 400 16px/1.5 var(--body); }
 a { color: inherit; text-decoration-color: var(--line); text-underline-offset: 3px; }
 a:hover { text-decoration-color: var(--ink); }
 :focus-visible { outline: 3px solid var(--slate); outline-offset: 2px; }
-code { font-family: var(--mono); font-size: 0.86em; background: rgba(30, 42, 46, .06); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
-ul { list-style: none; margin: 0; padding: 0; }
+code { font-family: var(--mono); font-size: 0.86em; background: rgba(30, 42, 46, .06); padding: 2px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+ul, ol { list-style: none; margin: 0; padding: 0; }
 p { margin: 0; }
 
-/* ---------- top bar: what this is, a way to the index's own page, and when the view was read ---------- */
-.bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 8px clamp(14px, 3vw, 28px); background: var(--paper); border-bottom: 1px solid var(--line); }
-.mark { font: 600 16px/1.2 var(--body); letter-spacing: -0.01em; }
-.mark span { font: 500 12px/1 var(--mono); color: var(--muted); margin-left: 6px; }
-/* The link sits beside the mark, so the bar stays one row on a phone. */
-.bar a { font: 500 12px/1.4 var(--mono); margin-right: auto; }
-.status { font: 500 12px/1.4 var(--mono); color: var(--muted); }
-.status.stale { color: var(--ink); background: var(--note); border: 1px solid #E8D79A; border-radius: 5px; padding: 3px 8px; }
+/* ---------- the map: `map.ts` draws it, and it stays still behind the page ---------- */
+.map { position: fixed; top: 0; left: 0; z-index: -1; width: 100%; height: 100vh; height: 100lvh; pointer-events: none; }
+
+/* ---------- one width for every block of the page ---------- */
+.wrap, #view { width: 100%; max-width: calc(1280px + 2 * var(--gutter)); margin-inline: auto; padding-inline: var(--gutter); }
+
+/* ---------- top bar: where this page is, from the project's site through this index, and when the view was read ---------- */
+.bar { position: sticky; top: 0; z-index: 5; background: rgba(250, 251, 249, .94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+/* A status that says more than a time takes a row of its own on a phone. */
+.bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; min-height: 52px; padding-block: 8px; }
+/* A trail: the project's name leads to its site, the index to its own page, and the last part is the page that is open. */
+.crumbs ol { display: flex; align-items: baseline; gap: 10px; }
+.crumbs li { font: 500 13px/1 var(--mono); color: var(--muted); }
+.crumbs li + li::before { content: "/"; margin-right: 10px; color: #9AA6A3; }
+.crumbs a { color: inherit; }
+.crumbs a:hover { color: var(--ink); }
+.crumbs [aria-current] { color: var(--ink); }
+.crumbs .mark { font: 400 24px/1 var(--display); letter-spacing: -0.01em; color: var(--ink); text-decoration: none; }
+.status { margin-left: auto; font: 500 12px/1.4 var(--mono); color: var(--muted); }
+.status.stale { color: var(--ink); background: var(--note); border: 1px solid var(--note-line); border-radius: 5px; padding: 3px 8px; }
 
 /* ---------- a page's own words and links: written in its file, above and below what its script draws ---------- */
-.intro { max-width: 1440px; margin: 0 auto; padding: 16px clamp(14px, 3vw, 28px) 0; }
-.intro h1 { margin-bottom: 6px; }
-.intro p { max-width: 72ch; font-size: 13.5px; color: var(--muted); }
-.intro h1 + p { font-size: 15px; color: var(--ink); }
-.links { display: flex; flex-wrap: wrap; gap: 4px 20px; max-width: 1440px; margin: 0 auto; padding: 0 clamp(14px, 3vw, 28px) 40px; font-size: 13px; color: var(--muted); }
+.hero { background: rgba(250, 251, 249, .62); border-bottom: 1px solid var(--line); }
+.hero .wrap { padding-block: clamp(40px, 7vw, 76px) clamp(36px, 5.5vw, 60px); }
+.hero h1 { font: 400 clamp(34px, 4.6vw, 54px)/1.08 var(--display); letter-spacing: 0.005em; margin: 0 0 20px; }
+.hero p { max-width: 43em; font-size: clamp(17px, 1.55vw, 20px); line-height: 1.5; text-wrap: pretty; }
+.about .wrap { padding-top: clamp(28px, 4vw, 48px); }
+.about p { max-width: 62em; font-size: 15px; color: var(--muted); text-wrap: pretty; }
 
-#view { max-width: 1440px; margin: 0 auto; padding: 14px clamp(14px, 3vw, 28px) 24px; }
-.notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; background: var(--note); border: 1px solid #E8D79A; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 13.5px; }
-noscript .notice { margin: 14px clamp(14px, 3vw, 28px); }
+/* The footer, as the site's: who made the software, what an index is, and where more is written. */
+footer.end { border-top: 1px solid var(--line); background: var(--paper); padding: 36px 0 48px; font-size: 14.5px; color: var(--muted); }
+footer.end .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+footer.end h4 { font: 400 20px/1.1 var(--display); margin: 0 0 10px; color: var(--ink); }
+footer.end p { margin: 0 0 8px; }
+footer.end .legal { margin-top: 28px; }
+footer.end .legal p { margin: 0; padding-top: 16px; border-top: 1px solid var(--line); }
+
+#view { flex: 1; padding-block: 16px clamp(48px, 7vw, 80px); }
+.hero + #view { padding-top: clamp(28px, 4vw, 44px); }
+.notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; background: var(--note); border: 1px solid var(--note-line); border-radius: 8px; padding: 12px 16px; margin-bottom: var(--gap); font-size: 14.5px; }
+noscript .notice { margin: 0 var(--gutter) var(--gap); }
 
 /* ---------- the component, and its counts ---------- */
-.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: end; padding: 4px 2px 14px; }
-.label { font: 600 11.5px/1 var(--mono); color: var(--muted); margin-bottom: 6px; }
-h1 { font: 600 clamp(17px, 2.1vw, 23px)/1.25 var(--body); letter-spacing: -0.01em; margin: 0 0 4px; overflow-wrap: anywhere; }
-.commit { font: 500 12.5px/1.5 var(--mono); color: var(--muted); }
-.counts { display: flex; gap: 22px; margin: 0; }
-.counts div { display: flex; flex-direction: column-reverse; text-align: right; }
-.counts dd { margin: 0; font: 400 30px/1.05 var(--body); }
-.counts dt { font-size: 12px; color: var(--muted); }
+.head { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px 48px; align-items: end; padding-bottom: clamp(26px, 3.4vw, 40px); }
+.label { font: 500 13px/1 var(--mono); color: var(--muted); margin-bottom: 14px; }
+h1 { font: 400 clamp(24px, 2.7vw, 34px)/1.15 var(--display); letter-spacing: 0.005em; margin: 0 0 12px; overflow-wrap: anywhere; }
+h1 a { text-decoration-thickness: 1px; text-underline-offset: 6px; }
+.commit { font: 500 13px/1.6 var(--mono); color: var(--muted); }
+/* The way from one version of a repo to its others. */
+.versions { margin-top: 10px; font-size: 14px; color: var(--muted); }
+.counts { display: flex; gap: clamp(24px, 3vw, 40px); margin: 0; }
+.counts div { display: flex; flex-direction: column-reverse; gap: 8px; text-align: right; }
+/* A count is set in the body face: the display face draws a one as a bare stroke. */
+.counts dd { margin: 0; font: 400 42px/0.9 var(--body); letter-spacing: -0.02em; }
+.counts dt { font: 500 12px/1 var(--mono); color: var(--muted); }
 
 /* ---------- sections: claims and findings on one side, patches and recipes on the other ---------- */
-.work { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
-section { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 14px; margin-bottom: 12px; }
-h2 { display: inline-block; font: 600 11.5px/1 var(--mono); letter-spacing: 0.02em; color: var(--muted); margin: 0 10px 12px 0; }
-h2 + .count { font: 600 11.5px/1 var(--mono); }
-h3 { font: 600 13px/1.2 var(--body); margin: 12px 0 2px; }
-h2 + h3 { margin-top: 0; }
-h3 code { font-weight: 500; background: var(--fog); padding: 3px 6px; }
-.empty { color: var(--muted); font-size: 14px; }
-.note { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-#state h2 { display: block; font: 600 18px/1.3 var(--body); letter-spacing: 0; color: var(--ink); margin: 0 0 8px; }
-#state .commit { margin-top: -2px; }
+.work { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
+section { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 22px 24px 24px; }
+section + section { margin-top: var(--gap); }
+.section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 18px; }
+h2 { font: 400 26px/1.1 var(--display); letter-spacing: 0.005em; margin: 0; }
+.count { font: 500 12.5px/1 var(--mono); color: var(--muted); }
+/* What a section holds, in plain words under its heading. */
+.intro { max-width: 70ch; margin: -8px 0 18px; font-size: 14.5px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
+.empty { color: var(--muted); font-size: 15px; }
+.note { color: var(--muted); font-size: 13.5px; margin-top: 6px; }
+#state h2 { display: block; margin: 0 0 14px; }
+#state .commit { margin-top: -4px; }
 
 /* ---------- organizations: each node has a tone, and always its address ---------- */
-.org { font: 600 12px/1.4 var(--mono); color: var(--ci, var(--ink)); overflow-wrap: anywhere; }
-.org::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); margin-right: 5px; }
-.by { display: flex; flex-wrap: wrap; gap: 2px 12px; }
-.tone-0 { --c: var(--slate); --ci: var(--slate-ink); }
-.tone-1 { --c: var(--sandstone); --ci: var(--sandstone-ink); }
-.tone-2 { --c: var(--ironstone); --ci: var(--ironstone-ink); }
-.tone-3 { --c: var(--drift); --ci: var(--drift-ink); }
+/* A tone tells teams apart and says nothing else. It colors a team's stones and never its name, which would read as a status. The mark
+   before a name is that team's stone, small, so a name can be matched to the stones of a cairn. */
+.org { font: 600 12.5px/1.4 var(--mono); overflow-wrap: anywhere; }
+.org::before { content: ""; display: inline-block; width: 15px; height: 8px; margin-right: 7px; border-radius: 58% 42% 52% 48% / 62% 56% 44% 38%; background: var(--c, var(--muted)); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .17); }
+.by, .orgs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+/* After the word for what they did, the organizations wrap among themselves, so a second line of them starts under the first. */
+.by:has(> .did) { flex-wrap: nowrap; gap: 8px; }
+.did { flex: none; font-size: 13px; color: var(--muted); }
+.tone-0 { --c: var(--slate); }
+.tone-1 { --c: var(--sandstone); }
+.tone-2 { --c: var(--ironstone); }
+.tone-3 { --c: var(--drift); }
 
-/* One stone for each organization behind a finding */
+/* One stone for each organization behind a finding. Each tone is a different rock, told apart by its grain as well as its color. */
 .cairn { display: inline-flex; flex-direction: column-reverse; align-items: center; justify-self: center; }
-.stone { display: block; width: 28px; height: 12px; margin-top: -3px; background: var(--c, var(--muted)); border-radius: 58% 42% 52% 48% / 62% 56% 44% 38%; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .17), inset 0 2px 1px rgba(255, 255, 255, .2); }
-.stone:nth-child(2) { width: 23px; rotate: -4deg; border-radius: 46% 54% 44% 56% / 55% 62% 38% 45%; }
-.stone:nth-child(3) { width: 19px; rotate: 5deg; }
+.stone { display: block; width: 30px; height: 13px; margin-top: -3px; background: var(--c, var(--muted)); border-radius: 58% 42% 52% 48% / 62% 56% 44% 38%; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .17), inset 0 2px 1px rgba(255, 255, 255, .2); }
+.stone:nth-child(2) { width: 25px; rotate: -4deg; border-radius: 46% 54% 44% 56% / 55% 62% 38% 45%; }
+.stone:nth-child(3) { width: 20px; rotate: 5deg; }
 .stone:nth-child(n + 4) { width: 15px; rotate: -6deg; }
+/* Slate: thin, uneven cleavage lines */
+.stone.tone-0 { background-image: repeating-linear-gradient(177deg, rgba(255, 255, 255, .17) 0 1px, transparent 1px 3px, rgba(0, 0, 0, .09) 3px 4px, transparent 4px 7px); }
+/* Sandstone: fine grain */
+.stone.tone-1 { background-image: radial-gradient(rgba(90, 60, 25, .3) .5px, transparent .8px), radial-gradient(rgba(255, 255, 255, .42) .5px, transparent .8px), radial-gradient(rgba(90, 60, 25, .18) .6px, transparent .9px); background-size: 3px 4px, 4px 3px, 7px 5px; background-position: 0 0, 1px 2px, 3px 1px; }
+/* Ironstone: thin, uneven rust bands */
+.stone.tone-2 { background-image: repeating-linear-gradient(172deg, rgba(60, 20, 8, .22) 0 1px, transparent 1px 3px, rgba(60, 20, 8, .1) 3px 5px, transparent 5px 9px, rgba(255, 255, 255, .12) 9px 10px, transparent 10px 14px); }
 
 /* ---------- status labels ---------- */
-.tag { display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: 0.02em; padding: 5px 7px; border-radius: 5px; border: 1px solid var(--line); background: #fff; white-space: nowrap; }
+.tag { display: inline-block; font: 600 11.5px/1 var(--mono); padding: 6px 8px; border-radius: 5px; border: 1px solid var(--line); background: #fff; white-space: nowrap; }
 .tag.ok { background: #EAF1DC; border-color: #C9D8AD; color: #2E4716; }
 .tag.un { background: transparent; border-style: dashed; border-color: #9AA6A3; color: var(--muted); }
 .tag.rej { background: var(--del); border-color: #E4B7C2; }
 .tag.live { border-color: var(--ink); }
-.kind { font-size: 13px; }
+.kind { font-size: 14px; }
 
 /* ---------- live claims, and records that are being checked or were rejected ---------- */
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.claim { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; border: 1px solid var(--line); border-radius: 14px; padding: 5px 7px 5px 11px; background: #fff; font-size: 13px; }
+/* A live claim, and a record of pending or rejected work, are each one row with their label at its end. */
 .intent { color: var(--muted); }
-.row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 7px 0; border-top: 1px solid var(--line-soft); }
-.row:first-child { border-top: 0; padding-top: 0; }
-.row:last-child { padding-bottom: 0; }
-.row .tag { margin-left: auto; }
+.row, .claim { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 14px 0; border-top: 1px solid var(--line-soft); font-size: 14px; }
+:is(.row, .claim):first-child { border-top: 0; padding-top: 0; }
+:is(.row, .claim):last-child { padding-bottom: 0; }
+:is(.row, .claim) > :is(.tag, .explained) { margin-left: auto; }
 
-/* ---------- the index's own page: a row for each component ---------- */
-.repo { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
-.branch, .row > a { font-size: 13px; }
-.branch { color: var(--muted); }
+/* ---------- the index's own page: a block for each repo, and in it the versions of each branch ---------- */
+.repos { display: grid; gap: 14px; }
+#components h3 { display: block; font: 600 16.5px/1.3 var(--body); color: var(--ink); overflow-wrap: anywhere; }
+.repo-head { display: flex; align-items: center; gap: 2px; }
+/* A branch names itself once, beside its versions. */
+.branch { display: grid; grid-template-columns: minmax(132px, max-content) minmax(0, 1fr); align-items: start; padding-left: 16px; border-top: 1px solid var(--line-soft); }
+.branch:first-child { border-top: 0; }
+.branch-name { padding-block: 15px; font-size: 14px; color: var(--muted); }
+/* A version is one row, and the whole of it leads to that version's page. */
+#components .row { justify-content: space-between; padding: 12px 16px; }
+#components .row:first-child { padding-top: 12px; }
+#components .row:last-child { padding-bottom: 12px; }
+#components .row:hover { background: #F1F4F2; }
+#components .row > a::after { content: ""; position: absolute; inset: 0; }
+#components .row > a { text-decoration-color: var(--line); }
+#components .row > a code { color: var(--ink); }
 
-/* ---------- findings ---------- */
-.finding { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line-soft); }
-.findings > .finding:first-child { border-top: 0; }
-.findings > .finding:last-child { padding-bottom: 0; }
-.what strong { font-weight: 600; font-size: 14.5px; margin-right: 8px; }
-.where li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font: 400 12.5px/1.6 var(--mono); color: var(--muted); border-radius: 4px; }
-.where li:target, .patch:target { background: var(--note); }
+/* The way out to a repo: a mark drawn here with the stylesheet's own shapes, so the page loads no image for it. Its word is for a reader who does not see the mark. */
+.source { position: relative; z-index: 1; flex: none; width: 28px; height: 28px; border-radius: 6px; color: var(--muted); }
+/* The arrow's shaft, from inside the box to its head. */
+.source { background: linear-gradient(to top left, transparent calc(50% - .8px), currentColor calc(50% - .8px), currentColor calc(50% + .8px), transparent calc(50% + .8px)) 13px 8px / 7px 7px no-repeat; }
+.source:hover { color: var(--ink); background-color: rgba(30, 42, 46, .08); }
+.source span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* A box that is open at its top right corner. */
+.source::before { content: ""; position: absolute; left: 7px; top: 11px; width: 10px; height: 10px; border: 1.5px solid currentColor; border-radius: 2px; clip-path: polygon(0 0, 45% 0, 45% 55%, 100% 55%, 100% 100%, 0 100%); }
+/* The arrow's head, clear of the box, with arms shorter than its shaft. */
+.source::after { content: ""; position: absolute; left: 16px; top: 7px; width: 5px; height: 5px; border-top: 1.5px solid currentColor; border-right: 1.5px solid currentColor; }
+
+/* ---------- a label and what it means ---------- */
+/* The meaning is the text after the label. It shows under the label's line while the label is pointed at or focused, and it never
+   runs past the block the label stands in: it is placed in that block, at its start, or at its end for a label that stands there. */
+.explained { display: inline-block; }
+.explained > :is([tabindex], .cairn), .badge { cursor: help; }
+.tip { position: absolute; z-index: 4; left: 0; right: 0; width: fit-content; max-width: min(340px, 100%); margin: var(--drop, 32px) auto 0 0; padding: 10px 12px; border-radius: 8px; background: var(--ink); color: var(--paper); font: 400 13.5px/1.45 var(--body); letter-spacing: 0; text-align: left; white-space: normal; box-shadow: 0 12px 28px -14px rgba(30, 42, 46, .6); visibility: hidden; opacity: 0; transition: opacity .12s ease-out; pointer-events: none; }
+.explained.end > .tip { margin-left: auto; margin-right: 0; }
+.explained > :first-child:hover + .tip, .explained > :first-child:focus + .tip, .criterion-head:has(.badge:hover) > .tip, .criterion-head:has(.badge:focus-visible) > .tip { visibility: visible; opacity: 1; }
+/* A word of plain text is lower than a status label, so its meaning starts higher. */
+.label, .counts dt { --drop: 24px; }
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+/* In the list of components the whole row is a link, and a label lies over that link to be pointed at. Its meaning hangs from the label itself. */
+#components .explained { position: relative; z-index: 1; justify-self: end; }
+#components .explained:hover, #components .explained:focus-within { z-index: 2; }
+#components .tip { top: calc(100% + 8px); left: auto; right: 0; width: max-content; max-width: min(300px, 76vw); margin: 0; }
+
+/* ---------- findings: a block for each criterion, as a group of patches is one ---------- */
+.criterion, .group, .repo { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.criterion + .criterion, .group + .group { margin-top: 14px; }
+/* The head belongs to the findings under it: one box holds both, and no line parts them from the block above. */
+.criterion-head, .group-head, .repo-head { padding: 10px 16px; background: #F1F4F2; border-bottom: 1px solid var(--line-soft); border-radius: 7px 7px 0 0; }
+.criterion-head { position: relative; padding-block: 12px; }
+h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; font: 500 12.5px/1.4 var(--mono); color: var(--muted); }
+/* The criterion's name is a link to where the protocol defines it. */
+.badge { display: inline-block; padding: 3px 8px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); text-decoration: none; }
+.badge:hover { border-color: var(--ink); }
+.badge code { padding: 0; background: none; font-size: 12px; font-weight: 600; }
+.promise { margin-top: 6px; font-size: 14px; line-height: 1.45; }
+.criterion-head > .tip { top: 100%; left: 16px; right: 16px; margin-top: -4px; }
+.findings { padding: 0 16px; }
+
+/* A finding, from what matters most to what matters least: what it says, how many organizations report it, where, who, and its record. */
+.finding { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 6px 16px; align-items: start; padding: 16px 0; border-top: 1px solid var(--line-soft); }
+.finding:first-child { border-top: 0; }
+.finding > .explained:first-child { margin-top: 6px; --drop: 34px; }
+.what strong { display: block; font: 600 16.5px/1.4 var(--body); text-wrap: pretty; }
+.what strong code { font-weight: 500; }
+/* A host goes to the next line whole when it does not fit in its sentence. */
+.host { display: inline-block; }
+.where { margin-top: 8px; }
+.where li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font: 400 12.5px/1.7 var(--mono); color: var(--muted); border-radius: 4px; }
+.where li:target { background: var(--note); box-shadow: 0 0 0 4px var(--note); }
+.patch:target { background: var(--note); }
+/* The lines of a file that a finding contradicts, or that a dispute cites, stand off from its path. */
+.contradicts .lines, .cites .lines { margin-left: 8px; }
 .ref { color: var(--muted); }
+/* A record's ID is for looking the record up, so it is the last and the smallest thing on its line. */
+.where .ref { font-size: 11.5px; }
+.what .by { margin-top: 8px; }
 .disputes { grid-column: 2 / -1; }
-.dispute { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 13px; border-left: 3px solid var(--ironstone); padding: 2px 0 2px 10px; margin-top: 2px; }
+.dispute { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; font-size: 14px; border-left: 3px solid var(--ironstone); padding: 3px 0 3px 12px; margin-top: 4px; }
 
 /* ---------- patches: a group for each run of lines, a column for each patch ---------- */
-.group { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; background: #fff; overflow: hidden; }
-.group:last-child { margin-bottom: 0; }
-.group-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 7px 10px; background: var(--fog); border-bottom: 1px solid var(--line-soft); font: 500 12.5px/1.3 var(--mono); }
-.group-head .paths { display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.group-head code { background: none; padding: 0; }
+.group-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; font: 500 12.5px/1.4 var(--mono); }
+.group-head .paths { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.group-head code { background: none; padding: 0; font-size: 1em; }
 .group-head .count { color: var(--muted); }
 .cols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
-.patch { padding: 10px; border-left: 1px solid var(--line-soft); min-width: 0; }
+/* The parts of a patch stand one under the other, the same distance apart. */
+.patch { position: relative; display: grid; align-content: start; gap: 12px; padding: 16px; border-left: 1px solid var(--line-soft); min-width: 0; }
 .patch:first-child { border-left: 0; }
-.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 7px 0; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .patch .paths { display: flex; flex-wrap: wrap; gap: 2px 8px; font: 400 12.5px/1.6 var(--mono); }
-.changes li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font: 400 12.5px/1.6 var(--mono); }
-.removed, .added { padding: 0 5px; border-radius: 3px; }
+/* The changed lines belong to the paths above them. */
+.changes { margin-top: -8px; }
+.changes li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font: 400 12.5px/1.8 var(--mono); }
+.removed, .added { padding: 0 6px; border-radius: 3px; }
 .removed { background: var(--del); }
 .added { background: var(--add); }
-.rechecks { margin-top: 6px; }
-.recheck { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 13px; }
-.foot { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.recheck { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; font-size: 14px; }
+.foot { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 13.5px; color: var(--muted); }
 
 /* ---------- recipes ---------- */
-.recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
-.recipe { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; min-width: 0; }
-.used { font-size: 12.5px; color: var(--muted); }
-.used b { font: 400 22px/1.1 var(--body); color: var(--ink); }
-.tree { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font: 500 12px/1.5 var(--mono); margin: 6px 0; }
-.taken { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; font: 400 12.5px/1.6 var(--mono); color: var(--muted); }
+/* A recipe is wide enough to hold its tree hash on one line. */
+.recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 14px; }
+.recipe { position: relative; display: grid; align-content: start; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: #fff; min-width: 0; }
+.used { font-size: 14px; color: var(--muted); }
+.used b { font: 400 26px/1 var(--body); color: var(--ink); margin-right: 2px; }
+.tree { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font: 500 12.5px/1.5 var(--mono); }
+.taken { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-top: 12px; border-top: 1px solid var(--line-soft); font: 400 12.5px/1.6 var(--mono); color: var(--muted); }
 
 /* ---------- narrow screens: one column, and the patches of a group stacked ---------- */
 @media (max-width: 1099px) {
-  .work { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .work { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 719px) {
+  /* The bar stays one row on a phone while its status is a time: the trail keeps the ways out and drops the name of the page that is open. */
+  .bar .wrap { column-gap: 14px; }
+  .crumbs .mark { font-size: 21px; }
+  .crumbs li:nth-child(3) { display: none; }
+  .findings { padding: 0 12px; }
+  section { padding: 18px 16px 20px; }
   .head { grid-template-columns: minmax(0, 1fr); align-items: start; }
   .counts div { text-align: left; }
+  .counts dd { font-size: 36px; }
   .cols { grid-auto-flow: row; }
   .patch { border-left: 0; border-top: 1px solid var(--line-soft); }
   .patch:first-child { border-top: 0; }
-  .finding { grid-template-columns: 34px minmax(0, 1fr); }
-  .finding > .tag { grid-column: 2; justify-self: start; }
+  .finding { grid-template-columns: 34px minmax(0, 1fr); gap: 8px 14px; }
+  .finding > .explained.end { grid-column: 2; justify-self: start; }
+  footer.end .cols { grid-template-columns: minmax(0, 1fr); }
+  /* A branch names itself over its versions. */
+  .branch { grid-template-columns: minmax(0, 1fr); padding-left: 0; }
+  .branch-name { padding: 12px 12px 0; }
+  .repo-head, #components .row { padding-inline: 12px; }
 }

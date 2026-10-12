@@ -25,13 +25,18 @@ const PAGE = fileURLToPath(new URL("./src/page/", import.meta.url));
  * The files of the page, by the names `npm run build` gives them. A stylesheet and the
  * page itself are copied as they are, so a test gets their text. A script is built from
  * its TypeScript file, which no test runs in a browser, so only its name is handed over
- * here.
+ * here. An icon and a font are no text, so only their names are handed over too, and
+ * the build copies the fonts of `fonts/` and no other file of that folder.
  */
 function pageFiles(): { [name: string]: string } {
   const files: { [name: string]: string } = {};
   for (const name of readdirSync(PAGE)) {
     if (name.endsWith(".html") || name.endsWith(".css")) files[name] = readFileSync(join(PAGE, name), "utf8");
     else if (name.endsWith(".ts")) files[`${name.slice(0, -".ts".length)}.js`] = "";
+    else if (name.endsWith(".ico") || name.endsWith(".svg") || name.endsWith(".png")) files[name] = "";
+  }
+  for (const name of readdirSync(join(PAGE, "fonts"))) {
+    if (name.endsWith(".woff2") || name.endsWith(".ttf")) files[`fonts/${name}`] = "";
   }
   return files;
 }

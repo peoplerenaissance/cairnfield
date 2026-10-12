@@ -84,11 +84,16 @@ export class FakeQueue {
   }
 }
 
-const PAGE_FILE = /^\/page\/([a-z]+\.(html|css|js))$/;
+const PAGE_FILE = /^\/page\/((?:fonts\/)?[a-z-]+\.(html|css|js|ico|svg|png|woff2|ttf))$/;
 const MEDIA_TYPES: { readonly [extension: string]: string } = {
   html: "text/html; charset=utf-8",
   css: "text/css; charset=utf-8",
   js: "text/javascript; charset=utf-8",
+  ico: "image/vnd.microsoft.icon",
+  svg: "image/svg+xml",
+  png: "image/png",
+  woff2: "font/woff2",
+  ttf: "font/ttf",
 };
 
 /**

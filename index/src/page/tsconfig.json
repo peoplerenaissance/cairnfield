@@ -1,5 +1,5 @@
 {
-  // The two scripts of the page, as a browser runs them. `npm run build` writes them to
+  // The scripts of the page, as a browser runs them. `npm run build` writes them to
   // `dist/page/` as JavaScript modules, each `.ts` import turned into the `.js` file
   // beside it. Nothing is bundled, so a script takes only types from another package.
   "extends": "../../../tsconfig.base.json",
@@ -10,5 +10,5 @@
     "rootDir": ".",
     "outDir": "../../dist/page"
   },
-  "include": ["poll.ts", "render.ts"]
+  "include": ["poll.ts", "map.ts", "render.ts"]
 }
