@@ -102,6 +102,8 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - The command on one team's machine fetched another team's patch commit from that team's fork, with the fork's public read token. Both nodes were in one account.
 - The index read the nodes over HTTP. The index and the nodes are Workers in one account, and each sets the `global_fetch_strictly_public` compatibility flag.
 - A node shows a new head in the index within about a minute of a push.
+- **Observed on Oct 11, 2026**, after a deploy of the index. Its two pages answered with the content type `text/html`, and their script and stylesheet with `text/javascript` and `text/css`, each with no charset. The stand-in for the assets binding in the tests answers `text/html; charset=utf-8`.
+- **Observed on Oct 11, 2026**, in a browser. Cloudflare added the script of its Web Analytics beacon, from `static.cloudflareinsights.com`, to both pages of the index. The pages' content security policy takes scripts from the index's own origin alone, so the browser refused it and wrote one error to the console on each load. The pages drew as they should. The HTML that `curl` received held no such script.
 - Artifacts took a push of a commit whose root tree holds no file. The demo's reset pushed one to each node's repo of records on Oct 10, twice, and each node then listed no record at the new head.
 
 ## The index's first deploy
