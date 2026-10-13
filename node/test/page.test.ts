@@ -683,6 +683,11 @@ function rulesOf(style: string): { selectors: string[]; set: string[][] }[] {
   }));
 }
 
+/** A color written out as a function, in any of the forms CSS has for one. */
+const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix|color)\([^)]*\)/g;
+/** A color written out by a name. The list holds the plain names, which are the ones a hand reaches for. */
+const NAMED_COLOR = /\b(?:black|white|gr[ae]y|silver|red|green|blue|yellow|orange|purple|pink|brown|navy|teal|maroon|olive|lime|aqua|cyan|fuchsia|magenta)\b/i;
+
 const DARK_BLOCK = /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}/g;
 
 /** One rule of a style, as `rulesOf` reads it. */
@@ -785,15 +790,17 @@ describe("the node's page in a light and a dark scheme", () => {
     expect(set.length).toBeGreaterThan(0);
     // Each thing it sets is a token that the palette holds as a color, and it sets a color.
     for (const [token = "", value = ""] of set) expect([token, token.startsWith("--"), light.has(token), colorOf(value) !== undefined]).toEqual([token, true, true, true]);
+    // It gives every color of the palette another value. So a color added to the palette gets a dark value too.
+    expect([...light.keys()].filter((token) => !set.some(([name]) => name === token))).toEqual([]);
     // Beside its tokens the palette tells the browser that the page has both looks, and nothing else.
     expect((root[0] ?? []).filter(([property = ""]) => !property.startsWith("--"))).toEqual([["color-scheme", "light dark"]]);
   });
 
   it("writes out no color where it is used, apart from the shade of the stone before the node's address", async () => {
     const values = schemesOf(await styleOf()).rest.flatMap(({ set }) => set.map(([, value = ""]) => value));
-    expect(values.filter((value) => /#[0-9a-f]{3,8}\b/i.test(value))).toEqual([]);
+    expect(values.filter((value) => /#[0-9a-f]{3,8}\b/i.test(value) || NAMED_COLOR.test(value))).toEqual([]);
     // Black at part strength reads as a shade on the stone's own color in both schemes.
-    expect(values.flatMap((value) => value.match(/(?:rgb|hsl)a?\([^)]*\)/g) ?? [])).toEqual(["rgba(0, 0, 0, .17)"]);
+    expect(values.flatMap((value) => value.match(COLOR_FUNCTION) ?? [])).toEqual(["rgba(0, 0, 0, .17)"]);
   });
 
   it("keeps text readable on every ground it stands on, in both schemes", async () => {

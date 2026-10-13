@@ -1723,6 +1723,11 @@ function ratio(one: Color, other: Color): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+/** A color written out as a function, in any of the forms CSS has for one. */
+const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix|color)\([^)]*\)/g;
+/** A color written out by a name. The list holds the plain names, which are the ones a hand reaches for. */
+const NAMED_COLOR = /\b(?:black|white|gr[ae]y|silver|red|green|blue|yellow|orange|purple|pink|brown|navy|teal|maroon|olive|lime|aqua|cyan|fuchsia|magenta)\b/i;
+
 const DARK_BLOCK = /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}/g;
 
 /** One rule of a stylesheet, as `rulesOf` reads it. */
@@ -1781,6 +1786,8 @@ describe("the pages in a light and a dark scheme (R14)", () => {
     expect(set.length).toBeGreaterThan(0);
     // Each thing it sets is a token that the palette holds as a color, and it sets a color.
     for (const [token = "", value = ""] of set) expect([token, token.startsWith("--"), light.has(token), colorOf(value) !== undefined]).toEqual([token, true, true, true]);
+    // It gives every color of the palette another value but one: sandstone keeps its color in both schemes. So a color added to the palette gets a dark value, or a place in this list.
+    expect([...light.keys()].filter((token) => !set.some(([name]) => name === token))).toEqual(["--sandstone"]);
   });
 
   it("tells the browser that the page has both looks, so the browser's own parts follow", () => {
@@ -1797,9 +1804,9 @@ describe("the pages in a light and a dark scheme (R14)", () => {
 
   it("writes out no color where it is used, apart from the shade and grain of a stone and the shadow of a tip", () => {
     const values = schemesOf(styles()).rest.flatMap(({ set }) => set.map(([, value = ""]) => value));
-    expect(values.filter((value) => /#[0-9a-f]{3,8}\b/i.test(value))).toEqual([]);
+    expect(values.filter((value) => /#[0-9a-f]{3,8}\b/i.test(value) || NAMED_COLOR.test(value))).toEqual([]);
     // These read the same on a light and a dark ground: black, white or brown at part strength over a stone's own color, and a shadow that darkens.
-    expect(values.flatMap((value) => value.match(/(?:rgb|hsl)a?\([^)]*\)/g) ?? [])).toEqual([
+    expect(values.flatMap((value) => value.match(COLOR_FUNCTION) ?? [])).toEqual([
       // The stone before a team's name.
       "rgba(0, 0, 0, .17)",
       // A stone of a cairn, and the grain of slate, sandstone and ironstone.
@@ -1816,10 +1823,12 @@ describe("the pages in a light and a dark scheme (R14)", () => {
       // The shadow under a tip.
       "rgba(30, 42, 46, .6)",
     ]);
-    // The map's script holds no color either: it reads its two from the palette.
+    // The map's script holds no color either: it reads its two from the palette, by name. It draws nothing when a name reads empty, so the palette must hold both.
     const map = env.PAGE_SCRIPTS["map.ts"] ?? "";
-    expect(map).not.toBe("");
     expect(map.match(/#[0-9a-f]{3,8}\b/gi)).toBeNull();
+    const read = [...map.matchAll(/token: "(--[\w-]+)"/g)].map(([, token = ""]) => token);
+    expect(read).toEqual(["--contour", "--contour-5"]);
+    expect(read.filter((token) => !palettesOf(styles()).light.has(token))).toEqual([]);
   });
 
   it("keeps text readable on every ground it stands on, in both schemes", () => {
