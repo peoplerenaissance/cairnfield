@@ -1,4 +1,4 @@
-// What the demo script and the reset script share (R27): the two demo teams, each with
+// What the demo script, the reset script and the agent demo's script share (R27): the two demo teams, each with
 // a folder and an admin key of its own, the index they share through, and how a script
 // runs the `cairnfield` command for a team and waits for the index.
 //

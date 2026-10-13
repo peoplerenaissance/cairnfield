@@ -18,7 +18,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/tsconfig.json",
     "scan:secrets": "secretlint \"**/*\"",
     "demo": "node scripts/demo.ts",
-    "demo:reset": "node scripts/reset-demo.ts"
+    "demo:reset": "node scripts/reset-demo.ts",
+    "demo:agent": "node scripts/agent-demo.ts"
   },
   "devDependencies": {
     "@secretlint/secretlint-rule-pattern": "^13.0.7",
