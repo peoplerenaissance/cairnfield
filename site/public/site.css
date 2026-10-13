@@ -143,12 +143,24 @@
   .fa { fill: var(--slate); } .fb { fill: var(--sandstone); } .fc { fill: var(--ironstone); }
   .la { stroke: var(--slate); } .lb { stroke: var(--sandstone); } .lc { stroke: var(--ironstone); }
 
-  .term { background: #1B2529; color: #D7DFDB; font: 400 13px/1.7 var(--mono); padding: 16px 18px 18px; overflow-x: auto; }
-  .term .p { color: var(--lichen); } .term .cmd { color: #fff; font-weight: 500; }
-  .term .ok { color: #A9C77B; } .term .dimm { color: #7F8E91; } .term .bad { color: #E98AA5; }
-  .term div { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .term div + div { margin-top: 2px; }
+  /* ---------- a terminal, painted as the demo script paints one: one div for each line ---------- */
+  .term { --term: #1B2529; --pre: 9ch; --who: #D9BE94; background: var(--term); color: #D7DFDB; font: 400 13px/1.6 var(--mono); padding: 16px 18px 18px; overflow-x: auto; }
+  .term > div { white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* --pre is the width of a speaker's label and the two characters after it. A result's lines start under its first, and a line that wraps hangs. */
+  .term.marlow { --pre: 8ch; --who: #E39C80; }
+  .term .eng { --pre: 10ch; --who: #E8C36A; }
+  .term .say { padding-left: var(--pre); text-indent: calc(-1 * var(--pre)); }
+  .term > .dimm, .term > .beat { padding-left: 2ch; text-indent: -2ch; }
+  .term .j { padding-left: calc(var(--pre) + (var(--d) + 1) * 2ch); text-indent: -2ch; color: #AEBAB6; }
+  .term .d0 { --d: 0; } .term .d1 { --d: 1; } .term .d2 { --d: 2; } .term .d3 { --d: 3; } .term .d4 { --d: 4; }
+  .term .who { color: var(--who); font-weight: 600; }
+  .term .cmd, .term .hd { color: #fff; font-weight: 600; }
+  .term .flag { white-space: nowrap; }
+  .term .key { color: #8FBCDD; } .term .str, .term .add { color: #A9C77B; } .term .lit { color: var(--lichen); }
+  .term .dimm { color: #7F8E91; } .term .bad, .term .del { color: #E98AA5; }
+  .term .beat { font-weight: 600; }
   .term .gap { height: 12px; }
+  .term:focus-visible { outline-color: var(--lichen); outline-offset: -3px; }
 
   /* ---------- the command: two teams' terminals ---------- */
   .term-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
@@ -159,6 +171,11 @@
   .chrome.team { border-top: 4px solid var(--c); }
   .teammark { display: inline-flex; align-items: center; gap: 8px; font: 600 13px/1 var(--body); color: var(--ink); margin-left: 6px; }
   .teammark .stone { width: 22px; height: 10px; margin: 0; }
+  /* A frame is no taller than this, and its terminal scrolls. The fade at its foot covers lines only while more wait below it. */
+  .term-grid > .frame { display: flex; flex-direction: column; max-height: min(640px, 72vh); }
+  .term-grid > .frame > .chrome { flex: none; }
+  .term-grid > .frame > .term { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 0; scrollbar-width: thin; scrollbar-color: #50626A transparent; }
+  .term-grid > .frame > .term::after { content: ""; display: block; position: sticky; bottom: 0; height: 48px; margin: 0 -18px; background: linear-gradient(to bottom, rgba(27,37,41,0), var(--term) 86%); pointer-events: none; }
 
   /* ---------- three lenses: each team's file, and what it led to ---------- */
   .lenses { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
@@ -166,6 +183,9 @@
   .lens h3 { font: 400 24px/1.08 var(--display); margin: 0; }
   .lens .host { font: 500 12px/1 var(--mono); color: var(--muted); }
   .lens pre { margin: 0; font: 400 12px/1.6 var(--mono); background: var(--fog); border-radius: 6px; padding: 10px 12px; overflow-x: auto; }
+  /* A lens file's keys, strings and literals, in the terminal's three hues, darkened for a light ground. None is a team's color. */
+  .lens pre { color: var(--muted); }
+  .lens pre .key { color: #2C6490; } .lens pre .str { color: #2F6B3A; } .lens pre .lit { color: #6B6600; }
   .lens .result { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: end; margin-top: auto; padding-top: 6px; }
   .lens .verdict { font: 400 20px/1.08 var(--display); }
   .lens .why { font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
@@ -213,6 +233,7 @@
   footer.end p.badge { margin-top: 16px; line-height: 0; }
   footer.end p.badge img { height: 36px; width: auto; display: block; }
   footer.end .photo { margin: 0; }
+  footer.end .photo figcaption { margin-top: 10px; font-size: 13.5px; }
   footer.end .legal { margin-top: 28px; }
   footer.end .legal p { margin: 0; padding-top: 16px; border-top: 1px solid var(--line); }
   footer.end .photo img { display: block; width: 100%; height: auto; border-radius: 6px; box-shadow: 0 1px 0 rgba(255,255,255,.6), 0 14px 32px -16px rgba(40,50,52,.45); }
@@ -232,6 +253,10 @@
   /* The bar stays one row, so a link to a section lands clear of it. On a phone the two links into the page give way to the two that leave it. */
   @media (max-width: 520px) {
     .bar nav a[href^="#"] { display: none; }
+    /* On a phone a result's lines start at the edge and a wrapped command hangs by two characters, so a line keeps the width. */
+    .term { font-size: 12px; }
+    .term, .term.marlow, .term .eng { --pre: 2ch; }
+    .term .j { padding-left: calc((var(--d) + 1) * 2ch); }
   }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
