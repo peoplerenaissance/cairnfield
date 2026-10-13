@@ -3,34 +3,32 @@
 // which the test plays the review agent. No test reaches a network, calls a model or
 // starts an agent.
 
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SCHEMA_VERSION } from "@cairnfield/protocol";
+import { SCHEMA_VERSION, TEAM_BRANCH } from "@cairnfield/protocol";
 import type { View } from "@cairnfield/protocol";
-import { ADMIN_KEY, FIXTURES, INDEX, MODEL_KEY, NODE, OUTBOX, REGISTRATION_KEY, TOKEN, bench, demoPlugin, published } from "../../cli/test/support.ts";
+import { ADMIN_KEY, FIXTURES, INDEX, NODE, OUTBOX, REGISTRATION_KEY, git, published } from "../../cli/test/support.ts";
 import type { Bench, Seen, Site } from "../../cli/test/support.ts";
 import { agentDemo, enterAt } from "../agent-demo.ts";
-import { PLUGIN, Stopped, launch, openStage } from "../demo-stage.ts";
-import type { Deployment, Stage } from "../demo-stage.ts";
+import { PLUGIN, Stopped, openStage } from "../demo-stage.ts";
+import type { Stage } from "../demo-stage.ts";
 import { demo } from "../demo.ts";
-import { isNotice, testIndex } from "./index.ts";
+import { DEPLOYMENT, KEY_NAMES, RESET_KEY, TEAM_B, TEAM_B_KEY, demoBench, expectNothingSecretIn, stoppedWith } from "./demo-bench.ts";
+import { isNotice } from "./index.ts";
 import type { TestIndex } from "./index.ts";
 
 vi.setConfig({ testTimeout: 600_000 });
 
-const TEAM_B = "https://team-b.nodes.example";
-// Every key here is invented, and each node has its own.
-const TEAM_B_KEY = "the-admin-key-of-team-b";
-const RESET_KEY = "the-reset-key";
-/** The names a script or the command reads a key under. */
-const KEY_NAMES = ["CAIRNFIELD_ADMIN_KEY", "CAIRNFIELD_REGISTRATION_KEY", "ANTHROPIC_API_KEY", "TEAM_A_ADMIN_KEY", "TEAM_B_ADMIN_KEY", "CAIRNFIELD_RESET_KEY"];
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 /** The name a record waits under until `validate` has said its ID. */
 const PLACEHOLDER = `${"0".repeat(64)}.json`;
+/** What the script says last, whether it finished or stopped: the commands that put the four-step demo back. */
+const RESTORE = ["These two commands put the four-step demo back on the public demo page:", "npm run demo:reset", "npm run demo"];
 
 let on: Bench;
 let teamB: Site;
@@ -38,16 +36,11 @@ let index: TestIndex;
 let commits: { readonly first: string; readonly later: string };
 /** What the script told the person who runs it. */
 let said: string[];
+/** Called with each line the script says, as it says it. */
+let onSaid: (line: string) => void;
 /** Team A's saved findings, which the test writes as the agent: each file's path in an outbox, and each record's ID. */
 let saved: { readonly paths: readonly string[]; readonly ids: readonly string[] };
 const stages: Stage[] = [];
-
-const DEPLOYMENT: Deployment = {
-  index: INDEX,
-  nodes: { "team-a": NODE, "team-b": TEAM_B },
-  adminKeys: { "team-a": ADMIN_KEY, "team-b": TEAM_B_KEY },
-  registrationKey: REGISTRATION_KEY,
-};
 
 afterEach(() => {
   for (const opened of stages.splice(0)) rmSync(opened.work, { recursive: true, force: true });
@@ -56,7 +49,11 @@ afterEach(() => {
 
 /** Sets the stage for one run of the script on the bench. */
 async function stage(): Promise<Stage> {
-  const opened = await openStage(on.io, DEPLOYMENT, (line) => void said.push(line));
+  const say = (line: string): void => {
+    said.push(line);
+    onSaid(line);
+  };
+  const opened = await openStage(on.io, DEPLOYMENT, say);
   stages.push(opened);
   return opened;
 }
@@ -65,13 +62,6 @@ const outboxOf = (opened: Stage): string => join(opened.a.home, OUTBOX);
 
 /** The agent's part, played by the test: Team A's saved findings, each written where it belongs in the outbox. */
 const writesSaved = (opened: Stage): void => cpSync(`${FIXTURES}outboxes/team-a/records`, join(outboxOf(opened), "records"), { recursive: true });
-
-/** What the script stopped with. */
-const stoppedWith = async (run: Promise<unknown>): Promise<string> => {
-  const stopped = await run.catch((error: unknown) => error);
-  expect(stopped).toBeInstanceOf(Stopped);
-  return (stopped as Stopped).message;
-};
 
 /** What the command printed for the last run of one of its commands by Team A. */
 function printed(name: string): { readonly [field: string]: unknown } {
@@ -92,32 +82,50 @@ async function listed(): Promise<string[]> {
   return (view?.findings.flatMap((group) => group.findings.map(({ id }) => id)) ?? []).sort();
 }
 
+/** The line the script says once the index lists the records. A run that stopped does not say it. */
+const success = (): string => `The index lists what team-a published: ${INDEX}/components/${commits.first}`;
+
 /** Everything the script told the operator, on either stream, holds no key, no token and no Git remote. */
-function expectNothingSecretSaid(): void {
-  const told = [...said, ...on.warnings].join("\n");
-  for (const secret of [ADMIN_KEY, TEAM_B_KEY, REGISTRATION_KEY, RESET_KEY, MODEL_KEY, TOKEN]) expect(told).not.toContain(secret);
-  expect(told).not.toMatch(/art_v[0-9]+_|artifacts\.cloudflare\.net/);
+const expectNothingSecretSaid = (): void => expectNothingSecretIn([...said, ...on.warnings].join("\n"));
+
+/** One word of a line the script printed for a shell, as a shell reads it. */
+const asShellReads = (word: string): string => execFileSync("sh", ["-c", `printf %s ${word}`], { encoding: "utf8" });
+
+/** The folder the printed line changes to, as the script wrote it for a shell: the text between `cd` and `&& env`. */
+function folderWord(lines: readonly string[]): string {
+  const starts = lines.filter((line) => line.endsWith(" claude"));
+  expect(starts).toHaveLength(1);
+  return /^cd (.+) && env /.exec(starts[0] ?? "")?.[1] ?? "";
 }
 
 type Respond = NonNullable<Bench["respond"]>;
 
-/** Has a test answer a request in its own way. `answered` gives what the bench's node or index answers. */
+/** Has a test answer a request in its own way. `answered` gives what the bench's index answers, and nothing for a request to a node. */
 function instead(respond: (seen: Seen, answered: () => ReturnType<Respond>) => ReturnType<Respond>): void {
   const answered = on.respond;
   on.respond = (seen) => respond(seen, () => answered?.(seen));
 }
 
+/** Has the index serve each view as a test rewrites it. */
+function viewAs(rewrite: (view: View) => View): void {
+  instead((seen, answered) => {
+    const given = answered();
+    if (!given || seen.method !== "GET" || !seen.url.endsWith("/view")) return given;
+    return Promise.resolve(given).then(async (response) => (response.status === 200 ? Response.json(rewrite((await response.json()) as View)) : response));
+  });
+}
+
+/** A view without one finding. */
+const without = (view: View, id: string): View => ({
+  ...view,
+  findings: view.findings.map((group) => ({ ...group, findings: group.findings.filter((finding) => finding.id !== id) })).filter((group) => group.findings.length > 0),
+});
+
 describe("the agent demo's operator script", () => {
   beforeEach(() => {
-    on = bench();
-    teamB = on.another(TEAM_B, "cairnfield-team-b", TEAM_B_KEY);
-    commits = demoPlugin(on);
-    demoPlugin(teamB);
-    // The index reads a node two reads of a view after it is told, so a script that does not wait for it fails.
-    index = testIndex(on, new Map<string, Site>([[NODE, on], [TEAM_B, teamB]]), { registration: REGISTRATION_KEY, reset: RESET_KEY }, 2);
-    // The shell the script runs in holds every key of the demo.
-    Object.assign(on.env, { TEAM_A_ADMIN_KEY: ADMIN_KEY, TEAM_B_ADMIN_KEY: TEAM_B_KEY, CAIRNFIELD_RESET_KEY: RESET_KEY });
+    ({ on, teamB, index, commits } = demoBench());
     said = [];
+    onSaid = () => undefined;
     const names = readdirSync(`${FIXTURES}outboxes/team-a/records/${commits.first}/finding`).sort();
     saved = { paths: names.map((name) => `records/${commits.first}/finding/${name}`), ids: names.map((name) => name.replace(/\.json$/, "")) };
   });
@@ -153,8 +161,9 @@ describe("the agent demo's operator script", () => {
     expect(await listed()).toEqual(saved.ids);
     // The script ended only once the index had read the node: it waited on the view.
     expect(on.sleeps.length).toBeGreaterThan(0);
-    // It ends by naming the two commands that put the public page back, each on a line of its own.
-    expect(said.slice(-2)).toEqual(["npm run demo:reset", "npm run demo"]);
+    // It says so, and ends by naming the two commands that put the public page back, each on a line of its own.
+    expect(said).toContain(success());
+    expect(said.slice(-3)).toEqual(RESTORE);
     // The operator's folder is kept, with the outbox as the agent left it.
     expect(readdirSync(join(outboxOf(opened), "records", commits.first, "finding")).sort()).toEqual(saved.ids.map((id) => `${id}.json`));
     expectNothingSecretSaid();
@@ -178,31 +187,50 @@ describe("the agent demo's operator script", () => {
         writesSaved(opened);
       });
 
-      // The skill is the repo's file, byte for byte, in the operator's folder and nowhere under the user's home.
+      // The skill is the repo's file, byte for byte, as a file of its own in the operator's folder, and nowhere under the user's home.
       const repoSkill = readFileSync(join(REPO, "skills/cairnfield/SKILL.md"));
       expect(placed?.equals(repoSkill)).toBe(true);
       expect(readFileSync(skill).equals(repoSkill)).toBe(true);
+      expect(lstatSync(skill).isFile()).toBe(true);
+      expect(lstatSync(dirname(skill)).isDirectory()).toBe(true);
       expect(readdirSync(home)).toEqual([]);
 
       // One line starts Claude Code in the operator's folder with every key name unset.
-      const starts = before.filter((line) => line.endsWith(" claude"));
-      expect(starts).toHaveLength(1);
-      const [start = ""] = starts;
-      expect(start.startsWith(`cd ${opened.a.home} && env `)).toBe(true);
+      expect(asShellReads(folderWord(before))).toBe(opened.a.home);
+      const [start = ""] = before.filter((line) => line.endsWith(" claude"));
       for (const name of KEY_NAMES) expect(start).toContain(` -u ${name} `);
       expect(start.match(/ -u /g)).toHaveLength(KEY_NAMES.length);
       // The pane needs the Node the repo names.
       expect(before.some((line) => line.includes(`Node ${readFileSync(join(REPO, ".nvmrc"), "utf8").trim()}`))).toBe(true);
       // The prompt names the pinned commit and the launcher by its path on this machine.
-      expect(before).toContain(
-        `Use the cairnfield skill to review the checkout of ${commits.first}. Start \`cairnfield\` as \`node ${join(REPO, "cli/bin/cairnfield.mjs")} <command>\`. Stop when validate accepts your files.`,
-      );
+      const prompt = /^Use the cairnfield skill to review the checkout of ([0-9a-f]{40})\. Start `cairnfield` as `node (.+)`\. Stop when validate accepts your files\.$/;
+      const [, commit, launcher = ""] = before.map((line) => prompt.exec(line)).find((found) => found !== null) ?? [];
+      expect(commit).toBe(commits.first);
+      expect(asShellReads(launcher)).toBe(join(REPO, "cli/bin/cairnfield.mjs"));
       expect(before).toContain(`The operator's folder: ${opened.a.home}`);
       // The person pastes from these lines into a shell that runs a comment line as a command.
       expect(said.filter((line) => line.trimStart().startsWith("#"))).toEqual([]);
       expectNothingSecretSaid();
     } finally {
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("quotes the operator's folder for the shell when its path holds a space or a quote", async () => {
+    const odd = mkdtempSync(join(tmpdir(), "cairnfield it's odd-"));
+    try {
+      vi.stubEnv("TMPDIR", odd);
+      const opened = await stage();
+      expect(opened.a.home.startsWith(odd)).toBe(true);
+
+      await agentDemo(opened, RESET_KEY, async () => writesSaved(opened));
+
+      const word = folderWord(said);
+      expect(word).not.toBe(opened.a.home);
+      expect(asShellReads(word)).toBe(opened.a.home);
+      expect(published(on)).toEqual(saved.paths);
+    } finally {
+      rmSync(odd, { recursive: true, force: true });
     }
   });
 
@@ -248,6 +276,9 @@ describe("the agent demo's operator script", () => {
     expect(timesRun("validate") + timesRun("publish")).toBe(0);
     expect(existsSync(on.repo("team"))).toBe(false);
     expect(existsSync(teamB.repo("team"))).toBe(false);
+    // A run that stopped still names the commands that put the public page back.
+    expect(said).not.toContain(success());
+    expect(said.slice(-3)).toEqual(RESTORE);
   });
 
   it("refuses to publish when the config file is gone", async () => {
@@ -264,6 +295,23 @@ describe("the agent demo's operator script", () => {
     expect(timesRun("validate") + timesRun("publish")).toBe(0);
   });
 
+  it("sends the admin key to the node it pinned with, when the config file is rewritten after it was checked", async () => {
+    const opened = await stage();
+    // Something the agent left running rewrites the config once the script has compared it: `validate` is said after the comparison.
+    onSaid = (line) => {
+      if (line === "team-a$ cairnfield validate") writeFileSync(join(opened.a.home, "cairnfield.json"), `${JSON.stringify({ node: TEAM_B, index: INDEX, team: "team-a" }, null, 2)}\n`);
+    };
+
+    await agentDemo(opened, RESET_KEY, async () => writesSaved(opened));
+
+    expect(JSON.parse(readFileSync(join(opened.a.home, "cairnfield.json"), "utf8"))).toMatchObject({ node: TEAM_B });
+    // Team B's node got no call that carries a key, and Team A's node holds the records.
+    expect(on.requests.filter(({ url }) => url.startsWith(`${TEAM_B}/admin/`))).toEqual([]);
+    expect(existsSync(teamB.repo("team"))).toBe(false);
+    expect(published(on)).toEqual(saved.paths);
+    expect(await listed()).toEqual(saved.ids);
+  });
+
   it("says the outbox holds no record and pauses again, and publishes nothing until it holds one", async () => {
     const opened = await stage();
     let pauses = 0;
@@ -275,8 +323,9 @@ describe("the agent demo's operator script", () => {
         calls = on.requests.length;
         return;
       }
-      // The second pause: the script has said why it did not publish, and it made no call to a node.
+      // The second pause: the script has said why it did not publish and how to go on, and it made no call to a node.
       expect(said).toContain("The outbox holds no record, so nothing was published.");
+      expect(said).toContain("The line above starts the agent again, in the same folder.");
       expect(adminCalls(calls)).toEqual([]);
       expect(timesRun("publish")).toBe(0);
       writesSaved(opened);
@@ -320,17 +369,17 @@ describe("the agent demo's operator script", () => {
 
   it("sends the notice itself when publish pushed the records and could not tell the index", async () => {
     const opened = await stage();
-    let failed = 0;
+    let notices = 0;
     // The index does not take the first notice.
-    instead((seen, answered) => (isNotice(seen) && failed++ === 0 ? new Response("", { status: 500 }) : answered()));
+    instead((seen, answered) => (isNotice(seen) && notices++ === 0 ? new Response("", { status: 500 }) : answered()));
 
     await agentDemo(opened, RESET_KEY, async () => writesSaved(opened));
 
     expect(printed("publish")).toMatchObject({ published: saved.paths, notice: "failed" });
-    expect(failed).toBe(2);
+    expect(notices).toBe(2);
     expect(index.requests.filter(isNotice).map(({ body }) => body)).toEqual([{ node: NODE }]);
     expect(await listed()).toEqual(saved.ids);
-    expect(said.slice(-2)).toEqual(["npm run demo:reset", "npm run demo"]);
+    expect(said).toContain(success());
   });
 
   it("stops at once when the index does not know the node the notice names", async () => {
@@ -359,42 +408,73 @@ describe("the agent demo's operator script", () => {
     );
 
     expect(stopped).toBe("team-a: cairnfield publish ended with exit code 4");
-    expect(said.at(-1)).toBe('team-a> {"error":"node-refused","reason":"unauthorized"}');
+    expect(printed("publish")).toEqual({ error: "node-refused", reason: "unauthorized" });
+  });
+
+  it("stops when the node's branch does not hold a record publish pushed", async () => {
+    const opened = await stage();
+    const [missing = ""] = saved.paths;
+    // Once Team A's node holds records, it lists every one but the first.
+    instead((seen, answered) => {
+      if (seen.method !== "GET" || seen.url !== `${NODE}/records` || !existsSync(on.repo("team"))) return answered();
+      const head = git(on.repo("team"), ["rev-parse", TEAM_BRANCH]);
+      const records = git(on.repo("team"), ["ls-tree", "-r", head, "records/"])
+        .split("\n")
+        .map((line) => ({ path: line.split("\t")[1] ?? "", blob: line.split(/[ \t]/)[2] ?? "" }))
+        .filter(({ path }) => path !== missing);
+      return Response.json({ head, records });
+    });
+
+    const stopped = await stoppedWith(agentDemo(opened, RESET_KEY, async () => writesSaved(opened)));
+
+    expect(stopped).toBe(`team-a: the branch of the node's repo of records does not hold ${missing}`);
+    // It stopped there, and did not wait for the index.
+    expect(on.sleeps).toEqual([]);
+    expect(said).not.toContain(success());
+  });
+
+  it("stops when the index has read the node and does not list a finding", async () => {
+    const opened = await stage();
+    const [missing = ""] = saved.ids;
+    // The index neither lists the finding nor rejects it.
+    viewAs((view) => without(view, missing));
+
+    const stopped = await stoppedWith(agentDemo(opened, RESET_KEY, async () => writesSaved(opened)));
+
+    expect(stopped).toBe(`the index does not list the finding ${missing}`);
+    expect(said).not.toContain(success());
   });
 
   it("stops and names the record and the reason when the index rejects one", async () => {
     const opened = await stage();
     const [rejected = ""] = saved.ids;
     // The index of the bench rejects no record that passed `validate`. This one's view has one of the findings among its rejected work.
-    instead((seen, answered) => {
-      const given = answered();
-      if (!given || seen.method !== "GET" || !seen.url.endsWith("/view")) return given;
-      return Promise.resolve(given).then(async (response) => {
-        if (response.status !== 200) return response;
-        const view = (await response.json()) as View;
-        return Response.json({
-          ...view,
-          findings: view.findings.map((group) => ({ ...group, findings: group.findings.filter(({ id }) => id !== rejected) })).filter((group) => group.findings.length > 0),
-          rejected: view.findings.some((group) => group.findings.some(({ id }) => id === rejected)) ? [{ node: NODE, hash: rejected, type: "finding", reason: "lines-out-of-range" }] : [],
-        });
-      });
-    });
+    viewAs((view) => ({
+      ...without(view, rejected),
+      rejected: view.findings.some((group) => group.findings.some(({ id }) => id === rejected)) ? [{ node: NODE, hash: rejected, type: "finding", reason: "lines-out-of-range" }] : [],
+    }));
 
     const stopped = await stoppedWith(agentDemo(opened, RESET_KEY, async () => writesSaved(opened)));
 
     expect(stopped).toBe(`the index rejected the finding ${rejected}: lines-out-of-range`);
-    expect(said.slice(-2)).not.toEqual(["npm run demo:reset", "npm run demo"]);
+    expect(said).not.toContain(success());
+    expect(said.slice(-3)).toEqual(RESTORE);
   });
 });
 
 describe("the pause", () => {
+  /** Standard input of a terminal, as far as the pause can tell. */
+  const terminal = (): PassThrough => Object.assign(new PassThrough(), { isTTY: true });
+  /** One turn of the event loop, in which a line that was written reaches the pause. */
+  const aTurn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
   it("ends at Enter and at no other key", async () => {
-    const keys = Object.assign(new PassThrough(), { isTTY: true });
+    const keys = terminal();
     let ended = false;
 
     const paused = enterAt(keys)().then(() => void (ended = true));
     keys.write("y");
-    await new Promise((resolve) => setImmediate(resolve));
+    await aTurn();
     expect(ended).toBe(false);
     keys.write("\n");
     await paused;
@@ -403,21 +483,21 @@ describe("the pause", () => {
   });
 
   it("waits again for each pause", async () => {
-    const keys = Object.assign(new PassThrough(), { isTTY: true });
+    const keys = terminal();
     const pause = enterAt(keys);
 
     keys.write("\n");
     await pause();
     let ended = false;
     const second = pause().then(() => void (ended = true));
-    await new Promise((resolve) => setImmediate(resolve));
+    await aTurn();
     expect(ended).toBe(false);
     keys.write("\n");
     await second;
   });
 
   it("stops the script when standard input ends, because no person said go", async () => {
-    const keys = Object.assign(new PassThrough(), { isTTY: true });
+    const keys = terminal();
 
     const paused = enterAt(keys)();
     keys.end();
@@ -425,34 +505,68 @@ describe("the pause", () => {
     expect(await stoppedWith(paused)).toContain("standard input ended");
   });
 
-  describe("off a terminal", () => {
-    let errors: string[];
-    let logged: string[];
-    beforeEach(() => {
-      errors = [];
-      logged = [];
-      vi.spyOn(console, "error").mockImplementation((line: string) => void errors.push(line));
-      vi.spyOn(console, "log").mockImplementation((line: string) => void logged.push(line));
-      const shell = { TEAM_A_NODE_URL: NODE, TEAM_B_NODE_URL: TEAM_B, INDEX_URL: INDEX, TEAM_A_ADMIN_KEY: ADMIN_KEY, TEAM_B_ADMIN_KEY: TEAM_B_KEY, CAIRNFIELD_REGISTRATION_KEY: REGISTRATION_KEY, CAIRNFIELD_RESET_KEY: RESET_KEY };
-      for (const [name, value] of Object.entries(shell)) vi.stubEnv(name, value);
-    });
-    afterEach(() => {
-      vi.restoreAllMocks();
-      process.exitCode = undefined;
+  it("stops the script when standard input ends after a key that was not Enter", async () => {
+    const keys = terminal();
+
+    const paused = enterAt(keys)();
+    keys.write("y");
+    keys.end();
+
+    expect(await stoppedWith(paused)).toContain("standard input ended");
+  });
+
+  it("is refused off a terminal, where no person is there to end it", () => {
+    // Standard input is a pipe here, as it is when the script is started by another program.
+    let stopped: unknown;
+    try {
+      enterAt(new PassThrough());
+    } catch (error) {
+      stopped = error;
+    }
+
+    expect(stopped).toBeInstanceOf(Stopped);
+    expect((stopped as Stopped).message).toBe("standard input is not a terminal. The pause is a person's to end, so run this script in a terminal");
+  });
+});
+
+describe("the script's start from the command line", () => {
+  /** A folder for the run's own temporary folder, so a start that gets as far as setting its stage leaves nothing behind. */
+  let scratch: string;
+  beforeEach(() => {
+    scratch = mkdtempSync(join(tmpdir(), "cairnfield-start-"));
+  });
+  afterEach(() => {
+    rmSync(scratch, { recursive: true, force: true });
+  });
+
+  /** Starts the script as `npm run demo:agent` does, with standard input as a pipe. Every address and key is invented, and no start here gets as far as a call. */
+  const start = (shell: { readonly [name: string]: string }): { readonly status: number | null; readonly stdout: string; readonly stderr: string } =>
+    spawnSync(process.execPath, [join(REPO, "scripts/agent-demo.ts")], { cwd: REPO, env: { PATH: process.env["PATH"] ?? "", TMPDIR: scratch, ...shell }, input: "", encoding: "utf8" });
+
+  it("ends with 2 and names every address and both keys of the index when none is set", () => {
+    const ran = start({});
+
+    expect(ran.status).toBe(2);
+    expect(ran.stderr).toContain(
+      "The agent demo cannot start. Set these in the environment: TEAM_A_NODE_URL, TEAM_B_NODE_URL, INDEX_URL, TEAM_A_ADMIN_KEY, TEAM_B_ADMIN_KEY, CAIRNFIELD_RESET_KEY, CAIRNFIELD_REGISTRATION_KEY",
+    );
+    expect(ran.stdout).toBe("");
+  });
+
+  it("ends with 1 before the reset when standard input is no terminal, with a message that names the terminal", () => {
+    const ran = start({
+      TEAM_A_NODE_URL: NODE,
+      TEAM_B_NODE_URL: TEAM_B,
+      INDEX_URL: INDEX,
+      TEAM_A_ADMIN_KEY: ADMIN_KEY,
+      TEAM_B_ADMIN_KEY: TEAM_B_KEY,
+      CAIRNFIELD_REGISTRATION_KEY: REGISTRATION_KEY,
+      CAIRNFIELD_RESET_KEY: RESET_KEY,
     });
 
-    it("stops the script before the reset, with a message that names the terminal", async () => {
-      // Standard input is a pipe here, as it is when the script is started by another program.
-      const piped = new PassThrough();
-
-      await launch("agent demo", ["CAIRNFIELD_RESET_KEY", "CAIRNFIELD_REGISTRATION_KEY"], (opened, resetKey) => {
-        stages.push(opened);
-        return agentDemo(opened, resetKey, enterAt(piped));
-      });
-
-      expect(process.exitCode).toBe(1);
-      expect(errors).toEqual(["The agent demo stopped: standard input is not a terminal. The pause is a person's to end, so run this script in a terminal"]);
-      expect(logged).toEqual([]);
-    });
+    expect(ran.status).toBe(1);
+    expect(ran.stderr).toContain("The agent demo stopped: standard input is not a terminal. The pause is a person's to end, so run this script in a terminal");
+    // It said nothing: the reset says what it is about to reset before it makes a call.
+    expect(ran.stdout).toBe("");
   });
 });

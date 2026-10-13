@@ -1,5 +1,6 @@
 // The demo's first step with a review agent of the team's own in it, for a recording.
-// This script is the operator's half (R21): it holds the keys, and the agent holds none.
+// This script is the operator's half (R21): it holds the keys, and the agent's shell holds
+// none.
 //
 //   npm run demo:agent
 //
@@ -9,16 +10,26 @@
 // prompt for the agent. Then it waits. It starts no agent and watches none: the person
 // starts the agent in another pane, and presses Enter here once the agent has stopped.
 //
-// At Enter it publishes what the agent left in the outbox. It first holds the config file
-// to the bytes it pinned with, because an agent that has read a hostile component could
-// have rewritten it to name another node. It then runs `validate`, and waits again when
-// the outbox holds no record or a file is refused. After `publish` it checks that the
-// node's branch holds each record and that the index lists each finding, and stops at the
-// first that is missing or rejected.
+// At Enter it publishes what the agent left in the outbox. It reads the config file once,
+// before it waits, and `validate` and `publish` work from that reading. So the admin key
+// goes to the node the script pinned with, whatever the file says by then. It still holds
+// the file to the bytes it pinned with and stops when they differ, because an agent that
+// has read a hostile component could have rewritten it. It runs `validate`, and waits
+// again when the outbox holds no record or a file is refused. After `publish` it checks
+// that the node's branch holds each record and that the index lists each finding, and
+// stops at the first that is missing or rejected.
 //
-// The reset empties the public demo page, and this run leaves one team's findings on it.
-// So the script ends by naming the two commands that put the four-step demo back. It
-// keeps the operator's folder, whose outbox is what the agent wrote.
+// The printed line keeps the keys out of the agent's own environment, and it does no more
+// than that. This script holds them in its own environment while it waits, and a process
+// can read the environment of another process of the same user. So the split holds for an
+// agent that keeps to its skill file, and not for one that a component has turned and
+// that goes looking. Against that one, run the agent as another user of the machine, or in
+// a container that sees neither this process nor the operator's folder.
+//
+// The reset empties the public demo page, and this run leaves at most one team's findings
+// on it. So the script ends, whether it finished or stopped, by naming the two commands
+// that put the four-step demo back. It keeps the operator's folder, whose outbox is what
+// the agent wrote.
 //
 // It reads the addresses and keys `npm run demo` and `npm run demo:reset` read, under the
 // same names, and prints no key, no token and no Git remote.
@@ -30,7 +41,9 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseRecordPath } from "@cairnfield/protocol";
-import { REGISTRATION_KEY } from "../cli/src/config.ts";
+import { publish } from "../cli/src/commands/publish.ts";
+import { validate } from "../cli/src/commands/validate.ts";
+import { REGISTRATION_KEY, loadHome } from "../cli/src/config.ts";
 import { EXIT } from "../cli/src/outcome.ts";
 import { KEYS, PLUGIN, RESET_KEY, Stopped, attempt, halt, launch, notify, pin, processed, recordsOf, settle, untilView } from "./demo-stage.ts";
 import type { Stage } from "./demo-stage.ts";
@@ -62,27 +75,35 @@ export function enterAt(input: NodeJS.ReadableStream & { readonly isTTY?: boolea
   if (input.isTTY !== true) halt("standard input is not a terminal. The pause is a person's to end, so run this script in a terminal");
   return () =>
     new Promise<void>((resolve, reject) => {
+      // When its input ends, readline hands over what was typed with no Enter after it as a line. That is no go.
+      let ended = false;
+      const atEnd = (): void => void (ended = true);
+      // Set before readline listens, so it runs before readline's own listener does.
+      input.once("end", atEnd);
       const lines = createInterface({ input });
       lines.once("line", () => {
-        resolve();
+        if (!ended) resolve();
         lines.close();
       });
-      // Closed with no line read: standard input ended, and nobody said go.
-      lines.once("close", () => reject(new Stopped("standard input ended before the person said go, so nothing was published")));
+      // Closed with no go: standard input ended, and nobody pressed Enter.
+      lines.once("close", () => {
+        input.off("end", atEnd);
+        reject(new Stopped("standard input ended before the person said go, so nothing was published"));
+      });
     });
 }
 
-/**
- * Plays the operator's half of the demo's first step for Team A. `pause` returns when the
- * person says go. The script publishes at no other moment.
- */
-export async function agentDemo(stage: Stage, resetKey: string, pause: Pause): Promise<void> {
+/** Resets the demo, pins, waits for the person, publishes what the agent wrote and checks that it arrived. */
+async function operatorsHalf(stage: Stage, resetKey: string, pause: Pause): Promise<void> {
   const { a, say } = stage;
   await reset(stage, resetKey);
 
   // With an index in the config, `pin` registers the node and the commit (KTD12), and `publish` tells the index (KTD11).
   await settle(stage, a, { shares: true });
   await pin(stage, a, first);
+  // Read once, before any agent runs here. `validate` and `publish` below work from this
+  // reading, so the admin key goes to the node it names, whatever the file says by then.
+  const home = await loadHome(a.io, undefined);
   const config = join(a.home, CONFIG_FILE);
   const pinnedWith = await readFile(config);
 
@@ -97,24 +118,25 @@ export async function agentDemo(stage: Stage, resetKey: string, pause: Pause): P
   say(`Start the agent in another pane, on Node ${nodeVersion} or later. This line starts Claude Code in that folder with every key of the demo unset:`);
   say(`cd ${word(a.home)} && env ${KEYS.map((name) => `-u ${name}`).join(" ")} claude`);
   say("Then give the agent this prompt:");
-  say(`Use the cairnfield skill to review the checkout of ${first}. Start \`cairnfield\` as \`node ${word(LAUNCHER)} <command>\`. Stop when validate accepts your files.`);
+  say(`Use the cairnfield skill to review the checkout of ${first}. Start \`cairnfield\` as \`node ${word(LAUNCHER)}\`. Stop when validate accepts your files.`);
 
   for (;;) {
-    // An agent that has quit has no shell left that could write between the checks below and the push.
+    // An agent that has quit has no shell left to write in the folder while the script checks and pushes.
     say("When the agent has stopped, quit it. Then press Enter here to publish what it wrote.");
     await pause();
-    // The config comes first. `validate` reads it, and a config the agent rewrote could name another node.
+    // A changed config file changes nothing below, which works from the earlier reading. It shows that something wrote outside the outbox.
     const now = await readFile(config).catch(() => undefined);
     if (!now?.equals(pinnedWith)) halt(`${CONFIG_FILE} is not the file this script pinned with, so nothing was published`);
-    const checked = await attempt(stage, a, "validate");
+    const checked = await attempt(stage, a, "validate", () => validate(home));
     if (checked.code === EXIT.ok) {
       if (checked.output["records"] !== 0) break;
       say("The outbox holds no record, so nothing was published.");
     } else if (checked.code === EXIT.invalid) say("validate refused a file in the outbox, so nothing was published.");
     else halt(`${a.label}: cairnfield validate ended with exit code ${checked.code}`);
+    say("The line above starts the agent again, in the same folder.");
   }
 
-  const pushed = await attempt(stage, a, "publish");
+  const pushed = await attempt(stage, a, "publish", () => publish(a.io, home));
   if (pushed.code === EXIT.index) {
     // The records are on the branch, and the index was not told. A notice is a hint (KTD11), so one more is sent.
     say("publish pushed the records and could not tell the index. Sending the notice again.");
@@ -137,9 +159,22 @@ export async function agentDemo(stage: Stage, resetKey: string, pause: Pause): P
 
   say(`The index lists what ${a.label} published: ${stage.index}/components/${first}`);
   say(`The operator's folder is kept, with the outbox as the agent left it: ${a.home}`);
-  say("The public demo page now shows this run alone. These two commands put the four-step demo back:");
-  say("npm run demo:reset");
-  say("npm run demo");
+}
+
+/**
+ * Plays the operator's half of the demo's first step for Team A. `pause` returns when the
+ * person says go, and the script publishes at no other moment. Whether it finishes or
+ * stops, it ends by naming the commands that put the four-step demo back: its reset has
+ * emptied the public demo page by then.
+ */
+export async function agentDemo(stage: Stage, resetKey: string, pause: Pause): Promise<void> {
+  try {
+    await operatorsHalf(stage, resetKey, pause);
+  } finally {
+    stage.say("These two commands put the four-step demo back on the public demo page:");
+    stage.say("npm run demo:reset");
+    stage.say("npm run demo");
+  }
 }
 
 if (import.meta.main) {

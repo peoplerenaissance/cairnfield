@@ -18,7 +18,7 @@ import { MODEL_KEY } from "../cli/src/agents/live.ts";
 import { ADMIN_KEY, REGISTRATION_KEY } from "../cli/src/config.ts";
 import { processIo } from "../cli/src/io.ts";
 import type { Io } from "../cli/src/io.ts";
-import { EXIT, Stop } from "../cli/src/outcome.ts";
+import { EXIT, Stop, outcomeOf } from "../cli/src/outcome.ts";
 import type { Outcome } from "../cli/src/outcome.ts";
 import { run } from "../cli/src/run.ts";
 import { callIndex, nodeListing } from "../cli/src/services.ts";
@@ -269,17 +269,17 @@ export async function settle(stage: Stage, team: Team, as: { readonly shares: bo
   await writeFile(join(team.home, "cairnfield.json"), `${JSON.stringify(config, null, 2)}\n`);
 }
 
-/** Runs the command and says what it ran and what it printed. */
-async function runAndSay(stage: Stage, who: string, io: Io, argv: readonly string[]): Promise<Outcome> {
+/** Says what a command is run as, has `work` run it, and says what it printed. */
+async function runAndSay(stage: Stage, who: string, argv: readonly string[], work: () => Promise<Outcome>): Promise<Outcome> {
   stage.say(`${who}$ cairnfield ${argv.join(" ")}`);
-  const outcome = await run(io, argv);
+  const outcome = await work();
   stage.say(`${who}> ${JSON.stringify(outcome.output)}`);
   return outcome;
 }
 
 /** Runs the command, and stops the script at any exit code but 0. Returns what the command printed. */
 async function runs(stage: Stage, who: string, io: Io, argv: readonly string[]): Promise<Outcome["output"]> {
-  const outcome = await runAndSay(stage, who, io, argv);
+  const outcome = await runAndSay(stage, who, argv, () => run(io, argv));
   if (outcome.code !== EXIT.ok) halt(`${who}: cairnfield ${argv[0] ?? ""} ended with exit code ${outcome.code}`);
   return outcome.output;
 }
@@ -287,8 +287,14 @@ async function runs(stage: Stage, who: string, io: Io, argv: readonly string[]):
 /** Runs the command for a team. */
 export const command = (stage: Stage, team: Team, ...argv: string[]): Promise<Outcome["output"]> => runs(stage, team.label, team.io, argv);
 
-/** Runs the command for a team and stops at no exit code, for a call whose exit code the script reads. Returns the code and what the command printed. */
-export const attempt = (stage: Stage, team: Team, ...argv: string[]): Promise<Outcome> => runAndSay(stage, team.label, team.io, argv);
+/**
+ * Has `work` run one of the command's commands for a team, says the two lines `command`
+ * says, and stops the script at no exit code. It is for a call whose exit code the script
+ * reads, and for one that must work from a config the script read earlier: `work` calls the
+ * command's own function with that config, where `command` reads the config file again.
+ */
+export const attempt = (stage: Stage, team: Team, name: string, work: () => Promise<Outcome>): Promise<Outcome> =>
+  runAndSay(stage, team.label, [name], () => outcomeOf(work));
 
 /** Pins a commit of the demo plugin for a team. */
 export const pin = (stage: Stage, team: Team, commit: string): Promise<Outcome["output"]> =>

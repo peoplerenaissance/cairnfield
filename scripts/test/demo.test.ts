@@ -11,29 +11,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ADMIN_KEY_HEADER, TEAM_BRANCH } from "@cairnfield/protocol";
 import type { View } from "@cairnfield/protocol";
 import { Stop, failure } from "../../cli/src/outcome.ts";
-import { ADMIN_KEY, FIXTURES, INDEX, MODEL_API, MODEL_KEY, NODE, OUTBOX, REGISTRATION_KEY, TOKEN, bench, demoPlugin, git, published } from "../../cli/test/support.ts";
+import { publish } from "../../cli/src/commands/publish.ts";
+import { loadHome } from "../../cli/src/config.ts";
+import { ADMIN_KEY, FIXTURES, INDEX, MODEL_API, NODE, OUTBOX, REGISTRATION_KEY, git, published } from "../../cli/test/support.ts";
 import type { Bench, Site } from "../../cli/test/support.ts";
 import { KEYS, Stopped, attempt, deploymentFrom, diffPainter, launch, openStage, paintSaid, paints, pin, settle } from "../demo-stage.ts";
-import type { Deployment, Stage, Style } from "../demo-stage.ts";
+import type { Stage, Style } from "../demo-stage.ts";
 import { EVERY_VARIABLE, demo } from "../demo.ts";
 import { reset } from "../reset-demo.ts";
-import { isNotice, testIndex } from "./index.ts";
+import { DEPLOYMENT, KEY_NAMES, RESET_KEY, TEAM_B, TEAM_B_KEY, demoBench, expectNothingSecretIn, stoppedWith } from "./demo-bench.ts";
+import { isNotice } from "./index.ts";
 import type { TestIndex } from "./index.ts";
 
 vi.setConfig({ testTimeout: 600_000 });
 
-// Team B's node is not at the address the lens fixtures name for it, so a lens must be rewritten to count its work.
-const TEAM_B = "https://team-b.nodes.example";
-// Every key here is invented, and each node has its own.
-const TEAM_B_KEY = "the-admin-key-of-team-b";
-const RESET_KEY = "the-reset-key";
 const OUT_OF_SCOPE_RECORD = "7badde119b758271ae71d03e5cee57e241ec4b2b28f0009018d792ec25ed9df9";
 const HIDDEN_INSTRUCTION = "981ae3aa8aadd84d9f44c609c4302727d91b4d381b92c124d7216879aa665b08";
 /** The commit Team B builds by hand, which an index rejects (KTD26). */
 const OUT_OF_SCOPE_COMMIT = (JSON.parse(readFileSync(`${FIXTURES}out-of-scope/COMMIT.json`, "utf8")) as { readonly commit: string }).commit;
 const NOTES_REF = "refs/notes/cairnfield";
-/** The names a script or the command reads a key under. */
-const KEY_NAMES = ["CAIRNFIELD_ADMIN_KEY", "CAIRNFIELD_REGISTRATION_KEY", "ANTHROPIC_API_KEY", "TEAM_A_ADMIN_KEY", "TEAM_B_ADMIN_KEY", "CAIRNFIELD_RESET_KEY"];
 
 let on: Bench;
 let teamB: Site;
@@ -45,24 +41,10 @@ let said: string[];
 let onSaid: (line: string) => void;
 const stages: Stage[] = [];
 
-const DEPLOYMENT: Deployment = {
-  index: INDEX,
-  nodes: { "team-a": NODE, "team-b": TEAM_B },
-  adminKeys: { "team-a": ADMIN_KEY, "team-b": TEAM_B_KEY },
-  registrationKey: REGISTRATION_KEY,
-};
-
 beforeEach(() => {
-  on = bench();
-  teamB = on.another(TEAM_B, "cairnfield-team-b", TEAM_B_KEY);
-  // Each node holds its own copy of the plugin, as its import of the public repo gives it.
-  commits = demoPlugin(on);
-  demoPlugin(teamB);
+  ({ on, teamB, index, commits } = demoBench());
+  // Team A's node holds the plugin's later commit too, for the demo's last step.
   git(on.repo(`copy-${commits.first}`), ["push", "--quiet", on.createRepo(`copy-${commits.later}`), TEAM_BRANCH]);
-  // The index reads a node two reads of a view after it is told, so a step that does not wait for it fails.
-  index = testIndex(on, new Map<string, Site>([[NODE, on], [TEAM_B, teamB]]), { registration: REGISTRATION_KEY, reset: RESET_KEY }, 2);
-  // The shell a script runs in holds every key of the demo.
-  Object.assign(on.env, { TEAM_A_ADMIN_KEY: ADMIN_KEY, TEAM_B_ADMIN_KEY: TEAM_B_KEY, CAIRNFIELD_RESET_KEY: RESET_KEY });
   said = [];
   onSaid = () => undefined;
 });
@@ -89,13 +71,6 @@ function recordingsCopy(): string {
   cpSync(`${FIXTURES}recordings`, recordings, { recursive: true });
   return recordings;
 }
-
-/** What a script stopped with. */
-const stoppedWith = async (run: Promise<unknown>): Promise<string> => {
-  const stopped = await run.catch((error: unknown) => error);
-  expect(stopped).toBeInstanceOf(Stopped);
-  return (stopped as Stopped).message;
-};
 
 /** What the command printed for the last run of one of its commands by a team. */
 function printed(team: string, name: string): { readonly [field: string]: unknown } {
@@ -132,9 +107,7 @@ const notesSaid = (from: number): unknown[] =>
 
 /** Everything a script told the operator, on either stream, holds no key, no token and no Git remote. */
 function expectNothingSecretSaid(): void {
-  const told = [...said, ...on.warnings].join("\n");
-  for (const secret of [ADMIN_KEY, TEAM_B_KEY, REGISTRATION_KEY, RESET_KEY, MODEL_KEY, TOKEN]) expect(told).not.toContain(secret);
-  expect(told).not.toMatch(/art_v[0-9]+_|artifacts\.cloudflare\.net/);
+  expectNothingSecretIn([...said, ...on.warnings].join("\n"));
 }
 
 describe("the demo script", () => {
@@ -312,7 +285,8 @@ describe("the demo script", () => {
     const answered = on.respond;
     on.respond = (seen) => (isNotice(seen) ? new Response("", { status: 500 }) : answered?.(seen));
 
-    const outcome = await attempt(opened, opened.a, "publish");
+    const home = await loadHome(opened.a.io, undefined);
+    const outcome = await attempt(opened, opened.a, "publish", () => publish(opened.a.io, home));
 
     expect(outcome.code).toBe(7);
     expect(outcome.output).toEqual({ records: published(on).length, head: headOf(on), published: published(on), notice: "failed" });
