@@ -80,11 +80,21 @@ const FAR_HILL = hill([[54, 6, -4], [98, 10, -9], [176, 21, -16], [244, 29, -26]
 // systems come with. The map behind the page is drawn here too, by `hill`, and it is
 // decoration: it stays still, and it says nothing.
 //
+// The page follows the reader's color scheme. Every color a rule paints with is a token of
+// the palette on `:root`, and the block after it gives those tokens other values for a
+// reader whose system asks for dark. That block sets tokens and nothing else, and it
+// stands in this one style, so the policy needs no word for it. The hills are drawn in
+// tokens too, so they follow the palette. The shade of the stone stays written out: it
+// reads the same on both grounds.
+//
 // An outline carries the meaning it has on the index: dashed is unconfirmed, and nothing
 // on this page was checked. A type names itself once, beside its records. The word stays
 // in each link for a reader who does not see the page. On a narrow screen it stands over them.
 const STYLE = `
-:root { --fog: #EDF0EE; --paper: #FAFBF9; --band: #F1F4F2; --ink: #1E2A2E; --muted: #5B6B70; --line: #C9D1CC; --line-soft: #DDE3DF; --slate: #5E6C76; --note: #FFF6D6; --note-line: #E8D79A; --contour: #DAE0DC; --contour-5: #C6CFCA; --display: "Routed Gothic", Bahnschrift, "DIN Alternate", "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif; --body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif; --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; --gutter: clamp(16px, 4vw, 48px); }
+:root { color-scheme: light dark; --fog: #EDF0EE; --paper: #FAFBF9; --band: #F1F4F2; --ink: #1E2A2E; --muted: #5B6B70; --line: #C9D1CC; --line-soft: #DDE3DF; --mark: #9AA6A3; --focus: #5E6C76; --bar: rgba(250, 251, 249, .94); --veil: rgba(250, 251, 249, .62); --note: #FFF6D6; --note-line: #E8D79A; --contour: #DAE0DC; --contour-5: #C6CFCA; --display: "Routed Gothic", Bahnschrift, "DIN Alternate", "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif; --body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif; --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; --gutter: clamp(16px, 4vw, 48px); }
+@media (prefers-color-scheme: dark) {
+  :root { --fog: #131B1E; --paper: #1B2529; --band: #172024; --ink: #E3E9E5; --muted: #A3B0AE; --line: #3E4E56; --line-soft: #313F45; --mark: #74838A; --focus: #A9B8C3; --bar: rgba(27, 37, 41, .94); --veil: rgba(27, 37, 41, .62); --note: #383012; --note-line: #6E5F24; --contour: #1E282D; --contour-5: #27343A; }
+}
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--fog); color: var(--ink); font: 400 16px/1.5 var(--body); }
 p { margin: 0; }
@@ -93,13 +103,13 @@ body::before, body::after { content: ""; position: fixed; z-index: -1; pointer-e
 body::before { top: 148px; right: 13%; width: 132px; height: 76px; rotate: -16deg; border-radius: 58% 42% 52% 48% / 62% 56% 44% 38%; box-shadow: ${HILL}; }
 body::after { left: -70px; bottom: -50px; width: 210px; height: 124px; rotate: 21deg; border-radius: 46% 54% 44% 56% / 55% 62% 38% 45%; box-shadow: ${FAR_HILL}; }
 .wrap { max-width: calc(1280px + 2 * var(--gutter)); margin-inline: auto; padding-inline: var(--gutter); }
-.bar { position: sticky; top: 0; z-index: 1; background: rgba(250, 251, 249, .94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+.bar { position: sticky; top: 0; z-index: 1; background: var(--bar); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
 .bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; min-height: 52px; padding-block: 8px; }
 .trail { display: flex; align-items: baseline; gap: 10px; font: 500 13px/1 var(--mono); }
 .mark { font: 400 24px/1 var(--display); letter-spacing: -0.01em; color: inherit; text-decoration: none; }
-.here::before { content: "/"; margin-right: 10px; color: #9AA6A3; }
+.here::before { content: "/"; margin-right: 10px; color: var(--mark); }
 .status { margin-left: auto; font: 500 12px/1.4 var(--mono); color: var(--muted); }
-.hero { background: rgba(250, 251, 249, .62); border-bottom: 1px solid var(--line); }
+.hero { background: var(--veil); border-bottom: 1px solid var(--line); }
 .hero .wrap { padding-block: clamp(40px, 7vw, 76px) clamp(32px, 5vw, 52px); }
 h1 { font: 400 clamp(34px, 4.6vw, 54px)/1.08 var(--display); letter-spacing: 0.005em; margin: 0 0 20px; }
 .lead { max-width: 43em; font-size: clamp(17px, 1.55vw, 20px); text-wrap: pretty; }
@@ -111,7 +121,7 @@ dd { margin: 0; font: 500 13px/1.5 var(--mono); overflow-wrap: anywhere; }
 .list { padding-block: clamp(28px, 4vw, 44px) clamp(48px, 7vw, 80px); }
 .about { max-width: 62em; font-size: 15px; color: var(--muted); text-wrap: pretty; }
 .components { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(624px, 100%), 1fr)); gap: 20px; align-items: start; margin-top: 24px; }
-section { min-width: 0; max-width: 760px; background: var(--paper); border: 1px dashed #9AA6A3; border-radius: 10px; }
+section { min-width: 0; max-width: 760px; background: var(--paper); border: 1px dashed var(--mark); border-radius: 10px; }
 h2 { margin: 0; padding: 12px 16px; background: var(--band); border-bottom: 1px solid var(--line-soft); border-radius: 9px 9px 0 0; font: 500 12.5px/1.4 var(--mono); color: var(--muted); }
 h2 code { display: block; margin-top: 2px; font: 600 clamp(11.5px, 3.3vw, 14px)/1.4 var(--mono); color: var(--ink); overflow-wrap: anywhere; }
 li a { display: grid; grid-template-columns: 130px minmax(0, 1fr); color: inherit; text-decoration: none; font: 400 12px/1.5 var(--mono); }
@@ -122,7 +132,7 @@ li.first code, li:first-child { border-top: 0; }
 li:not(.first) .type { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 li a:hover code { background: var(--band); text-decoration-color: var(--ink); }
 li:last-child a, li:last-child code { border-radius: 0 0 9px 9px; }
-a:focus-visible { outline: 3px solid var(--slate); outline-offset: 2px; }
+a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 li a:focus-visible { outline-offset: -3px; border-radius: 6px; }
 .none { max-width: 760px; margin-top: 24px; padding: 16px 20px; border-radius: 10px; background: var(--paper); }
 .none.failed { background: var(--note); border: 1px solid var(--note-line); }

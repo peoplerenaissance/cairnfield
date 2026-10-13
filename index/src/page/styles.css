@@ -8,19 +8,38 @@
    finding or a patch with one organization behind it, a record still being checked, a
    tree hash that is published and not checked. Nothing here is dotted. Every status has
    a text label, and the color only repeats it. A value that a team declares, in a record
-   or through its node, is a statement and no status, so its line has no outline. */
+   or through its node, is a statement and no status, so its line has no outline.
+
+   Every color a rule paints with is a token of the palette on `:root`, and the block
+   after it gives those tokens other values for a reader whose system asks for dark. That
+   block sets tokens and nothing else, so each rule below reads the same in both schemes
+   and an outline means in dark what it means in light. Three things stay written out
+   where they are used, because they read the same on both grounds: the shade and the
+   grain of a stone, and the shadow under a tip. */
 
 @font-face { font-family: "Routed Gothic"; src: url("fonts/routed-gothic.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Hanken Grotesk"; src: url("fonts/hanken-grotesk.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; }
 @font-face { font-family: "Spline Sans Mono"; src: url("fonts/spline-sans-mono.woff2") format("woff2"); font-weight: 400 600; font-style: normal; font-display: swap; }
 
 :root {
+  color-scheme: light dark;
+  /* The four grounds, from darkest to lightest: the page, the head of a block, a section, a block inside a section. */
   --fog: #EDF0EE;
+  --band: #F1F4F2;
   --paper: #FAFBF9;
+  --card: #FFFFFF;
   --ink: #1E2A2E;
   --muted: #5B6B70;
   --line: #C9D1CC;
   --line-soft: #DDE3DF;
+  /* The dashed outline of what is unconfirmed, and the ring round what is focused. */
+  --mark: #9AA6A3;
+  --focus: #5E6C76;
+  /* The bar and the hero are the paper with the map showing through, and inline code stands on a tint of the ink. */
+  --bar: rgba(250, 251, 249, .94);
+  --veil: rgba(250, 251, 249, .62);
+  --tint: rgba(30, 42, 46, .06);
+  --tint-hover: rgba(30, 42, 46, .08);
   --slate: #5E6C76;
   --sandstone: #C9AE84;
   --ironstone: #A0624A;
@@ -28,6 +47,10 @@
   --add: #E4EFD6;
   --del: #F6DFE3;
   --note: #FFF6D6; --note-line: #E8D79A;
+  --ok: #EAF1DC; --ok-line: #C9D8AD; --ok-ink: #2E4716;
+  --rej-line: #E4B7C2;
+  /* The lines of the map, which `map.ts` reads from here at each draw. */
+  --contour: #DAE0DC; --contour-5: #C6CFCA;
   --display: "Routed Gothic", "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
   --body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
   --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -36,14 +59,43 @@
   --gap: 20px;
 }
 
+/* The dark look takes its grounds and hues from the terminals of the project's site. A stone keeps its rock, and sandstone its color. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fog: #131B1E;
+    --band: #172024;
+    --paper: #1B2529;
+    --card: #222E33;
+    --ink: #E3E9E5;
+    --muted: #A3B0AE;
+    --line: #3E4E56;
+    --line-soft: #313F45;
+    --mark: #74838A;
+    --focus: #A9B8C3;
+    --bar: rgba(27, 37, 41, .94);
+    --veil: rgba(27, 37, 41, .62);
+    --tint: rgba(227, 233, 229, .08);
+    --tint-hover: rgba(227, 233, 229, .12);
+    --slate: #8394A0;
+    --ironstone: #BD7B62;
+    --drift: #DDE0DB;
+    --add: #27402B;
+    --del: #57303A;
+    --note: #383012; --note-line: #6E5F24;
+    --ok: #2A3F1F; --ok-line: #4E6B35; --ok-ink: #BFDA9A;
+    --rej-line: #8A4A59;
+    --contour: #1E282D; --contour-5: #27343A;
+  }
+}
+
 * { box-sizing: border-box; }
 html { scroll-padding-top: 72px; }
 /* The page is a column as tall as the window, so its footer stands at the foot of a short page. */
 body { margin: 0; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: var(--fog); color: var(--ink); font: 400 16px/1.5 var(--body); }
 a { color: inherit; text-decoration-color: var(--line); text-underline-offset: 3px; }
 a:hover { text-decoration-color: var(--ink); }
-:focus-visible { outline: 3px solid var(--slate); outline-offset: 2px; }
-code { font-family: var(--mono); font-size: 0.86em; background: rgba(30, 42, 46, .06); padding: 2px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--tint); padding: 2px 5px; border-radius: 4px; overflow-wrap: anywhere; }
 ul, ol { list-style: none; margin: 0; padding: 0; }
 p { margin: 0; }
 
@@ -54,13 +106,13 @@ p { margin: 0; }
 .wrap, #view { width: 100%; max-width: calc(1280px + 2 * var(--gutter)); margin-inline: auto; padding-inline: var(--gutter); }
 
 /* ---------- top bar: where this page is, from the project's site through this index, and when the view was read ---------- */
-.bar { position: sticky; top: 0; z-index: 5; background: rgba(250, 251, 249, .94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+.bar { position: sticky; top: 0; z-index: 5; background: var(--bar); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
 /* A status that says more than a time takes a row of its own on a phone. */
 .bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; min-height: 52px; padding-block: 8px; }
 /* A trail: the project's name leads to its site, the index to its own page, and the last part is the page that is open. */
 .crumbs ol { display: flex; align-items: baseline; gap: 10px; }
 .crumbs li { font: 500 13px/1 var(--mono); color: var(--muted); }
-.crumbs li + li::before { content: "/"; margin-right: 10px; color: #9AA6A3; }
+.crumbs li + li::before { content: "/"; margin-right: 10px; color: var(--mark); }
 .crumbs a { color: inherit; }
 .crumbs a:hover { color: var(--ink); }
 .crumbs [aria-current] { color: var(--ink); }
@@ -69,7 +121,7 @@ p { margin: 0; }
 .status.stale { color: var(--ink); background: var(--note); border: 1px solid var(--note-line); border-radius: 5px; padding: 3px 8px; }
 
 /* ---------- a page's own words and links: written in its file, above and below what its script draws ---------- */
-.hero { background: rgba(250, 251, 249, .62); border-bottom: 1px solid var(--line); }
+.hero { background: var(--veil); border-bottom: 1px solid var(--line); }
 .hero .wrap { padding-block: clamp(40px, 7vw, 76px) clamp(36px, 5.5vw, 60px); }
 .hero h1 { font: 400 clamp(34px, 4.6vw, 54px)/1.08 var(--display); letter-spacing: 0.005em; margin: 0 0 20px; }
 .hero p { max-width: 43em; font-size: clamp(17px, 1.55vw, 20px); line-height: 1.5; text-wrap: pretty; }
@@ -149,10 +201,10 @@ h2 { font: 400 26px/1.1 var(--display); letter-spacing: 0.005em; margin: 0; }
 .stone.tone-2 { background-image: repeating-linear-gradient(172deg, rgba(60, 20, 8, .22) 0 1px, transparent 1px 3px, rgba(60, 20, 8, .1) 3px 5px, transparent 5px 9px, rgba(255, 255, 255, .12) 9px 10px, transparent 10px 14px); }
 
 /* ---------- status labels ---------- */
-.tag { display: inline-block; font: 600 11.5px/1 var(--mono); padding: 6px 8px; border-radius: 5px; border: 1px solid var(--line); background: #fff; white-space: nowrap; }
-.tag.ok { background: #EAF1DC; border-color: #C9D8AD; color: #2E4716; }
-.tag.un { background: transparent; border-style: dashed; border-color: #9AA6A3; color: var(--muted); }
-.tag.rej { background: var(--del); border-color: #E4B7C2; }
+.tag { display: inline-block; font: 600 11.5px/1 var(--mono); padding: 6px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--card); white-space: nowrap; }
+.tag.ok { background: var(--ok); border-color: var(--ok-line); color: var(--ok-ink); }
+.tag.un { background: transparent; border-style: dashed; border-color: var(--mark); color: var(--muted); }
+.tag.rej { background: var(--del); border-color: var(--rej-line); }
 .tag.live { border-color: var(--ink); }
 .kind { font-size: 14px; }
 
@@ -176,7 +228,7 @@ h2 { font: 400 26px/1.1 var(--display); letter-spacing: 0.005em; margin: 0; }
 #components .row { justify-content: space-between; padding: 12px 16px; }
 #components .row:first-child { padding-top: 12px; }
 #components .row:last-child { padding-bottom: 12px; }
-#components .row:hover { background: #F1F4F2; }
+#components .row:hover { background: var(--band); }
 #components .row > a::after { content: ""; position: absolute; inset: 0; }
 #components .row > a { text-decoration-color: var(--line); }
 #components .row > a code { color: var(--ink); }
@@ -185,7 +237,7 @@ h2 { font: 400 26px/1.1 var(--display); letter-spacing: 0.005em; margin: 0; }
 .source { position: relative; z-index: 1; flex: none; width: 28px; height: 28px; border-radius: 6px; color: var(--muted); }
 /* The arrow's shaft, from inside the box to its head. */
 .source { background: linear-gradient(to top left, transparent calc(50% - .8px), currentColor calc(50% - .8px), currentColor calc(50% + .8px), transparent calc(50% + .8px)) 13px 8px / 7px 7px no-repeat; }
-.source:hover { color: var(--ink); background-color: rgba(30, 42, 46, .08); }
+.source:hover { color: var(--ink); background-color: var(--tint-hover); }
 .source span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* A box that is open at its top right corner. */
 .source::before { content: ""; position: absolute; left: 7px; top: 11px; width: 10px; height: 10px; border: 1.5px solid currentColor; border-radius: 2px; clip-path: polygon(0 0, 45% 0, 45% 55%, 100% 55%, 100% 100%, 0 100%); }
@@ -209,14 +261,14 @@ h2 { font: 400 26px/1.1 var(--display); letter-spacing: 0.005em; margin: 0; }
 #components .tip { top: calc(100% + 8px); left: auto; right: 0; width: max-content; max-width: min(300px, 76vw); margin: 0; }
 
 /* ---------- findings: a block for each criterion, as a group of patches is one ---------- */
-.criterion, .group, .repo { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.criterion, .group, .repo { border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
 .criterion + .criterion, .group + .group { margin-top: 14px; }
 /* The head belongs to the findings under it: one box holds both, and no line parts them from the block above. */
-.criterion-head, .group-head, .repo-head { padding: 10px 16px; background: #F1F4F2; border-bottom: 1px solid var(--line-soft); border-radius: 7px 7px 0 0; }
+.criterion-head, .group-head, .repo-head { padding: 10px 16px; background: var(--band); border-bottom: 1px solid var(--line-soft); border-radius: 7px 7px 0 0; }
 .criterion-head { position: relative; padding-block: 12px; }
 h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; font: 500 12.5px/1.4 var(--mono); color: var(--muted); }
 /* The criterion's name is a link to where the protocol defines it. */
-.badge { display: inline-block; padding: 3px 8px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); text-decoration: none; }
+.badge { display: inline-block; padding: 3px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink); text-decoration: none; }
 .badge:hover { border-color: var(--ink); }
 .badge code { padding: 0; background: none; font-size: 12px; font-weight: 600; }
 .promise { margin-top: 6px; font-size: 14px; line-height: 1.45; }
@@ -276,7 +328,7 @@ h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 
 /* ---------- recipes ---------- */
 /* A recipe is wide enough to hold its tree hash on one line. */
 .recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 14px; }
-.recipe { position: relative; display: grid; align-content: start; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: #fff; min-width: 0; }
+.recipe { position: relative; display: grid; align-content: start; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: var(--card); min-width: 0; }
 .used { font-size: 14px; color: var(--muted); }
 .used b { font: 400 26px/1 var(--body); color: var(--ink); margin-right: 2px; }
 .tree { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font: 500 12.5px/1.5 var(--mono); }

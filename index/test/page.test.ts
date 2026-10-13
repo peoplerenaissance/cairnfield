@@ -1680,6 +1680,202 @@ describe("the pages' addresses on the index (KTD14)", () => {
   });
 });
 
+// The pages follow the reader's color scheme. The stylesheet holds every color it paints
+// with as a token of the palette on `:root`, and one block gives those tokens other values
+// for a reader whose system asks for dark. So a rule reads the same in both schemes, and
+// an outline stands on the same elements in both. No test opens a page in a browser, so
+// these read the stylesheet as text and work out each contrast from its two palettes.
+
+/** A color of a palette: its three channels, and how much of it covers what lies under it. */
+interface Color {
+  readonly red: number;
+  readonly green: number;
+  readonly blue: number;
+  readonly alpha: number;
+}
+
+/** A color as a palette writes one, with six hex digits or as `rgba()`. Nothing for a value that is no color, as a font stack is none. */
+function colorOf(value: string): Color | undefined {
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(value);
+  if (hex) {
+    const [, red = "", green = "", blue = ""] = hex;
+    return { red: parseInt(red, 16), green: parseInt(green, 16), blue: parseInt(blue, 16), alpha: 1 };
+  }
+  const [, red, green, blue, alpha] = /^rgba\((\d+), (\d+), (\d+), ([\d.]+)\)$/.exec(value) ?? [];
+  return red === undefined ? undefined : { red: Number(red), green: Number(green), blue: Number(blue), alpha: Number(alpha) };
+}
+
+/** A color that lets the one under it through, as the two show together. */
+function over(top: Color, under: Color): Color {
+  const mixed = (above: number, below: number): number => Math.round(above * top.alpha + below * (1 - top.alpha));
+  return { red: mixed(top.red, under.red), green: mixed(top.green, under.green), blue: mixed(top.blue, under.blue), alpha: 1 };
+}
+
+/** How light a color is, as WCAG 2 measures it. */
+function luminance({ red, green, blue }: Color): number {
+  const linear = (channel: number): number => (channel / 255 <= 0.04045 ? channel / 255 / 12.92 : ((channel / 255 + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+}
+
+/** The contrast of two colors, as WCAG 2 measures it: from 1 for the same color to 21 for black on white. */
+function ratio(one: Color, other: Color): number {
+  const [lighter = 0, darker = 0] = [luminance(one), luminance(other)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** A color written out as a function, in any of the forms CSS has for one. */
+const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix|color)\([^)]*\)/g;
+/** A color written out by a name. The list holds the plain names, which are the ones a hand reaches for. */
+const NAMED_COLOR = /\b(?:black|white|gr[ae]y|silver|red|green|blue|yellow|orange|purple|pink|brown|navy|teal|maroon|olive|lime|aqua|cyan|fuchsia|magenta)\b/i;
+
+const DARK_BLOCK = /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}/g;
+
+/** One rule of a stylesheet, as `rulesOf` reads it. */
+type Rule = ReturnType<typeof rulesOf>[number];
+
+/** A stylesheet in three parts: what its `:root` rules set, the rules of each block for a dark scheme, and every other rule. */
+function schemesOf(styles: string): { root: string[][][]; dark: Rule[][]; rest: Rule[] } {
+  const plain = styles.replace(/\/\*[\s\S]*?\*\//g, "");
+  const outside = rulesOf(plain.replace(DARK_BLOCK, ""));
+  const isRoot = ({ selectors }: Rule): boolean => selectors.join() === ":root";
+  return { root: outside.filter(isRoot).map(({ set }) => set), dark: [...plain.matchAll(DARK_BLOCK)].map(([, inside = ""]) => rulesOf(inside)), rest: outside.filter((rule) => !isRoot(rule)) };
+}
+
+/** The colors a rule sets as tokens, by token. */
+const tokensOf = (set: string[][] = []): Map<string, Color> =>
+  new Map(
+    set.flatMap(([token = "", value = ""]) => {
+      const color = colorOf(value);
+      return color ? [[token, color] as const] : [];
+    }),
+  );
+
+/** The stylesheet's two palettes. A token that the dark block does not set keeps its color in a dark scheme. */
+function palettesOf(styles: string): { light: Map<string, Color>; dark: Map<string, Color> } {
+  const { root, dark } = schemesOf(styles);
+  const light = tokensOf(root[0]);
+  return { light, dark: new Map([...light, ...tokensOf(dark[0]?.[0]?.set)]) };
+}
+
+/** A color of a palette by its token. A palette that does not hold it fails the test that asks. */
+function held(palette: Map<string, Color>, token: string): Color {
+  const color = palette.get(token);
+  if (!color) throw new Error(`the palette holds no color ${token}`);
+  return color;
+}
+
+/** The contrast of a token against a ground. The ground is named from its top down, so a translucent token lies over the one named after it. */
+function contrast(palette: Map<string, Color>, token: string, ...ground: string[]): number {
+  const under = ground.map((name) => held(palette, name)).reduceRight((below, layer) => over(layer, below));
+  return ratio(over(held(palette, token), under), under);
+}
+
+describe("the pages in a light and a dark scheme (R14)", () => {
+  const styles = (): string => env.PAGE_FILES["styles.css"] ?? "";
+  /** The grounds that text and an outline stand on: the four of the page, and the ground of a notice. */
+  const GROUNDS = ["--fog", "--band", "--paper", "--card", "--note"];
+
+  it("holds its dark look as one block that gives colors of the palette other values and sets nothing else", () => {
+    const { root, dark } = schemesOf(styles());
+    // One palette, and one block for a dark scheme with one rule in it.
+    expect(styles().match(/prefers-color-scheme/g)).toHaveLength(1);
+    expect(root).toHaveLength(1);
+    expect(dark.map((rules) => rules.map(({ selectors }) => selectors))).toEqual([[[":root"]]]);
+    const light = tokensOf(root[0]);
+    const set = dark[0]?.[0]?.set ?? [];
+    expect(set.length).toBeGreaterThan(0);
+    // Each thing it sets is a token that the palette holds as a color, and it sets a color.
+    for (const [token = "", value = ""] of set) expect([token, token.startsWith("--"), light.has(token), colorOf(value) !== undefined]).toEqual([token, true, true, true]);
+    // It gives every color of the palette another value but one: sandstone keeps its color in both schemes. So a color added to the palette gets a dark value, or a place in this list.
+    expect([...light.keys()].filter((token) => !set.some(([name]) => name === token))).toEqual(["--sandstone"]);
+  });
+
+  it("tells the browser that the page has both looks, so the browser's own parts follow", () => {
+    const [palette = []] = schemesOf(styles()).root;
+    // Beside its tokens the palette sets this and nothing else.
+    expect(palette.filter(([property = ""]) => !property.startsWith("--"))).toEqual([["color-scheme", "light dark"]]);
+    // Each page says so before its stylesheet arrives, so its first paint is in the reader's scheme.
+    for (const name of ["root.html", "page.html"]) {
+      const html = env.PAGE_FILES[name] ?? "";
+      const [meta, sheet] = [html.indexOf('<meta name="color-scheme" content="light dark">'), html.indexOf('<link rel="stylesheet"')];
+      expect([name, meta > -1, meta < sheet]).toEqual([name, true, true]);
+    }
+  });
+
+  it("writes out no color where it is used, apart from the shade and grain of a stone and the shadow of a tip", () => {
+    const values = schemesOf(styles()).rest.flatMap(({ set }) => set.map(([, value = ""]) => value));
+    expect(values.filter((value) => /#[0-9a-f]{3,8}\b/i.test(value) || NAMED_COLOR.test(value))).toEqual([]);
+    // These read the same on a light and a dark ground: black, white or brown at part strength over a stone's own color, and a shadow that darkens.
+    expect(values.flatMap((value) => value.match(COLOR_FUNCTION) ?? [])).toEqual([
+      // The stone before a team's name.
+      "rgba(0, 0, 0, .17)",
+      // A stone of a cairn, and the grain of slate, sandstone and ironstone.
+      "rgba(0, 0, 0, .17)",
+      "rgba(255, 255, 255, .2)",
+      "rgba(255, 255, 255, .17)",
+      "rgba(0, 0, 0, .09)",
+      "rgba(90, 60, 25, .3)",
+      "rgba(255, 255, 255, .42)",
+      "rgba(90, 60, 25, .18)",
+      "rgba(60, 20, 8, .22)",
+      "rgba(60, 20, 8, .1)",
+      "rgba(255, 255, 255, .12)",
+      // The shadow under a tip.
+      "rgba(30, 42, 46, .6)",
+    ]);
+    // The map's script holds no color either: it reads its two from the palette, by name. It draws nothing when a name reads empty, so the palette must hold both.
+    const map = env.PAGE_SCRIPTS["map.ts"] ?? "";
+    expect(map.match(/#[0-9a-f]{3,8}\b/gi)).toBeNull();
+    const read = [...map.matchAll(/token: "(--[\w-]+)"/g)].map(([, token = ""]) => token);
+    expect(read).toEqual(["--contour", "--contour-5"]);
+    expect(read.filter((token) => !palettesOf(styles()).light.has(token))).toEqual([]);
+  });
+
+  it("keeps text readable on every ground it stands on, in both schemes", () => {
+    const text: string[][] = [
+      ...[...GROUNDS, "--add", "--del"].map((ground) => ["--ink", ground]),
+      ...GROUNDS.map((ground) => ["--muted", ground]),
+      // The bar and the hero let the page's ground through.
+      ...["--bar", "--veil"].flatMap((ground) => [["--ink", ground, "--fog"], ["--muted", ground, "--fog"]]),
+      // Inline code stands on a tint of the ground under it.
+      ...["--paper", "--card", "--note"].flatMap((ground) => [["--ink", "--tint", ground], ["--muted", "--tint", ground]]),
+      ["--ink", "--tint", "--fog"],
+      ["--ok-ink", "--ok"],
+      // A tip is the page's colors the other way round.
+      ["--paper", "--ink"],
+    ];
+    const { light, dark } = palettesOf(styles());
+    for (const [token = "", ...ground] of text) {
+      expect([token, ...ground, "light", contrast(light, token, ...ground) >= 4.5]).toEqual([token, ...ground, "light", true]);
+      expect([token, ...ground, "dark", contrast(dark, token, ...ground) >= 4.5]).toEqual([token, ...ground, "dark", true]);
+    }
+    // The commit under a component's name is muted text on inline code over the page's ground. In a light scheme that pair stands at 4.34, so it is held in a dark scheme alone.
+    expect(contrast(dark, "--muted", "--tint", "--fog")).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("draws an outline that carries a status, and the focus ring, no fainter in a dark scheme than in a light one", () => {
+    const outlines: string[][] = [
+      ...GROUNDS.map((ground) => ["--line", ground]),
+      ...["--fog", "--paper", "--card", "--note"].map((ground) => ["--mark", ground]),
+      ["--ok-line", "--card"],
+      ["--rej-line", "--card"],
+    ];
+    const { light, dark } = palettesOf(styles());
+    for (const [token = "", ground = ""] of outlines) expect([token, ground, contrast(dark, token, ground) >= contrast(light, token, ground)]).toEqual([token, ground, true]);
+    for (const ground of GROUNDS) {
+      expect([ground, "light", contrast(light, "--focus", ground) >= 3]).toEqual([ground, "light", true]);
+      expect([ground, "dark", contrast(dark, "--focus", ground) >= 3]).toEqual([ground, "dark", true]);
+    }
+  });
+
+  it("keeps the four grounds in one order in both schemes: the page, the head of a block, a section, a block inside a section", () => {
+    for (const [scheme, palette] of Object.entries(palettesOf(styles()))) {
+      const lightness = ["--fog", "--band", "--paper", "--card"].map((ground) => luminance(held(palette, ground)));
+      expect([scheme, lightness.every((value, at) => at === 0 || value > (lightness[at - 1] ?? 1))]).toEqual([scheme, true]);
+    }
+  });
+});
+
 describe("the demo on the page (R27)", () => {
   const MANIFEST = "plugin.json";
   const PLUGIN_SKILL = "skills/sync/SKILL.md";
