@@ -120,13 +120,17 @@ The work is split in three.
 2. The agent reads the checkout as data and writes one record file for each finding into the outbox. It runs `npx --no --offline cairnfield validate` until its files pass, and stops.
 3. The operator runs `publish`. It sends the admin key to the node that `cairnfield.json` names, and an agent that ran in that folder could have changed the file. So the operator reads `cairnfield.json` first, or starts the agent with only the outbox writable.
 
-Start the agent in the folder that holds `cairnfield.json`, and give it this instruction:
+Install the skill where the agent's harness reads one. Start the agent in the folder that holds `cairnfield.json`, and give it this instruction:
 
 ```
-Follow <repo>/skills/cairnfield/SKILL.md. Review the checkout of <commit>. Stop when validate accepts your files.
+Use the cairnfield skill to review the checkout of <commit>. Start `cairnfield` as `node <repo>/cli/bin/cairnfield.mjs`. Stop when validate accepts your files.
 ```
 
-`<repo>` is the path to this repo, and `<commit>` is the full hash the operator pinned. Do not start the agent in a shell that holds `CAIRNFIELD_ADMIN_KEY` or `CAIRNFIELD_REGISTRATION_KEY`. The agent has just read a component that may be hostile, and `validate` needs no key. The command cannot enforce where a key is set, so this rests on the operator.
+`<commit>` is the full hash the operator pinned, and `<repo>` is the path to this repo. The second sentence is for a folder outside this repo, where the command's name is not linked. Do not start the agent in a shell that holds `CAIRNFIELD_ADMIN_KEY` or `CAIRNFIELD_REGISTRATION_KEY`. The agent has just read a component that may be hostile, and `validate` needs no key. The command cannot enforce where a key is set, so this rests on the operator.
+
+`npx skills add peoplerenaissance/cairnfield`, run in the operator's folder, installs the skill for any harness. It writes `.agents/skills/`, which Codex and others read, and links `.claude/skills/`, which Claude Code reads. A checkout can hold instruction files that a harness loads by itself, such as a `CLAUDE.md`. So switch that loading off, or keep the checkout outside the folder the agent starts in.
+
+`npm run demo:agent` stages the demo's first step with a review agent in it, for a recording. The script is the operator and holds the keys. It puts the skill in Claude Code's folder, prints the line that starts Claude Code with every key unset and the instruction above, waits for Enter, and publishes what the agent wrote. It starts the agent beside the checkout, which is safe for the demo plugin alone: that plugin holds no instruction file. [`reference/walkthrough.md`](reference/walkthrough.md#stage-a-review-with-an-agent) gives the steps, the folder each harness reads, and three limits the script does not close.
 
 ## The protocol in brief
 
@@ -169,6 +173,7 @@ This table describes today. [`reference/platform-notes.md`](reference/platform-n
 | Verdicts and checking an installed copy | built and run live | `cairnfield decide`, `approvals` and `verify`. `verify` passed on a clone of a published copy and failed on the original. A run on a second machine is still to come. |
 | Carrying a team's own work to a new version | built and run live | `cairnfield carry`. One demo team carried its work to the plugin's later commit, and the copy it built there passed `verify`. |
 | Demo script | built and run live | `npm run demo` and `npm run demo:reset`. Both ran twice on the deployed demo, and the second run left the same IDs and hashes. |
+| Demo step with a review agent | built, not run live | `npm run demo:agent`, the operator's half of the demo's first step beside a team's own agent. Its tests play the agent's part. It has not run on the deployed demo, and no agent has been started from the line it prints. |
 | Scale run | not in the prototype | `sim/` holds a placeholder. |
 | One-click deploy button for the team node | waiting on the platform | Nobody has tested the button on the node. |
 | Carrying other teams' work forward, domain verification, sealed findings, deploys from Artifacts | not in the prototype | Described in `reference/`. |
@@ -195,7 +200,7 @@ The prototype is a slice of a larger design. [`reference/roadmap.md`](reference/
 | `reference/` | The protocol, the threat model, the platform notes, the walkthrough, the roadmap and the architecture drawing. |
 | `fixtures/` | The demo plugin, lenses, saved findings, recordings, injection fixtures and the rejected patch. |
 | `sim/` | A placeholder for the scale run. |
-| `scripts/` | The demo script, its reset and the node contract check. |
+| `scripts/` | The demo script, its reset, the operator's script for a review with an agent, and the node contract check. |
 | `site/` | The public site, one page served by a Worker. |
 | `AGENTS.md` | Instructions for coding agents working in this repo. |
 

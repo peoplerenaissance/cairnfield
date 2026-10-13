@@ -1,8 +1,8 @@
 # Walkthrough
 
-This document is the long form of the README's "Try it" section. It takes one team from `pin` to a checked copy, says what each step leaves behind, and then plays the demo with two teams on nodes and an index of your own. The README gives the same commands with one line each.
+This document is the long form of the README's "Try it" section. It takes one team from `pin` to a checked copy, says what each step leaves behind, and then plays the demo with two teams on nodes and an index of your own. It ends with the staging of a review by a team's own agent. The README gives the same commands with one line each.
 
-Every command is run as `npx --no cairnfield <command>`, from a folder that holds `cairnfield.json`. `verify` needs none. The README's [Deploy a node](../README.md#deploy-a-node) and [Let your own agent write findings](../README.md#let-your-own-agent-write-findings) sections are not repeated here.
+Every command is run as `npx --no cairnfield <command>`, from a folder that holds `cairnfield.json`. `verify` needs none. The README's [Deploy a node](../README.md#deploy-a-node) section is not repeated here. Its [Let your own agent write findings](../README.md#let-your-own-agent-write-findings) section gives the split of the work between an agent and its operator, and the instruction for the agent. The last part of this document builds on it.
 
 ## One team alone
 
@@ -210,3 +210,49 @@ The reset takes every record off the two nodes' branches. It adds a commit with 
 - The demo's own two nodes are deployed from the two environments above.
 - Both demo scripts ran on those two nodes and the index on October 10, 2026: the reset, then the demo, then both again. The second run left the page with the same finding IDs, patch IDs and file-tree hashes as the first. The tests also play both scripts against stand-ins for the two nodes and the index.
 - Nobody has yet followed this section from its first step in a new Cloudflare account. The deploys above and the two scripts ran at different times, on nodes and an index that were already there.
+
+## Stage a review with an agent
+
+`npm run demo:agent` stages the demo's first step with a review agent in it, for a recording or a rehearsal. The script is the operator and holds the keys. The agent runs in another pane, which a person starts, and holds none. The script covers Claude Code. It needs the two nodes and the index of [What you deploy first](#what-you-deploy-first), the three addresses, and all four keys of [Play it](#play-it). It runs only from a terminal.
+
+1. **The script sets up.** It resets the demo, as `npm run demo:reset` does. In a new folder under the machine's temporary folder, it writes Team A's config with the index in it and pins the plugin's first commit. It copies the skill file to `.claude/skills/cairnfield/` in that folder.
+2. **It prints a line and a prompt, and waits.** The line changes to that folder and starts Claude Code with every key name of the demo unset. `ANTHROPIC_API_KEY` is among them, so Claude Code needs a login of its own. The prompt is the README's instruction for the agent, with the commit and the launcher's path filled in. Paste the line into a second pane that runs Node 22.22.1 or later, and give the agent the prompt.
+3. **The agent reviews.** It runs the skill's key check, reads the checkout, writes its findings and runs `validate` until its files pass. Then it stops.
+4. **You say go.** Quit the agent, then press Enter in the script's pane. No other key ends the wait. The script watches neither the agent nor the outbox.
+5. **The script publishes.** It read `cairnfield.json` once, before it waited, and `validate` and `publish` work from that reading. So the admin key goes to the node the script pinned with, whatever the file says by now. It still holds the file to the bytes it pinned with, and stops when they differ. It runs `validate`, and waits for Enter again when the outbox holds no record or a file is refused. Then it runs `publish`. When the push landed and the notice to the index failed, it sends the notice itself.
+6. **It checks.** It stops unless the node's branch holds each record it pushed and the index lists each finding. It names a record the index rejected, with the reason.
+
+The findings are the agent's own. They need not be the saved ones, and the demo's later steps do not follow from them. The reset left the public page empty, and this run leaves at most one team's findings on it. So the script ends, whether it finished or stopped, by naming the two commands that put the four-step demo back: `npm run demo:reset`, then `npm run demo`. It keeps its folder, whose outbox holds what the agent wrote.
+
+### Three limits the script does not close
+
+- **The keys are one process away.** The printed line keeps every key out of the agent's own environment, and it does no more. The script holds the keys in its own environment while it waits, and a process can read the environment of another process of the same user. An agent that keeps to its skill file never looks. One that a component has turned can. Against that agent, run it as another user of the machine, or in a container that sees neither the script's process nor the operator's folder.
+- **The checkout is under the agent's folder.** The script starts the agent in the folder that holds the checkout, and switches off nothing in the harness. That is safe for this plugin alone: its first commit holds no `CLAUDE.md`, no `AGENTS.md` and no `.claude/` folder. It is a fact about `fellbeck-sync` and no method. For a component of your own, do one of the two things under [Instruction files in a checkout](#instruction-files-in-a-checkout).
+- **The harness is the operator's own.** Claude Code loads the operator's own settings, skills, hooks and MCP servers, as it does in any folder. A tool among them that reaches a network is within the agent's reach. Leave Claude Code in the mode that asks before each command and each write.
+
+### Install the skill for another harness
+
+A harness loads a skill from a folder of its own, and a skill file at any other path is only a file to read. The script fills Claude Code's folder itself. For any harness, the `skills` command-line tool installs a skill into a project. Run it in the operator's folder:
+
+```
+npx skills add peoplerenaissance/cairnfield
+```
+
+In place of the repo's name it takes the path of a clone. By its documentation, it writes one copy under `.agents/skills/` and links `.claude/skills/cairnfield` to that copy. It downloads and runs a package from npm. Nobody has run it on this repo yet.
+
+| Harness | Reads a project's skills from |
+| --- | --- |
+| Claude Code | `.claude/skills/` in the folder it starts in and in each folder above it |
+| Codex, and the other harnesses the tool installs for | `.agents/skills/` in the working folder and in each folder above it, up to the repository root |
+
+Both rows are from each harness's documentation.
+
+### Instruction files in a checkout
+
+A checkout holds a component's own files, and a component can hold instruction files for a harness. By its documentation, Claude Code loads a `CLAUDE.md`, an `AGENTS.md` or a `.claude/skills/` folder that lies below the folder it started in, the first time the agent reads a file beside it. Other harnesses honor files of their own. The skill file tells the agent that such a file is the component's, and it cannot stop a harness from loading one. So the operator does one of the two things the [threat model](threat-model.md) names: switch off the loading of nested instruction files in the harness, or keep the checkout outside the folder tree the agent starts in.
+
+### What has run of the staging
+
+- The script's tests play it against stand-ins for the two nodes and the index. The test writes the saved findings in the agent's place.
+- Its wait for Enter was tried on a terminal by itself.
+- The script has not run on the deployed nodes and index, and no agent has been started from the line it prints.
