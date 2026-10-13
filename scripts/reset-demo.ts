@@ -90,7 +90,7 @@ export async function reset(stage: Stage, resetKey: string): Promise<Emptied> {
 }
 
 if (import.meta.main) {
-  await launch("reset", RESET_KEY, async (stage, resetKey) => {
+  await launch("reset", [RESET_KEY], async (stage, resetKey) => {
     try {
       console.log(JSON.stringify(await reset(stage, resetKey)));
     } finally {

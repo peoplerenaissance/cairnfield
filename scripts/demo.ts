@@ -345,7 +345,7 @@ export async function demo(stage: Stage): Promise<Shown> {
 }
 
 if (import.meta.main) {
-  await launch("demo", REGISTRATION_KEY, async (stage) => {
+  await launch("demo", [REGISTRATION_KEY], async (stage) => {
     const shown = await demo(stage);
     console.log(`The demo is on the page: ${stage.index}/components/${first}`);
     console.log(`The later commit: ${stage.index}/components/${later}`);

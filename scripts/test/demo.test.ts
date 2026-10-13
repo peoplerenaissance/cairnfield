@@ -13,7 +13,7 @@ import type { View } from "@cairnfield/protocol";
 import { Stop, failure } from "../../cli/src/outcome.ts";
 import { ADMIN_KEY, FIXTURES, INDEX, MODEL_API, MODEL_KEY, NODE, REGISTRATION_KEY, TOKEN, bench, demoPlugin, git, published } from "../../cli/test/support.ts";
 import type { Bench, Site } from "../../cli/test/support.ts";
-import { Stopped, deploymentFrom, diffPainter, launch, openStage, paintSaid, paints } from "../demo-stage.ts";
+import { KEYS, PLUGIN, Stopped, attempt, command, deploymentFrom, diffPainter, launch, openStage, paintSaid, paints, settle } from "../demo-stage.ts";
 import type { Deployment, Stage, Style } from "../demo-stage.ts";
 import { EVERY_VARIABLE, demo } from "../demo.ts";
 import { reset } from "../reset-demo.ts";
@@ -295,10 +295,29 @@ describe("the demo script", () => {
     const keysIn = (env: { readonly [name: string]: string | undefined }): { [name: string]: string | undefined } => Object.fromEntries(KEY_NAMES.filter((name) => env[name] !== undefined).map((name) => [name, env[name]]));
     // The bench's shell holds all six, with Team A's key under the command's own name too.
     expect(Object.keys(keysIn(on.env)).sort()).toEqual([...KEY_NAMES].sort());
+    // The stage takes these six names and no other for a key.
+    expect([...KEYS].sort()).toEqual([...KEY_NAMES].sort());
     expect(keysIn(opened.io.env)).toEqual({});
     expect(keysIn(opened.a.io.env)).toEqual({ CAIRNFIELD_ADMIN_KEY: ADMIN_KEY, CAIRNFIELD_REGISTRATION_KEY: REGISTRATION_KEY });
     expect(keysIn(opened.b.io.env)).toEqual({ CAIRNFIELD_ADMIN_KEY: TEAM_B_KEY, CAIRNFIELD_REGISTRATION_KEY: REGISTRATION_KEY });
     expect(opened.a.io.env["PATH"]).toBe(on.env["PATH"]);
+  });
+
+  it("gives a command's exit code and what it printed when the caller reads them, and says the two lines of any command", async () => {
+    const opened = await stage();
+    await settle(opened, opened.a, { shares: true });
+    await command(opened, opened.a, "pin", PLUGIN.url, "--branch", PLUGIN.branch, "--commit", commits.first);
+    cpSync(`${FIXTURES}outboxes/team-a/records`, join(opened.a.home, ".cairnfield/outbox/records"), { recursive: true });
+    // The index takes no notice, so `publish` pushes and then ends with the exit code of a failed index.
+    const answered = on.respond;
+    on.respond = (seen) => (seen.method === "POST" && seen.url === `${INDEX}/notices` ? new Response("", { status: 500 }) : answered?.(seen));
+
+    const outcome = await attempt(opened, opened.a, "publish");
+
+    expect(outcome.code).toBe(7);
+    expect(outcome.output).toEqual({ records: published(on).length, head: headOf(on), published: published(on), notice: "failed" });
+    expect(published(on).length).toBeGreaterThan(0);
+    expect(said.slice(-2)).toEqual(["team-a$ cairnfield publish", `team-a> ${JSON.stringify(outcome.output)}`]);
   });
 });
 
@@ -349,18 +368,24 @@ describe("a script's start from the command line", () => {
     CAIRNFIELD_RESET_KEY: RESET_KEY,
   };
 
-  it("reads each team's node and key from that team's own names, with the one key of the index the script asks for", () => {
-    expect(deploymentFrom(SHELL, "CAIRNFIELD_REGISTRATION_KEY")).toEqual({ deployment: DEPLOYMENT, key: REGISTRATION_KEY });
+  it("reads each team's node and key from that team's own names, with the keys of the index the script asks for", () => {
+    expect(deploymentFrom(SHELL, ["CAIRNFIELD_REGISTRATION_KEY"])).toEqual({ deployment: DEPLOYMENT, keys: [REGISTRATION_KEY] });
     const { registrationKey: _none, ...withoutRegistration } = DEPLOYMENT;
-    expect(deploymentFrom(SHELL, "CAIRNFIELD_RESET_KEY")).toEqual({ deployment: withoutRegistration, key: RESET_KEY });
+    expect(deploymentFrom(SHELL, ["CAIRNFIELD_RESET_KEY"])).toEqual({ deployment: withoutRegistration, keys: [RESET_KEY] });
+    // A script that asks for both gets both, in the order it asked.
+    expect(deploymentFrom(SHELL, ["CAIRNFIELD_RESET_KEY", "CAIRNFIELD_REGISTRATION_KEY"])).toEqual({ deployment: DEPLOYMENT, keys: [RESET_KEY, REGISTRATION_KEY] });
   });
 
   it("names what is missing or in a form no node or index has, and gives back no value", () => {
     const shell = { ...SHELL, TEAM_A_NODE_URL: "http://node.team-a.example", INDEX_URL: `${INDEX}/`, TEAM_B_ADMIN_KEY: "a key\nwith a line break", CAIRNFIELD_REGISTRATION_KEY: undefined };
 
-    const found = deploymentFrom(shell, "CAIRNFIELD_REGISTRATION_KEY");
+    const found = deploymentFrom(shell, ["CAIRNFIELD_REGISTRATION_KEY"]);
 
     expect(found).toEqual({ missing: ["TEAM_A_NODE_URL", "INDEX_URL", "TEAM_B_ADMIN_KEY", "CAIRNFIELD_REGISTRATION_KEY"] });
+    // Every key of the index that is missing is named at once.
+    expect(deploymentFrom({ ...SHELL, CAIRNFIELD_REGISTRATION_KEY: undefined, CAIRNFIELD_RESET_KEY: "" }, ["CAIRNFIELD_RESET_KEY", "CAIRNFIELD_REGISTRATION_KEY"])).toEqual({
+      missing: ["CAIRNFIELD_RESET_KEY", "CAIRNFIELD_REGISTRATION_KEY"],
+    });
   });
 
   describe("launch", () => {
@@ -385,10 +410,32 @@ describe("a script's start from the command line", () => {
       vi.stubEnv("CAIRNFIELD_RESET_KEY", "");
       let played = false;
 
-      await expect(launch("reset", "CAIRNFIELD_RESET_KEY", async () => void (played = true))).rejects.toThrow("exit 2");
+      await expect(launch("reset", ["CAIRNFIELD_RESET_KEY"], async () => void (played = true))).rejects.toThrow("exit 2");
 
       expect(errors).toEqual(["The reset cannot start. Set these in the environment: TEAM_B_ADMIN_KEY, CAIRNFIELD_RESET_KEY"]);
       expect(played).toBe(false);
+    });
+
+    it("ends with 2 and the one name that is missing when a script asks for both keys of the index", async () => {
+      vi.stubEnv("CAIRNFIELD_REGISTRATION_KEY", "");
+      let played = false;
+
+      await expect(launch("agent demo", ["CAIRNFIELD_RESET_KEY", "CAIRNFIELD_REGISTRATION_KEY"], async () => void (played = true))).rejects.toThrow("exit 2");
+
+      expect(errors).toEqual(["The agent demo cannot start. Set these in the environment: CAIRNFIELD_REGISTRATION_KEY"]);
+      expect(played).toBe(false);
+    });
+
+    it("plays with both keys of the index when the script asks for both, and hands each team's command the registration key", async () => {
+      const played: { readonly keys: readonly string[]; readonly registration: string | undefined }[] = [];
+
+      await launch("agent demo", ["CAIRNFIELD_RESET_KEY", "CAIRNFIELD_REGISTRATION_KEY"], async (opened, ...keys) => {
+        stages.push(opened);
+        played.push({ keys, registration: opened.a.io.env["CAIRNFIELD_REGISTRATION_KEY"] });
+      });
+
+      expect(played).toEqual([{ keys: [RESET_KEY, REGISTRATION_KEY], registration: REGISTRATION_KEY }]);
+      expect(process.exitCode).toBeUndefined();
     });
 
     it("plays with the key it asked for, and ends with 1 and the reason when the script stops", async () => {
@@ -399,10 +446,10 @@ describe("a script's start from the command line", () => {
         throw stop;
       };
 
-      await launch("demo", "CAIRNFIELD_REGISTRATION_KEY", play(new Stopped("the index did not show Team A's records within five minutes")));
+      await launch("demo", ["CAIRNFIELD_REGISTRATION_KEY"], play(new Stopped("the index did not show Team A's records within five minutes")));
       expect(process.exitCode).toBe(1);
       process.exitCode = undefined;
-      await launch("reset", "CAIRNFIELD_RESET_KEY", play(new Stop(failure(4, "node-refused", { reason: "unauthorized" }))));
+      await launch("reset", ["CAIRNFIELD_RESET_KEY"], play(new Stop(failure(4, "node-refused", { reason: "unauthorized" }))));
 
       expect(process.exitCode).toBe(1);
       expect(keys).toEqual([REGISTRATION_KEY, RESET_KEY]);
