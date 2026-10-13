@@ -1,5 +1,7 @@
 /* Draws the map behind the page and the trail through it.
-   Without this script the page keeps a simpler tiled contour pattern and a straight trail. */
+   Without this script the page keeps a simpler tiled contour pattern and a straight trail.
+   It holds no color. The map's lines and spot heights take theirs from the palette of site.css at each draw,
+   and the trail takes its stroke from a rule there, so the stylesheet alone says how both look in a light and a dark scheme. */
 (function () {
   var PERIOD = 2400, CELL = 8;
 
@@ -17,7 +19,14 @@
   }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-  function drawTerrain() {
+  /* The colors of the map as the stylesheet holds them for the reader's scheme. A token's text can start with a space. Trimmed, a token that no rule sets is the empty text. */
+  function palette() {
+    var style = getComputedStyle(document.documentElement);
+    function token(name) { return style.getPropertyValue(name).trim(); }
+    return { line: token('--contour'), index: token('--contour-5'), spot: token('--spot') };
+  }
+
+  function drawTerrain(colors) {
     var W = Math.max(document.documentElement.clientWidth, 320);
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var canvas = document.createElement('canvas');
@@ -47,13 +56,13 @@
           for (var n = 0; n < segs.length; n++) { g.moveTo(segs[n][0][0], segs[n][0][1]); g.lineTo(segs[n][1][0], segs[n][1][1]); }
         }
       }
-      g.strokeStyle = index ? '#C6CFCA' : '#DAE0DC';
+      g.strokeStyle = index ? colors.index : colors.line;
       g.lineWidth = index ? 1.5 : 1;
       g.stroke();
     }
 
     /* Spot heights at the summits. */
-    g.fillStyle = '#9AA6A3'; g.strokeStyle = '#9AA6A3'; g.lineWidth = 1;
+    g.fillStyle = colors.spot; g.strokeStyle = colors.spot; g.lineWidth = 1;
     g.font = '500 10px "Spline Sans Mono", ui-monospace, monospace';
     for (r = 4; r < rows - 4; r += 2) {
       for (q = 6; q < cols - 10; q += 2) {
@@ -138,7 +147,6 @@
     var path = document.createElementNS(ns, 'path');
     path.setAttribute('d', d);
     path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', '#7F8D8A');
     path.setAttribute('stroke-width', '2');
     path.setAttribute('stroke-dasharray', '7 7');
     path.setAttribute('stroke-linecap', 'round');
@@ -147,14 +155,20 @@
     root.classList.add('js-trail');
   }
 
-  var lastWidth = 0, timer;
+  /* The map is baked again when the width or a color changed since the last bake, so a resize and a change of scheme take one path. */
+  var baked = '', timer;
   function redraw() {
-    var w = document.documentElement.clientWidth;
-    if (w !== lastWidth) { lastWidth = w; drawTerrain(); }
+    var colors = palette();
+    var key = [document.documentElement.clientWidth, colors.line, colors.index, colors.spot].join(' ');
+    /* A reader can hold an older stylesheet than this script, across a deploy, and that one sets none of the three.
+       A canvas ignores an empty color and draws in black, so nothing is baked and the tile stays. */
+    if (colors.line && colors.index && colors.spot && key !== baked) { baked = key; drawTerrain(colors); }
     drawTrail();
   }
   redraw();
   window.addEventListener('load', redraw);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawTrail);
   window.addEventListener('resize', function () { clearTimeout(timer); timer = setTimeout(redraw, 150); });
+  /* The stylesheet's tokens already hold the new scheme's colors when this event arrives, so the map changes in the frame the ground does. */
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
 })();
