@@ -115,8 +115,9 @@ function draw(canvas: HTMLCanvasElement, [ofLine, ofIndexLine]: Colors): void {
         }
       }
     }
-    pen.strokeStyle = line % 5 === 0 ? ofIndexLine : ofLine;
-    pen.lineWidth = (line % 5 === 0 ? INDEX_LINE : LINE).width;
+    const [color, weight] = line % 5 === 0 ? [ofIndexLine, INDEX_LINE.width] : [ofLine, LINE.width];
+    pen.strokeStyle = color;
+    pen.lineWidth = weight;
     pen.stroke();
   }
 }

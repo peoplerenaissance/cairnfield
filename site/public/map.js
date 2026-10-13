@@ -157,18 +157,19 @@
 
   /* The map is baked again when the width or a color changed since the last bake, so a resize and a change of scheme take one path. */
   var baked = '', timer;
-  function redraw() {
+  function bake() {
     var colors = palette();
     var key = [document.documentElement.clientWidth, colors.line, colors.index, colors.spot].join(' ');
     /* A reader can hold an older stylesheet than this script, across a deploy, and that one sets none of the three.
        A canvas ignores an empty color and draws in black, so nothing is baked and the tile stays. */
     if (colors.line && colors.index && colors.spot && key !== baked) { baked = key; drawTerrain(colors); }
-    drawTrail();
   }
+  function redraw() { bake(); drawTrail(); }
   redraw();
   window.addEventListener('load', redraw);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawTrail);
   window.addEventListener('resize', function () { clearTimeout(timer); timer = setTimeout(redraw, 150); });
-  /* The stylesheet's tokens already hold the new scheme's colors when this event arrives, so the map changes in the frame the ground does. */
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+  /* The stylesheet's tokens already hold the new scheme's colors when this event arrives, so the map changes in the frame the ground does.
+     The trail keeps its path, and the stylesheet gives it its new stroke. */
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', bake);
 })();

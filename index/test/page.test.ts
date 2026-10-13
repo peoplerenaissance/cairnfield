@@ -1725,16 +1725,25 @@ function ratio(one: Color, other: Color): number {
 
 const DARK_BLOCK = /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}/g;
 
+/** One rule of a stylesheet, as `rulesOf` reads it. */
+type Rule = ReturnType<typeof rulesOf>[number];
+
 /** A stylesheet in three parts: what its `:root` rules set, the rules of each block for a dark scheme, and every other rule. */
-function schemesOf(styles: string): { root: string[][][]; dark: { selectors: string[]; set: string[][] }[][]; rest: { selectors: string[]; set: string[][] }[] } {
+function schemesOf(styles: string): { root: string[][][]; dark: Rule[][]; rest: Rule[] } {
   const plain = styles.replace(/\/\*[\s\S]*?\*\//g, "");
   const outside = rulesOf(plain.replace(DARK_BLOCK, ""));
-  const isRoot = ({ selectors }: { selectors: string[] }): boolean => selectors.join() === ":root";
+  const isRoot = ({ selectors }: Rule): boolean => selectors.join() === ":root";
   return { root: outside.filter(isRoot).map(({ set }) => set), dark: [...plain.matchAll(DARK_BLOCK)].map(([, inside = ""]) => rulesOf(inside)), rest: outside.filter((rule) => !isRoot(rule)) };
 }
 
 /** The colors a rule sets as tokens, by token. */
-const tokensOf = (set: string[][] = []): Map<string, Color> => new Map(set.flatMap(([token = "", value = ""]) => (colorOf(value) ? [[token, colorOf(value) as Color]] : [])));
+const tokensOf = (set: string[][] = []): Map<string, Color> =>
+  new Map(
+    set.flatMap(([token = "", value = ""]) => {
+      const color = colorOf(value);
+      return color ? [[token, color] as const] : [];
+    }),
+  );
 
 /** The stylesheet's two palettes. A token that the dark block does not set keeps its color in a dark scheme. */
 function palettesOf(styles: string): { light: Map<string, Color>; dark: Map<string, Color> } {
@@ -1758,6 +1767,8 @@ function contrast(palette: Map<string, Color>, token: string, ...ground: string[
 
 describe("the pages in a light and a dark scheme (R14)", () => {
   const styles = (): string => env.PAGE_FILES["styles.css"] ?? "";
+  /** The grounds that text and an outline stand on: the four of the page, and the ground of a notice. */
+  const GROUNDS = ["--fog", "--band", "--paper", "--card", "--note"];
 
   it("holds its dark look as one block that gives colors of the palette other values and sets nothing else", () => {
     const { root, dark } = schemesOf(styles());
@@ -1812,10 +1823,9 @@ describe("the pages in a light and a dark scheme (R14)", () => {
   });
 
   it("keeps text readable on every ground it stands on, in both schemes", () => {
-    const grounds = ["--fog", "--band", "--paper", "--card", "--note"];
     const text: string[][] = [
-      ...[...grounds, "--add", "--del"].map((ground) => ["--ink", ground]),
-      ...grounds.map((ground) => ["--muted", ground]),
+      ...[...GROUNDS, "--add", "--del"].map((ground) => ["--ink", ground]),
+      ...GROUNDS.map((ground) => ["--muted", ground]),
       // The bar and the hero let the page's ground through.
       ...["--bar", "--veil"].flatMap((ground) => [["--ink", ground, "--fog"], ["--muted", ground, "--fog"]]),
       // Inline code stands on a tint of the ground under it.
@@ -1830,21 +1840,20 @@ describe("the pages in a light and a dark scheme (R14)", () => {
       expect([token, ...ground, "light", contrast(light, token, ...ground) >= 4.5]).toEqual([token, ...ground, "light", true]);
       expect([token, ...ground, "dark", contrast(dark, token, ...ground) >= 4.5]).toEqual([token, ...ground, "dark", true]);
     }
-    // The commit under a component's name. In the light scheme it stands a little under that measure, as it did before the page had a dark one.
+    // The commit under a component's name is muted text on inline code over the page's ground. In a light scheme that pair stands at 4.34, so it is held in a dark scheme alone.
     expect(contrast(dark, "--muted", "--tint", "--fog")).toBeGreaterThanOrEqual(4.5);
   });
 
   it("draws an outline that carries a status, and the focus ring, no fainter in a dark scheme than in a light one", () => {
-    const grounds = ["--fog", "--band", "--paper", "--card", "--note"];
     const outlines: string[][] = [
-      ...grounds.map((ground) => ["--line", ground]),
+      ...GROUNDS.map((ground) => ["--line", ground]),
       ...["--fog", "--paper", "--card", "--note"].map((ground) => ["--mark", ground]),
       ["--ok-line", "--card"],
       ["--rej-line", "--card"],
     ];
     const { light, dark } = palettesOf(styles());
     for (const [token = "", ground = ""] of outlines) expect([token, ground, contrast(dark, token, ground) >= contrast(light, token, ground)]).toEqual([token, ground, true]);
-    for (const ground of grounds) {
+    for (const ground of GROUNDS) {
       expect([ground, "light", contrast(light, "--focus", ground) >= 3]).toEqual([ground, "light", true]);
       expect([ground, "dark", contrast(dark, "--focus", ground) >= 3]).toEqual([ground, "dark", true]);
     }
