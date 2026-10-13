@@ -1432,20 +1432,20 @@ describe("the pages' addresses on the index (KTD14)", () => {
   // The addresses outside the index that a page's file links to. The project's site is the one its bar leads to.
   const SITE = "https://cairnfield.net";
   const REPO = "https://github.com/peoplerenaissance/cairnfield";
-  /** Where the links of a page's footer lead, in the order of the file: its credits, then where more about the project is written. */
-  const FOOTER = ["https://sparkwise.co", REPO, "https://aribadernatal.com", "https://cloudflare.com", SITE, REPO, `${REPO}#readme`, `${REPO}/blob/main/reference/protocol.md`];
+  /** The page of the demo's component on the demo's index, which each footer links. */
+  const DEMO = "https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58";
+  /** Where the links of a page's footer lead, in the order of the file: its credits, then the site, the demo's page, the repo and the protocol. */
+  const FOOTER = ["https://aribadernatal.com", "https://sparkwise.co", "https://cloudflare.com", SITE, DEMO, REPO, `${REPO}/blob/main/reference/protocol.md`];
   /** The words of that footer. They credit the people behind the software, say what an index is, and name where four links lead. */
   const FOOTER_WORDS = [
     "Credits",
-    "Cairnfield is an unofficial side project by the",
-    "Sparkwise",
-    "engineering team.",
-    "Open source",
-    "under the MIT license.",
-    "Set in Routed Gothic by Darren Embry, Hanken Grotesk by Hanken Design Co. and Spline Sans Mono by Sorkin Type, all under the SIL Open Font License and served from this index.",
-    "Code by",
+    "Built by",
     "Ari Bader-Natal",
-    ". Built with",
+    "at",
+    "Sparkwise",
+    ".",
+    "Website set in Routed Gothic by Darren Embry, Hanken Grotesk by Hanken Design Co. and Spline Sans Mono by Sorkin Type, all under the SIL Open Font License and served from this index.",
+    "Built with",
     "Cloudflare",
     ".",
     "This index",
@@ -1453,8 +1453,8 @@ describe("the pages' addresses on the index (KTD14)", () => {
     "An index holds nothing original: every record it shows is published by a team's own node.",
     "More about Cairnfield",
     "The Cairnfield site",
-    "The repository",
-    "The README, which is the manual",
+    "Live demo (index)",
+    "Code and docs (MIT license)",
     "The protocol",
     "Copyright 2026 People Renaissance, Inc.",
   ];

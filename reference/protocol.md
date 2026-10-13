@@ -224,7 +224,7 @@ A label whose meaning is not plain shows that meaning while a reader points at i
 
 Each page's bar is a trail: the project's name leads to the project's site, and on the page of a component commit the next part leads to the index's own page. The last part names the page that is open.
 
-Both pages end with the same footer. It credits the people behind the software, says that anyone can run an index and that the credits say nothing of who runs this one, and links to the project's site, its repo, its README and this document.
+Both pages end with the same footer. It credits the people behind the software, says that anyone can run an index and that the credits say nothing of who runs this one, and links to the project's site, the demo's page on the demo's index, the project's repo and this document.
 
 Each state has words of its own, and none reads as an all-clear.
 
