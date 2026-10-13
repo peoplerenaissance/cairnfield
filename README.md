@@ -38,7 +38,7 @@ The drawing shows one team's node in full, a second team's node and an index, wi
 | Deploy a team node | [Deploy a node](#deploy-a-node) | A Cloudflare account |
 | Have your own review agent write findings | [Let your own agent write findings](#let-your-own-agent-write-findings) | The skill file |
 
-The command needs Node 22.22 and Git, and is written for macOS and Linux. On an older Node it prints `{"error":"node-too-old",...}`, says which Node it needs and stops. Windows is not supported in the prototype. A node and an index each run in a Cloudflare account on the Workers Paid plan, which Artifacts requires.
+The command needs Node 22.22 and Git, and is written for macOS and Linux. On an older Node it prints `{"error":"node-too-old",...}`, says which Node it needs and stops. Node 23 before 23.6 counts as older. Windows is not supported in the prototype. A node and an index each run in a Cloudflare account on the Workers Paid plan, which Artifacts requires.
 
 Install once, in the repo root:
 
