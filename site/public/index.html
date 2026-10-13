@@ -17,9 +17,8 @@
     <a class="mark" href="#top">Cairnfield</a>
     <nav aria-label="Sections">
       <a href="#how">How it works</a>
-      <a href="#part">Taking part</a>
-      <a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">Live demo</a>
-      <a href="https://github.com/peoplerenaissance/cairnfield">Repo</a>
+      <a href="#part">Get started</a>
+      <a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">Live demo (index)</a>
     </nav>
   </div>
 </div>
@@ -217,13 +216,13 @@
         <div class="lens a">
           <div><h3>Northfork</h3><span class="host">northfork.example</span></div>
   <pre>{
-  "patchLevel": 1,
-  "teams": [],
-  "patchKinds": [
-    "removes-only",
-    "adds-or-changes"
+  <span class="key">"patchLevel"</span>: <span class="lit">1</span>,
+  <span class="key">"teams"</span>: [],
+  <span class="key">"patchKinds"</span>: [
+    <span class="str">"removes-only"</span>,
+    <span class="str">"adds-or-changes"</span>
   ],
-  "publishRecipes": true
+  <span class="key">"publishRecipes"</span>: <span class="lit">true</span>
 }</pre>
           <div class="result">
             <span class="cairn md" aria-hidden="true"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone a"></span><span class="stone a"></span></span>
@@ -236,15 +235,15 @@
         <div class="lens b">
           <div><h3>Kestrel</h3><span class="host">kestrel.example</span></div>
   <pre>{
-  "patchLevel": 2,
-  "teams": [
-    "https://northfork.example"
+  <span class="key">"patchLevel"</span>: <span class="lit">2</span>,
+  <span class="key">"teams"</span>: [
+    <span class="str">"https://northfork.example"</span>
   ],
-  "patchKinds": [
-    "removes-only",
-    "adds-or-changes"
+  <span class="key">"patchKinds"</span>: [
+    <span class="str">"removes-only"</span>,
+    <span class="str">"adds-or-changes"</span>
   ],
-  "publishRecipes": true
+  <span class="key">"publishRecipes"</span>: <span class="lit">true</span>
 }</pre>
           <div class="result">
             <span class="cairn md" aria-hidden="true"><span class="stone o" data-sha="9f3c1e7a"></span><span class="stone b"></span><span class="stone b"></span><span class="stone a"></span></span>
@@ -257,16 +256,16 @@
         <div class="lens c">
           <div><h3>Marlow</h3><span class="host">marlow.example</span></div>
   <pre>{
-  "patchLevel": 0,
-  "teams": [],
-  "patchKinds": [],
-  "publishRecipes": false
+  <span class="key">"patchLevel"</span>: <span class="lit">0</span>,
+  <span class="key">"teams"</span>: [],
+  <span class="key">"patchKinds"</span>: [],
+  <span class="key">"publishRecipes"</span>: <span class="lit">false</span>
 }</pre>
           <div class="result">
             <span class="cairn md" aria-hidden="true"><span class="stone o" data-sha="9f3c1e7a"></span></span>
             <div>
               <div class="verdict">Not approved</div>
-              <p class="why">Level 0 takes no patches, so Marlow builds no copy. Its reviewer read the findings and ruled against the plugin as it stands.</p>
+              <p class="why">Level 0 takes no patches, so Marlow builds no copy. Its reviewer read the findings on the index's page and ruled against the plugin as it stands.</p>
             </div>
           </div>
         </div>
@@ -278,64 +277,286 @@
   <section id="command">
     <div class="wrap">
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
-      <p class="eyebrow">Seen by a team operator</p>
+      <p class="eyebrow">Seen by a team operator and an engineer</p>
       <h2>The command</h2>
-      <p class="intro">This output is an example: its teams are invented, and its hashes are cut short. The command takes and prints each one in full. <strong>One command per step.</strong> Each prints one JSON value and returns an exit code, so a person, a script or another agent can drive it. Two teams, two machines, no shared account: Kestrel builds a copy alone and later takes Northfork's patch, and Marlow's lens takes no patch.</p>
+      <p class="intro">This output is an example. Its teams are invented, its hashes are cut short, and a longer result is cut at a <code>…</code>. The command takes each hash and prints each result in full. <strong>One command per step.</strong> Each prints one line of JSON and returns an exit code, so a person, a script or another agent can drive it. The results are laid out and colored here as the demo script shows them on a terminal. Two teams, no shared account: Kestrel builds a copy alone and later takes Northfork's patch, an engineer checks an installed copy against Kestrel's approval, and Marlow's lens takes no patch.</p>
       <div class="term-grid">
         <div class="frame">
           <div class="chrome team b"><i></i><i></i><i></i><span class="teammark"><span class="stone b"></span>Kestrel</span><span class="url">someone@kestrel.example</span></div>
-          <div class="term">
+          <div class="term kestrel" tabindex="0" role="region" aria-label="Kestrel's terminal">
             <div class="dimm"># Kestrel · node kestrel.example · no index yet · lens: level 1</div>
             <div class="gap"></div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield pin https://git.fellbeck-notes.example/fellbeck-sync --branch main --commit 9f3c1e7a…</span></div>
-            <div>{"component":"9f3c1e7a…","checkout":".cairnfield/checkouts/9f3c1e7a…","files":5,"leftOut":[],"registered":false}</div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield pin https://git.fellbeck-notes.example/fellbeck-sync <span class="flag">--branch</span> main <span class="flag">--commit</span> 9f3c1e7a…</span></div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"component"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"checkout"</span>: <span class="str">".cairnfield/<wbr>checkouts/<wbr>9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"files"</span>: <span class="lit">5</span>,</div>
+            <div class="j d1"><span class="key">"leftOut"</span>: [],</div>
+            <div class="j d1"><span class="key">"registered"</span>: <span class="lit">false</span></div>
+            <div class="j d0">}</div>
             <div class="dimm"># Kestrel's own review agent writes four findings to the outbox</div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield validate</span></div>
-            <div>{"records":4,"rejected":[]}</div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield publish</span></div>
-            <div class="ok">{"records":4,"head":"5d10c3…","published":["records/9f3c1e7a…/finding/5b7e….json", …],"notice":"none"}</div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield validate</span></div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"records"</span>: <span class="lit">4</span>,</div>
+            <div class="j d1"><span class="key">"rejected"</span>: []</div>
+            <div class="j d0">}</div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield publish</span></div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"records"</span>: <span class="lit">4</span>,</div>
+            <div class="j d1"><span class="key">"head"</span>: <span class="str">"5d10c3…"</span>,</div>
+            <div class="j d1"><span class="key">"published"</span>: [</div>
+            <div class="j d2"><span class="str">"records/<wbr>9f3c1e7a…/<wbr>finding/<wbr>5b7e….json"</span>,</div>
+            <div class="j d2"><span class="dimm">…</span></div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"notice"</span>: <span class="str">"none"</span></div>
+            <div class="j d0">}</div>
             <div class="gap"></div>
             <div class="dimm"># the bundled agent patches one of those findings</div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield patch 9f3c1e7a… --finding 5b7e…</span></div>
-            <div class="ok">{"claim":"e2f9…","number":2914603317,"patch":"7c1d…","commit":"b02e…","patchId":"93cd…","kind":"adds-or-changes","size":2,"paths":["plugin.json"],"recording":".cairnfield/recordings/kestrel/9f3c1e7a…/5b7e….json","records":1,"head":"a41f…","published":["records/9f3c1e7a…/patch/7c1d….json"],"notice":"none"}</div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield patch 9f3c1e7a… <span class="flag">--finding</span> 5b7e…</span></div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"claim"</span>: <span class="str">"e2f9…"</span>,</div>
+            <div class="j d1"><span class="key">"number"</span>: <span class="lit">2914603317</span>,</div>
+            <div class="j d1"><span class="key">"patch"</span>: <span class="str">"7c1d…"</span>,</div>
+            <div class="j d1"><span class="key">"commit"</span>: <span class="str">"b02e…"</span>,</div>
+            <div class="j d1"><span class="key">"patchId"</span>: <span class="str">"93cd…"</span>,</div>
+            <div class="j d1"><span class="key">"kind"</span>: <span class="str">"adds-or-changes"</span>,</div>
+            <div class="j d1"><span class="key">"size"</span>: <span class="lit">2</span>,</div>
+            <div class="j d1"><span class="key">"paths"</span>: [</div>
+            <div class="j d2"><span class="str">"plugin.json"</span></div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"recording"</span>: <span class="str">".cairnfield/<wbr>recordings/<wbr>kestrel/<wbr>9f3c1e7a…/<wbr>5b7e….json"</span>,</div>
+            <div class="j d1"><span class="key">"note"</span>: <span class="str">"written"</span>,</div>
+            <div class="j d1"><span class="key">"records"</span>: <span class="lit">1</span>,</div>
+            <div class="j d1"><span class="key">"head"</span>: <span class="str">"a41f…"</span>,</div>
+            <div class="j d1"><span class="key">"published"</span>: [</div>
+            <div class="j d2"><span class="str">"records/<wbr>9f3c1e7a…/<wbr>patch/<wbr>7c1d….json"</span></div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"notice"</span>: <span class="str">"none"</span></div>
+            <div class="j d0">}</div>
             <div class="gap"></div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield assemble 9f3c1e7a…</span></div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield assemble 9f3c1e7a…</span></div>
             <div class="dimm"># the full diff of the copy goes to standard error, for a person to read</div>
-            <div class="ok">{"component":"9f3c1e7a…","level":1,"patches":[{"patchId":"93cd…","node":"https://kestrel.example","commit":"b02e…","kind":"adds-or-changes","size":2}],"refused":[],"skipped":[],"tree":"d3051c…","commit":"6fa0…","copy":".cairnfield/copies/9f3c1e7a…","paths":["plugin.json"],"recipe":"c8e1…","records":1,"head":"0b5d…","published":["records/9f3c1e7a…/recipe/c8e1….json"],"notice":"none"}</div>
+            <div class="hd">--- a/plugin.json</div>
+            <div class="hd">+++ b/plugin.json</div>
+            <div class="hd">@@ -13,1 +13,1 @@</div>
+            <div class="del">-    "env": { "read": ["*"] }</div>
+            <div class="add">+    "env": { "read": ["FELLBECK_TOKEN"] }</div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"component"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"level"</span>: <span class="lit">1</span>,</div>
+            <div class="j d1"><span class="key">"patches"</span>: [</div>
+            <div class="j d2">{</div>
+            <div class="j d3"><span class="key">"patchId"</span>: <span class="str">"93cd…"</span>,</div>
+            <div class="j d3"><span class="key">"node"</span>: <span class="str">"https://kestrel.example"</span>,</div>
+            <div class="j d3"><span class="key">"commit"</span>: <span class="str">"b02e…"</span>,</div>
+            <div class="j d3"><span class="key">"kind"</span>: <span class="str">"adds-or-changes"</span>,</div>
+            <div class="j d3"><span class="key">"size"</span>: <span class="lit">2</span></div>
+            <div class="j d2">}</div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"refused"</span>: [],</div>
+            <div class="j d1"><span class="key">"skipped"</span>: [],</div>
+            <div class="j d1"><span class="key">"tree"</span>: <span class="str">"d3051c…"</span>,</div>
+            <div class="j d1"><span class="key">"commit"</span>: <span class="str">"6fa0…"</span>,</div>
+            <div class="j d1"><span class="key">"copy"</span>: <span class="str">".cairnfield/<wbr>copies/<wbr>9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"paths"</span>: [</div>
+            <div class="j d2"><span class="str">"plugin.json"</span></div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"recipe"</span>: <span class="str">"c8e1…"</span>,</div>
+            <div class="j d1"><span class="key">"records"</span>: <span class="lit">1</span>,</div>
+            <div class="j d1"><span class="key">"head"</span>: <span class="str">"0b5d…"</span>,</div>
+            <div class="j d1"><span class="key">"published"</span>: [</div>
+            <div class="j d2"><span class="str">"records/<wbr>9f3c1e7a…/<wbr>recipe/<wbr>c8e1….json"</span></div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"notice"</span>: <span class="str">"none"</span></div>
+            <div class="j d0">}</div>
             <div class="gap"></div>
             <div class="dimm"># a person read the diff and gave the verdict</div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield decide 9f3c1e7a… --verdict approved-with-required-mitigations --tree d3051c…</span></div>
-            <div class="ok">{"url":"https://git.fellbeck-notes.example/fellbeck-sync","commit":"9f3c1e7a…","verdict":"approved-with-required-mitigations","date":"2026-10-12T16:20:41.000Z","tree":"d3051c…"}</div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield decide 9f3c1e7a… <span class="flag">--verdict</span> approved-with-required-mitigations <span class="flag">--tree</span> d3051c…</span></div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"url"</span>: <span class="str">"https://git.fellbeck-notes.example/<wbr>fellbeck-sync"</span>,</div>
+            <div class="j d1"><span class="key">"commit"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"verdict"</span>: <span class="str">"approved-with-required-mitigations"</span>,</div>
+            <div class="j d1"><span class="key">"date"</span>: <span class="str">"2026-10-12T16:20:41.000Z"</span>,</div>
+            <div class="j d1"><span class="key">"tree"</span>: <span class="str">"d3051c…"</span></div>
+            <div class="j d0">}</div>
             <div class="gap"></div>
-            <div class="dimm"># Later: an index in the config, and Northfork named in the lens at level 2</div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield assemble 9f3c1e7a…</span></div>
-            <div class="ok">{"component":"9f3c1e7a…","level":2,"patches":[{"patchId":"2e91…","node":"https://kestrel.example", …},{"patchId":"4a07…","node":"https://northfork.example", …},{"patchId":"93cd…","node":"https://kestrel.example", …}],"refused":[],"skipped":[],"tree":"71aa09…", …}</div>
+            <div class="beat"># Later: an index in the config, and pin run again to register there</div>
+            <div class="dimm"># Kestrel has patched a second finding, and its lens names Northfork at level 2</div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield assemble 9f3c1e7a…</span></div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"component"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"level"</span>: <span class="lit">2</span>,</div>
+            <div class="j d1"><span class="key">"patches"</span>: [</div>
+            <div class="j d2">{</div>
+            <div class="j d3"><span class="key">"patchId"</span>: <span class="str">"2e91…"</span>,</div>
+            <div class="j d3"><span class="key">"node"</span>: <span class="str">"https://kestrel.example"</span>,</div>
+            <div class="j d3"><span class="key">"commit"</span>: <span class="str">"c5a8…"</span>,</div>
+            <div class="j d3"><span class="key">"kind"</span>: <span class="str">"removes-only"</span>,</div>
+            <div class="j d3"><span class="key">"size"</span>: <span class="lit">1</span></div>
+            <div class="j d2">},</div>
+            <div class="j d2">{</div>
+            <div class="j d3"><span class="key">"patchId"</span>: <span class="str">"4a07…"</span>,</div>
+            <div class="j d3"><span class="key">"node"</span>: <span class="str">"https://northfork.example"</span>,</div>
+            <div class="j d3"><span class="key">"commit"</span>: <span class="str">"1b7f…"</span>,</div>
+            <div class="j d3"><span class="key">"kind"</span>: <span class="str">"adds-or-changes"</span>,</div>
+            <div class="j d3"><span class="key">"size"</span>: <span class="lit">2</span></div>
+            <div class="j d2">},</div>
+            <div class="j d2">{</div>
+            <div class="j d3"><span class="key">"patchId"</span>: <span class="str">"93cd…"</span>,</div>
+            <div class="j d3"><span class="key">"node"</span>: <span class="str">"https://kestrel.example"</span>,</div>
+            <div class="j d3"><span class="key">"commit"</span>: <span class="str">"b02e…"</span>,</div>
+            <div class="j d3"><span class="key">"kind"</span>: <span class="str">"adds-or-changes"</span>,</div>
+            <div class="j d3"><span class="key">"size"</span>: <span class="lit">2</span></div>
+            <div class="j d2">}</div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"refused"</span>: [],</div>
+            <div class="j d1"><span class="key">"skipped"</span>: [],</div>
+            <div class="j d1"><span class="key">"tree"</span>: <span class="str">"71aa09…"</span>,</div>
+            <div class="j d1"><span class="dimm">…</span></div>
+            <div class="j d0">}</div>
             <div class="gap"></div>
-            <div class="dimm"># The plugin releases again</div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield carry 9f3c1e7a… e41b09d2… --branch main</span></div>
-            <div class="ok">{"older":"9f3c1e7a…","newer":"e41b09d2…","findings":[{"finding":"7ab0…","carried":false,"reason":"content-changed"}, …],"patches":[{"patch":"7c1d…","patchId":"93cd…","carried":true,"reason":"content-unchanged","as":"d0a4…","commit":"f31c…","paths":["plugin.json"]}, …],"records":5,"head":"9e2a…","published":[…],"notice":"sent","leftBehind":["4a07…"],"paths":{"added":0,"changed":1,"removed":0}}</div>
+            <div class="dimm"># the new copy has another tree, so a person read its diff and gave the verdict again</div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield decide 9f3c1e7a… <span class="flag">--verdict</span> approved-with-required-mitigations <span class="flag">--tree</span> 71aa09…</span></div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"url"</span>: <span class="str">"https://git.fellbeck-notes.example/<wbr>fellbeck-sync"</span>,</div>
+            <div class="j d1"><span class="key">"commit"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"verdict"</span>: <span class="str">"approved-with-required-mitigations"</span>,</div>
+            <div class="j d1"><span class="key">"date"</span>: <span class="str">"2026-10-13T09:14:52.000Z"</span>,</div>
+            <div class="j d1"><span class="key">"tree"</span>: <span class="str">"71aa09…"</span></div>
+            <div class="j d0">}</div>
+            <div class="gap"></div>
+            <div class="dimm"># the table of verdicts: Kestrel saves it as approvals.json and shares that file by its own means</div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield approvals</span></div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"version"</span>: <span class="str">"1"</span>,</div>
+            <div class="j d1"><span class="key">"decisions"</span>: [</div>
+            <div class="j d2">{</div>
+            <div class="j d3"><span class="key">"url"</span>: <span class="str">"https://git.fellbeck-notes.example/<wbr>fellbeck-sync"</span>,</div>
+            <div class="j d3"><span class="key">"commit"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d3"><span class="key">"verdict"</span>: <span class="str">"approved-with-required-mitigations"</span>,</div>
+            <div class="j d3"><span class="key">"date"</span>: <span class="str">"2026-10-13T09:14:52.000Z"</span>,</div>
+            <div class="j d3"><span class="key">"tree"</span>: <span class="str">"71aa09…"</span></div>
+            <div class="j d2">}</div>
+            <div class="j d1">]</div>
+            <div class="j d0">}</div>
+            <div class="gap"></div>
+            <div class="beat"># On another machine, with that file and no config file, no key and no node</div>
+            <div class="say eng"><span class="who">engineer</span>: fetches the copy Kestrel published, with the read token its node gives anyone, into fellbeck-sync/</div>
+            <div class="say eng"><span class="who">engineer</span>$ <span class="cmd">cairnfield verify https://git.fellbeck-notes.example/fellbeck-sync fellbeck-sync <span class="flag">--approvals</span> approvals.json</span></div>
+            <div class="say eng"><span class="who">engineer</span>&gt; {</div>
+            <div class="j d1 eng"><span class="key">"url"</span>: <span class="str">"https://git.fellbeck-notes.example/<wbr>fellbeck-sync"</span>,</div>
+            <div class="j d1 eng"><span class="key">"commit"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1 eng"><span class="key">"verdict"</span>: <span class="str">"approved-with-required-mitigations"</span>,</div>
+            <div class="j d1 eng"><span class="key">"tree"</span>: <span class="str">"71aa09…"</span></div>
+            <div class="j d0 eng">}</div>
+            <div class="dimm"># one file in that folder is changed</div>
+            <div class="say eng"><span class="who">engineer</span>$ <span class="cmd">cairnfield verify https://git.fellbeck-notes.example/fellbeck-sync fellbeck-sync <span class="flag">--approvals</span> approvals.json</span></div>
+            <div class="say eng"><span class="who">engineer</span>&gt; {</div>
+            <div class="j d1 eng"><span class="key">"error"</span>: <span class="str">"copy-differs"</span>,</div>
+            <div class="j d1 eng"><span class="key">"url"</span>: <span class="str">"https://git.fellbeck-notes.example/<wbr>fellbeck-sync"</span>,</div>
+            <div class="j d1 eng"><span class="key">"commit"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1 eng"><span class="key">"approved"</span>: <span class="str">"71aa09…"</span>,</div>
+            <div class="j d1 eng"><span class="key">"found"</span>: <span class="str">"8d02c7…"</span></div>
+            <div class="j d0 eng">}</div>
+            <div class="dimm"># <span class="bad">exit 11</span> · the folder is not the copy Kestrel approved</div>
+            <div class="gap"></div>
+            <div class="beat"># The plugin releases again</div>
+            <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield carry 9f3c1e7a… e41b09d2… <span class="flag">--branch</span> main</span></div>
+            <div class="say"><span class="who">kestrel</span>&gt; {</div>
+            <div class="j d1"><span class="key">"older"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"newer"</span>: <span class="str">"e41b09d2…"</span>,</div>
+            <div class="j d1"><span class="key">"findings"</span>: [</div>
+            <div class="j d2">{</div>
+            <div class="j d3"><span class="key">"finding"</span>: <span class="str">"5b7e…"</span>,</div>
+            <div class="j d3"><span class="key">"carried"</span>: <span class="lit">true</span>,</div>
+            <div class="j d3"><span class="key">"reason"</span>: <span class="str">"content-unchanged"</span>,</div>
+            <div class="j d3"><span class="key">"as"</span>: <span class="str">"a9d3…"</span>,</div>
+            <div class="j d3"><span class="key">"path"</span>: <span class="str">"plugin.json"</span></div>
+            <div class="j d2">},</div>
+            <div class="j d2">{</div>
+            <div class="j d3"><span class="key">"finding"</span>: <span class="str">"7ab0…"</span>,</div>
+            <div class="j d3"><span class="key">"carried"</span>: <span class="lit">false</span>,</div>
+            <div class="j d3"><span class="key">"reason"</span>: <span class="str">"content-changed"</span></div>
+            <div class="j d2">},</div>
+            <div class="j d2"><span class="dimm">…</span></div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"patches"</span>: [</div>
+            <div class="j d2">{</div>
+            <div class="j d3"><span class="key">"patch"</span>: <span class="str">"7c1d…"</span>,</div>
+            <div class="j d3"><span class="key">"patchId"</span>: <span class="str">"93cd…"</span>,</div>
+            <div class="j d3"><span class="key">"carried"</span>: <span class="lit">true</span>,</div>
+            <div class="j d3"><span class="key">"reason"</span>: <span class="str">"content-unchanged"</span>,</div>
+            <div class="j d3"><span class="key">"as"</span>: <span class="str">"d0a4…"</span>,</div>
+            <div class="j d3"><span class="key">"commit"</span>: <span class="str">"f31c…"</span>,</div>
+            <div class="j d3"><span class="key">"paths"</span>: [</div>
+            <div class="j d4"><span class="str">"plugin.json"</span></div>
+            <div class="j d3">]</div>
+            <div class="j d2">},</div>
+            <div class="j d2"><span class="dimm">…</span></div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"records"</span>: <span class="lit">5</span>,</div>
+            <div class="j d1"><span class="key">"head"</span>: <span class="str">"9e2a…"</span>,</div>
+            <div class="j d1"><span class="key">"published"</span>: [</div>
+            <div class="j d2"><span class="dimm">…</span></div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"notice"</span>: <span class="str">"sent"</span>,</div>
+            <div class="j d1"><span class="key">"leftBehind"</span>: [</div>
+            <div class="j d2"><span class="str">"4a07…"</span></div>
+            <div class="j d1">],</div>
+            <div class="j d1"><span class="key">"paths"</span>: {</div>
+            <div class="j d2"><span class="key">"added"</span>: <span class="lit">0</span>,</div>
+            <div class="j d2"><span class="key">"changed"</span>: <span class="lit">1</span>,</div>
+            <div class="j d2"><span class="key">"removed"</span>: <span class="lit">0</span></div>
+            <div class="j d1">}</div>
+            <div class="j d0">}</div>
           </div>
         </div>
         <div class="frame">
           <div class="chrome team c"><i></i><i></i><i></i><span class="teammark"><span class="stone c"></span>Marlow</span><span class="url">someone@marlow.example</span></div>
-          <div class="term">
-            <div class="dimm"># Marlow · node marlow.example · lens: level 0</div>
+          <div class="term marlow" tabindex="0" role="region" aria-label="Marlow's terminal">
+            <div class="dimm"># Marlow · node marlow.example · an index in the config · lens: level 0</div>
             <div class="gap"></div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield pin https://git.fellbeck-notes.example/fellbeck-sync --branch main --commit 9f3c1e7a…</span></div>
-            <div>{"component":"9f3c1e7a…","checkout":".cairnfield/checkouts/9f3c1e7a…","files":5,"leftOut":[],"registered":true}</div>
+            <div class="say"><span class="who">marlow</span>$ <span class="cmd">cairnfield pin https://git.fellbeck-notes.example/fellbeck-sync <span class="flag">--branch</span> main <span class="flag">--commit</span> 9f3c1e7a…</span></div>
+            <div class="say"><span class="who">marlow</span>&gt; {</div>
+            <div class="j d1"><span class="key">"component"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"checkout"</span>: <span class="str">".cairnfield/<wbr>checkouts/<wbr>9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"files"</span>: <span class="lit">5</span>,</div>
+            <div class="j d1"><span class="key">"leftOut"</span>: [],</div>
+            <div class="j d1"><span class="key">"registered"</span>: <span class="lit">true</span></div>
+            <div class="j d0">}</div>
             <div class="gap"></div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield assemble 9f3c1e7a…</span></div>
-            <div>{"component":"9f3c1e7a…","level":0,"patches":[],"refused":[],"skipped":[]}</div>
+            <div class="say"><span class="who">marlow</span>$ <span class="cmd">cairnfield assemble 9f3c1e7a…</span></div>
+            <div class="say"><span class="who">marlow</span>&gt; {</div>
+            <div class="j d1"><span class="key">"component"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"level"</span>: <span class="lit">0</span>,</div>
+            <div class="j d1"><span class="key">"patches"</span>: [],</div>
+            <div class="j d1"><span class="key">"refused"</span>: [],</div>
+            <div class="j d1"><span class="key">"skipped"</span>: []</div>
+            <div class="j d0">}</div>
             <div class="dimm"># level 0 takes no patch, so there is no copy</div>
             <div class="gap"></div>
-            <div class="dimm"># a person at Marlow read the findings and ruled</div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield decide 9f3c1e7a… --verdict not-approved</span></div>
-            <div class="bad">{"url":"https://git.fellbeck-notes.example/fellbeck-sync","commit":"9f3c1e7a…","verdict":"not-approved","date":"2026-10-12T16:31:07.000Z"}</div>
+            <div class="dimm"># a person at Marlow read the findings on the index's page and ruled</div>
+            <div class="say"><span class="who">marlow</span>$ <span class="cmd">cairnfield decide 9f3c1e7a… <span class="flag">--verdict</span> not-approved</span></div>
+            <div class="say"><span class="who">marlow</span>&gt; {</div>
+            <div class="j d1"><span class="key">"url"</span>: <span class="str">"https://git.fellbeck-notes.example/<wbr>fellbeck-sync"</span>,</div>
+            <div class="j d1"><span class="key">"commit"</span>: <span class="str">"9f3c1e7a…"</span>,</div>
+            <div class="j d1"><span class="key">"verdict"</span>: <span class="str">"not-approved"</span>,</div>
+            <div class="j d1"><span class="key">"date"</span>: <span class="str">"2026-10-12T16:31:07.000Z"</span></div>
+            <div class="j d0">}</div>
             <div class="gap"></div>
-            <div class="dimm"># A finding from an outside agent, with a value outside the vocabulary</div>
-            <div><span class="p">$</span> <span class="cmd">cairnfield validate</span></div>
-            <div class="bad">{"records":0,"rejected":[{"record":"records/9f3c1e7a…/finding/3f0a….json","reason":"unknown-value","field":"observation"}]}</div>
-            <div class="dimm">exit 2 · publish pushes nothing until every file passes</div>
+            <div class="beat"># A finding from an outside agent, with a value outside the vocabulary</div>
+            <div class="say"><span class="who">marlow</span>$ <span class="cmd">cairnfield validate</span></div>
+            <div class="say"><span class="who">marlow</span>&gt; {</div>
+            <div class="j d1"><span class="key">"records"</span>: <span class="lit">0</span>,</div>
+            <div class="j d1"><span class="key">"rejected"</span>: [</div>
+            <div class="j d2">{</div>
+            <div class="j d3"><span class="key">"record"</span>: <span class="str">"records/<wbr>9f3c1e7a…/<wbr>finding/<wbr>3f0a….json"</span>,</div>
+            <div class="j d3"><span class="key">"reason"</span>: <span class="str">"unknown-value"</span>,</div>
+            <div class="j d3"><span class="key">"field"</span>: <span class="str">"observation"</span></div>
+            <div class="j d2">}</div>
+            <div class="j d1">]</div>
+            <div class="j d0">}</div>
+            <div class="dimm"># <span class="bad">exit 2</span> · publish pushes nothing until every file passes</div>
           </div>
         </div>
       </div>
@@ -363,20 +584,19 @@
   <div class="wrap cols">
     <div>
       <h4>Credits</h4>
-      <p>Cairnfield is an unofficial side project by the <a href="https://sparkwise.co">Sparkwise</a> engineering team.</p>
-      <p><a href="https://github.com/peoplerenaissance/cairnfield">Open source</a> under the MIT license.</p>
-      <p>Set in Routed Gothic by Darren Embry, Hanken Grotesk by Hanken Design Co. and Spline Sans Mono by Sorkin Type, all under the SIL Open Font License and served from this site.</p>
-      <p>Code (and photo) by <a href="https://aribadernatal.com">Ari Bader-Natal</a>.</p>
+      <p>Built by <a href="https://aribadernatal.com">Ari Bader-Natal</a> at <a href="https://sparkwise.co">Sparkwise</a>.</p>
+      <p>Website set in Routed Gothic by Darren Embry, Hanken Grotesk by Hanken Design Co. and Spline Sans Mono by Sorkin Type, all under the SIL Open Font License and served from this site.</p>
       <p class="badge"><a href="https://cloudflare.com"><img src="/built-with-cloudflare.svg" alt="Built with Cloudflare" height="36"></a></p>
     </div>
     <figure class="photo">
       <img src="/photo_small.jpg" width="768" height="1024" alt="A tall cairn of beach stones balanced on a flat base rock, with two people and the sea behind it" loading="lazy">
+      <figcaption>Photo by Ari Bader-Natal</figcaption>
     </figure>
     <div>
       <h4>Read more</h4>
-      <p><a href="https://github.com/peoplerenaissance/cairnfield">The repository</a></p>
-      <p><a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">The live demo page</a></p>
-      <p><a href="https://github.com/peoplerenaissance/cairnfield#readme">The README, which is the manual</a></p>
+      <p><a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">Live demo (index)</a></p>
+      <p><a href="https://github.com/peoplerenaissance/cairnfield">Code and docs (MIT license)</a></p>
+      <p><a href="https://github.com/peoplerenaissance/cairnfield/blob/main/reference/protocol.md">The Protocol</a></p>
     </div>
   </div>
   <div class="wrap legal">

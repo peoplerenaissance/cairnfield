@@ -1,6 +1,7 @@
-// What the demo script and the reset script share (R27): the two demo teams, each with
-// a folder and an admin key of its own, the index they share through, and how a script
-// runs the `cairnfield` command for a team and waits for the index.
+// What the demo script, the reset script and the agent demo's script share (R27): the
+// two demo teams, each with a folder and an admin key of its own, the index they share
+// through, and how a script runs the `cairnfield` command for a team and waits for the
+// index.
 //
 // The scripts run the command in this process, through the entry point `main.ts` uses,
 // so a team's command sees that team's key and no other. No address and no key is in
@@ -17,7 +18,7 @@ import { MODEL_KEY } from "../cli/src/agents/live.ts";
 import { ADMIN_KEY, REGISTRATION_KEY } from "../cli/src/config.ts";
 import { processIo } from "../cli/src/io.ts";
 import type { Io } from "../cli/src/io.ts";
-import { EXIT, Stop } from "../cli/src/outcome.ts";
+import { EXIT, Stop, outcomeOf } from "../cli/src/outcome.ts";
 import type { Outcome } from "../cli/src/outcome.ts";
 import { run } from "../cli/src/run.ts";
 import { callIndex, nodeListing } from "../cli/src/services.ts";
@@ -40,11 +41,11 @@ const TEAM_B_NODE = "TEAM_B_NODE_URL";
 const INDEX = "INDEX_URL";
 const TEAM_A_KEY = "TEAM_A_ADMIN_KEY";
 const TEAM_B_KEY = "TEAM_B_ADMIN_KEY";
-/** The key of the index's reset route. Only the reset script reads it. */
+/** The key of the index's reset route. Only a script that resets the demo reads it. */
 export const RESET_KEY = "CAIRNFIELD_RESET_KEY";
 
 /** Every key a script or the command may find in the environment. A team's command is handed its own two and none of the rest. */
-const KEYS = [ADMIN_KEY, REGISTRATION_KEY, MODEL_KEY, TEAM_A_KEY, TEAM_B_KEY, RESET_KEY];
+export const KEYS: readonly string[] = [ADMIN_KEY, REGISTRATION_KEY, MODEL_KEY, TEAM_A_KEY, TEAM_B_KEY, RESET_KEY];
 
 // What a script prints on a terminal (R44, KTD41). The command prints JSON and knows
 // nothing of this. Every line a script says passes through the `say` that `launch`
@@ -203,19 +204,19 @@ export function halt(why: string): never {
 }
 
 /**
- * Reads a deployment from the environment, with the one key of the index the script
- * needs: `key` names the registration key or the reset key. Returns the names that are
- * missing or in no form the protocol accepts, and never a value: a name tells the
- * operator what to set.
+ * Reads a deployment from the environment, with the keys of the index the script needs:
+ * `keys` names the registration key, the reset key or both. Returns the value of each,
+ * in the order it was named. Or it returns every name that is missing or in no form the
+ * protocol accepts, and never a value: a name tells the operator what to set.
  */
-export function deploymentFrom(env: Io["env"], key: string): { readonly deployment: Deployment; readonly key: string } | { readonly missing: readonly string[] } {
+export function deploymentFrom(env: Io["env"], keys: readonly string[]): { readonly deployment: Deployment; readonly keys: readonly string[] } | { readonly missing: readonly string[] } {
   const wanted: (readonly [name: string, accepts: (value: unknown) => value is string])[] = [
     [TEAM_A_NODE, isNodeUrl],
     [TEAM_B_NODE, isNodeUrl],
     [INDEX, isIndexUrl],
     [TEAM_A_KEY, isToken],
     [TEAM_B_KEY, isToken],
-    [key, isToken],
+    ...keys.map((key) => [key, isToken] as const),
   ];
   const missing = wanted.filter(([name, accepts]) => !accepts(env[name])).map(([name]) => name);
   if (missing.length > 0) return { missing };
@@ -224,9 +225,9 @@ export function deploymentFrom(env: Io["env"], key: string): { readonly deployme
     index: value(INDEX),
     nodes: { "team-a": value(TEAM_A_NODE), "team-b": value(TEAM_B_NODE) },
     adminKeys: { "team-a": value(TEAM_A_KEY), "team-b": value(TEAM_B_KEY) },
-    ...(key === REGISTRATION_KEY ? { registrationKey: value(key) } : {}),
+    ...(keys.includes(REGISTRATION_KEY) ? { registrationKey: value(REGISTRATION_KEY) } : {}),
   };
-  return { deployment, key: value(key) };
+  return { deployment, keys: keys.map(value) };
 }
 
 /**
@@ -268,17 +269,36 @@ export async function settle(stage: Stage, team: Team, as: { readonly shares: bo
   await writeFile(join(team.home, "cairnfield.json"), `${JSON.stringify(config, null, 2)}\n`);
 }
 
-/** Runs the command and says what it ran and what it printed. Any exit code but 0 stops the script. Returns what the command printed. */
-async function runs(stage: Stage, who: string, io: Io, argv: readonly string[]): Promise<Outcome["output"]> {
+/** Says what a command is run as, has `work` run it, and says what it printed. */
+async function runAndSay(stage: Stage, who: string, argv: readonly string[], work: () => Promise<Outcome>): Promise<Outcome> {
   stage.say(`${who}$ cairnfield ${argv.join(" ")}`);
-  const outcome = await run(io, argv);
+  const outcome = await work();
   stage.say(`${who}> ${JSON.stringify(outcome.output)}`);
+  return outcome;
+}
+
+/** Runs the command, and stops the script at any exit code but 0. Returns what the command printed. */
+async function runs(stage: Stage, who: string, io: Io, argv: readonly string[]): Promise<Outcome["output"]> {
+  const outcome = await runAndSay(stage, who, argv, () => run(io, argv));
   if (outcome.code !== EXIT.ok) halt(`${who}: cairnfield ${argv[0] ?? ""} ended with exit code ${outcome.code}`);
   return outcome.output;
 }
 
 /** Runs the command for a team. */
 export const command = (stage: Stage, team: Team, ...argv: string[]): Promise<Outcome["output"]> => runs(stage, team.label, team.io, argv);
+
+/**
+ * Has `work` run one of the command's commands for a team, says the two lines `command`
+ * says, and stops the script at no exit code. It is for a call whose exit code the script
+ * reads, and for one that must work from a config the script read earlier: `work` calls the
+ * command's own function with that config, where `command` reads the config file again.
+ */
+export const attempt = (stage: Stage, team: Team, name: string, work: () => Promise<Outcome>): Promise<Outcome> =>
+  runAndSay(stage, team.label, [name], () => outcomeOf(work));
+
+/** Pins a commit of the demo plugin for a team. */
+export const pin = (stage: Stage, team: Team, commit: string): Promise<Outcome["output"]> =>
+  command(stage, team, "pin", PLUGIN.url, "--branch", PLUGIN.branch, "--commit", commit);
 
 /** Runs the command as an engineer on another machine does: in the run's folder, with no config file and no key. */
 export const engineer = (stage: Stage, ...argv: string[]): Promise<Outcome["output"]> => runs(stage, "engineer", stage.io, argv);
@@ -291,6 +311,12 @@ export async function listingOf(stage: Stage, team: Team): Promise<NodeListing |
   const held = await nodeListing(stage.io, team.node);
   if (held.ok) return held.body;
   return notFound(held) ? undefined : halt(`${team.label}: the node did not list its records`);
+}
+
+/** The record files a team's node holds, by their path. */
+export async function recordsOf(stage: Stage, team: Team): Promise<string[]> {
+  const held = (await listingOf(stage, team)) ?? halt(`${team.label}: the node did not list its records`);
+  return held.records.map(({ path }) => path).sort();
 }
 
 /** The head of a team's repo of records. A node that holds no record stops the script. */
@@ -345,12 +371,13 @@ export function processed(view: View, heads: readonly (readonly [team: Team, hea
 
 /**
  * Runs a script from the command line: reads the deployment from the environment, with
- * the one key of the index that `key` names, sets the stage and plays. The process ends
- * with 2 when the script cannot start and with 1 when it stopped.
+ * the keys of the index that `keys` names, sets the stage and plays. The play is handed
+ * the value of each key, in the order `keys` names them. The process ends with 2 when the
+ * script cannot start and with 1 when it stopped.
  */
-export async function launch(script: "demo" | "reset", key: string, play: (stage: Stage, key: string) => Promise<void>): Promise<void> {
+export async function launch(script: "demo" | "reset" | "agent demo", keys: readonly string[], play: (stage: Stage, ...keys: string[]) => Promise<void>): Promise<void> {
   const io = processIo();
-  const found = deploymentFrom(io.env, key);
+  const found = deploymentFrom(io.env, keys);
   if ("missing" in found) {
     console.error(`The ${script} cannot start. Set these in the environment: ${found.missing.join(", ")}`);
     process.exit(2);
@@ -361,7 +388,7 @@ export async function launch(script: "demo" | "reset", key: string, play: (stage
   const warn: Io["warn"] = paints(process.stderr, process.env) ? (text) => io.warn(paintWarn(text)) : io.warn;
   const stage = await openStage({ ...io, warn }, found.deployment, say);
   try {
-    await play(stage, found.key);
+    await play(stage, ...found.keys);
   } catch (error) {
     if (error instanceof Stopped) console.error(`The ${script} stopped: ${error.message}`);
     else if (error instanceof Stop) console.error(`The ${script} stopped: ${JSON.stringify(error.outcome.output)}`);

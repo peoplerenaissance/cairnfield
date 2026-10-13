@@ -65,6 +65,9 @@ export interface TestIndex {
   view(component: string): Promise<View | undefined>;
 }
 
+/** Whether a request is a notice to the index that a node has news. */
+export const isNotice = (seen: Seen): boolean => seen.method === "POST" && seen.url === `${INDEX}/notices`;
+
 const isOfType = <T extends AnyRecord["type"]>(entry: Published, type: T): entry is Published<Extract<AnyRecord, { type: T }>> => entry.record.type === type;
 
 const blobOf = (repo: string, name: string): Uint8Array => new Uint8Array(execFileSync("git", ["-C", repo, "cat-file", "blob", name]));

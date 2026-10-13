@@ -13,6 +13,13 @@ Cairnfield assumes that some contributors are hostile, and that any component un
 - An index is untrusted. It can omit or misreport work, and a count a node declared. It cannot make the command take a patch that fails the command's own checks. `view` prints a declared count as the index gave it. No command checks one against its node, and none acts on one.
 - A person gives the verdict. No part of Cairnfield issues one.
 
+## Four risks an operator should know
+
+- **Naming a team in a lens is a statement of trust.** `assemble` checks that team's patches against the lines their findings cite. The checks bound where a patch changes, not what it writes. The operator reads the diff.
+- **A hostile component can steer the patch agent.** The bundled agent reads a checkout, and text there may lead it to write a harmful patch. The patch checks bound what a patch can change, and the operator reads the full diff before the verdict.
+- **An outside agent must not run in a shell that holds the node's admin key or an index's registration key.** A team's own review agent stops at `validate`, which needs no key. The command cannot enforce where a key is set.
+- **Anonymous requests can spend a node's Artifacts request budget.** A node's `records`, `file`, `patch` and `blob` routes read Artifacts on every request, for anyone. Only the read-token route and the node's own page are bounded: a node keeps its page for 30 seconds, so views of it walk the team repo at most once in that time for each isolate. Each link on that page leads to the `file` route. The demo accepts this.
+
 ## The four defenses the prototype builds
 
 1. **Checks on records and patches.** No record holds free text, a cited line must exist, and a patch may change only the lines its findings cite, up to a size limit (R2, R3, R9, R11).
