@@ -147,6 +147,38 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
   - **Not known.** Whether a push alone still leads to a notice on a node with the three triggers. The plays did not show it apart, because a counted fetch sends the notice a push sends. What the two plays printed: only what they left on the nodes and the index was read.
 - Artifacts took a push of a commit whose root tree holds no file. The demo's reset pushed one to each node's repo of records on Oct 10, twice, and each node then listed no record at the new head.
 
+## What the command has done on the deployed demo
+
+These notes say what each command has done on the demo's deployed nodes and index, apart from the tests. They are the long form of the "Note" column of the README's status table. The dates are the days the README first recorded each run.
+
+**Observed on Oct 9, 2026.**
+
+- One demo node held a patch commit and passed the contract check in `scripts/check-node-contract.ts`.
+- `patch`, in a live run with a model, on a deployed node, patched the demo plugin's any-host rule. Its recording is in `fixtures/recordings/`. A replay from that recording gave the same commit and the same records. Live runs on both injection fixtures in `fixtures/injection/` changed only the cited line.
+- `assemble`, on a deployed node with no index, built one demo team's copy of the demo plugin twice with one file-tree hash, and published its recipe.
+- `verify`, from a clean folder with no config file and no key, passed on a clone of a demo team's published copy and failed on a clone of the original. A run on a second machine is still to come.
+
+**Observed on Oct 10, 2026.**
+
+- `patch`, in a live run on the other demo team's node, narrowed the environment variables the demo plugin may read. Its recording is in `fixtures/recordings/`.
+- On the demo plugin's hidden instruction, `patch` wrote no patch in four live runs with two models. The model's service refused the first run. In the other three the model read the line, then called a tool again and again until the run's limit of 40 requests. The command published only the claim each time. The demo's two recordings for that line are written by hand, with the model `none`.
+- Through the deployed index, one demo team's lens named the other, and `assemble` fetched that team's patch from its fork, checked it again and built a copy with both teams' patches.
+- `carry`, on a deployed node, moved one demo team's work to the demo plugin's later commit. Its patch kept its patch ID, its finding on the script that changed was reported as not carried, and the copy it then built passed `verify`. A second run published nothing. From a home whose copy of the older commit held the other team's patch, the command named that patch as left behind.
+- Both demo scripts ran on the two deployed nodes and the deployed index: the reset, then the demo, then both again. The reset emptied both nodes and the index, and the demo then played its four steps to the end. The second run left the page with the same finding IDs, patch IDs and file-tree hashes as the first.
+
+**Observed on Oct 11, 2026.**
+
+- Both pages of the deployed index were opened in a browser and drew what the index served: two patches on adjoining lines side by side, one patch that both teams wrote as one confirmed entry, and a patch made by hand rejected as out of scope. The index's own page listed the demo plugin's two commits.
+- The node's page was opened in a browser from a local address, over the tests' stand-in for Artifacts and with the headers a node sets.
+
+**Observed on Oct 12, 2026.**
+
+- Both demo nodes served their page, and a team's name on the index's page led to it.
+- The deployed page drew the line of a declared model for each of the demo's four patch records.
+- The section of fetches was drawn in a browser from the built page over a saved view of the demo, with a count added by hand for each team. Later that day the deployed view held a node's count within 20 seconds of the node first serving it, and the deployed page listed a count for each demo node. The notes under "Deployed nodes and index" above say what the counts were.
+
+**Not run.** `npm run setup` has not run on a Cloudflare account. Its tests run it against a stand-in for Wrangler and a fake node. Nobody has followed the replay's deploy steps from the first step in a new Cloudflare account: the deploys and the two scripts ran at different times, on nodes and an index that were already there.
+
 ## The index's first deploy
 
 **Observed on Oct 10, 2026**, with Wrangler 4.148.0.
