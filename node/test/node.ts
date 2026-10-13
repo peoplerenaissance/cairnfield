@@ -16,7 +16,8 @@ export const UPSTREAM = "https://git.fellbeck-tools.example/demo-plugin.git";
 export const ADMIN_KEY = "test-admin-key";
 
 export interface TestNode {
-  get(path: string): Promise<Response>;
+  /** A `GET` of a public path, with the headers a browser sends when a test gives some. */
+  get(path: string, headers?: { readonly [name: string]: string }): Promise<Response>;
   /** A `POST` to a public path. No public route takes one. */
   post(path: string): Promise<Response>;
   /** An admin call. It carries the node's key unless another key, or none, is given. */
@@ -45,7 +46,7 @@ export function nodeOver(
     }
   };
   return {
-    get: (path) => fetch(new Request(`${BASE}/${path}`)),
+    get: (path, headers = {}) => fetch(new Request(`${BASE}/${path}`, { headers })),
     post: (path) => fetch(new Request(`${BASE}/${path}`, { method: "POST" })),
     admin: (path, body, key = ADMIN_KEY) => {
       const headers = new Headers({ "content-type": "application/json" });
