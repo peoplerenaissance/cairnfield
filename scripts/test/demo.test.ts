@@ -11,13 +11,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ADMIN_KEY_HEADER, TEAM_BRANCH } from "@cairnfield/protocol";
 import type { View } from "@cairnfield/protocol";
 import { Stop, failure } from "../../cli/src/outcome.ts";
-import { ADMIN_KEY, FIXTURES, INDEX, MODEL_API, MODEL_KEY, NODE, REGISTRATION_KEY, TOKEN, bench, demoPlugin, git, published } from "../../cli/test/support.ts";
+import { ADMIN_KEY, FIXTURES, INDEX, MODEL_API, MODEL_KEY, NODE, OUTBOX, REGISTRATION_KEY, TOKEN, bench, demoPlugin, git, published } from "../../cli/test/support.ts";
 import type { Bench, Site } from "../../cli/test/support.ts";
-import { KEYS, PLUGIN, Stopped, attempt, command, deploymentFrom, diffPainter, launch, openStage, paintSaid, paints, settle } from "../demo-stage.ts";
+import { KEYS, Stopped, attempt, deploymentFrom, diffPainter, launch, openStage, paintSaid, paints, pin, settle } from "../demo-stage.ts";
 import type { Deployment, Stage, Style } from "../demo-stage.ts";
 import { EVERY_VARIABLE, demo } from "../demo.ts";
 import { reset } from "../reset-demo.ts";
-import { testIndex } from "./index.ts";
+import { isNotice, testIndex } from "./index.ts";
 import type { TestIndex } from "./index.ts";
 
 vi.setConfig({ testTimeout: 600_000 });
@@ -306,11 +306,11 @@ describe("the demo script", () => {
   it("gives a command's exit code and what it printed when the caller reads them, and says the two lines of any command", async () => {
     const opened = await stage();
     await settle(opened, opened.a, { shares: true });
-    await command(opened, opened.a, "pin", PLUGIN.url, "--branch", PLUGIN.branch, "--commit", commits.first);
-    cpSync(`${FIXTURES}outboxes/team-a/records`, join(opened.a.home, ".cairnfield/outbox/records"), { recursive: true });
+    await pin(opened, opened.a, commits.first);
+    cpSync(`${FIXTURES}outboxes/team-a/records`, join(opened.a.home, OUTBOX, "records"), { recursive: true });
     // The index takes no notice, so `publish` pushes and then ends with the exit code of a failed index.
     const answered = on.respond;
-    on.respond = (seen) => (seen.method === "POST" && seen.url === `${INDEX}/notices` ? new Response("", { status: 500 }) : answered?.(seen));
+    on.respond = (seen) => (isNotice(seen) ? new Response("", { status: 500 }) : answered?.(seen));
 
     const outcome = await attempt(opened, opened.a, "publish");
 

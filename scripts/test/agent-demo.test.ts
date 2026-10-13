@@ -11,13 +11,13 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCHEMA_VERSION } from "@cairnfield/protocol";
 import type { View } from "@cairnfield/protocol";
-import { ADMIN_KEY, FIXTURES, INDEX, MODEL_KEY, NODE, REGISTRATION_KEY, TOKEN, bench, demoPlugin, published } from "../../cli/test/support.ts";
+import { ADMIN_KEY, FIXTURES, INDEX, MODEL_KEY, NODE, OUTBOX, REGISTRATION_KEY, TOKEN, bench, demoPlugin, published } from "../../cli/test/support.ts";
 import type { Bench, Seen, Site } from "../../cli/test/support.ts";
 import { agentDemo, enterAt } from "../agent-demo.ts";
 import { PLUGIN, Stopped, launch, openStage } from "../demo-stage.ts";
 import type { Deployment, Stage } from "../demo-stage.ts";
 import { demo } from "../demo.ts";
-import { testIndex } from "./index.ts";
+import { isNotice, testIndex } from "./index.ts";
 import type { TestIndex } from "./index.ts";
 
 vi.setConfig({ testTimeout: 600_000 });
@@ -49,22 +49,7 @@ const DEPLOYMENT: Deployment = {
   registrationKey: REGISTRATION_KEY,
 };
 
-beforeEach(() => {
-  on = bench();
-  teamB = on.another(TEAM_B, "cairnfield-team-b", TEAM_B_KEY);
-  commits = demoPlugin(on);
-  demoPlugin(teamB);
-  // The index reads a node two reads of a view after it is told, so a script that does not wait for it fails.
-  index = testIndex(on, new Map<string, Site>([[NODE, on], [TEAM_B, teamB]]), { registration: REGISTRATION_KEY, reset: RESET_KEY }, 2);
-  // The shell the script runs in holds every key of the demo.
-  Object.assign(on.env, { TEAM_A_ADMIN_KEY: ADMIN_KEY, TEAM_B_ADMIN_KEY: TEAM_B_KEY, CAIRNFIELD_RESET_KEY: RESET_KEY });
-  said = [];
-  const names = readdirSync(`${FIXTURES}outboxes/team-a/records/${commits.first}/finding`).sort();
-  saved = { paths: names.map((name) => `records/${commits.first}/finding/${name}`), ids: names.map((name) => name.replace(/\.json$/, "")) };
-});
-
 afterEach(() => {
-  on.dispose();
   for (const opened of stages.splice(0)) rmSync(opened.work, { recursive: true, force: true });
   vi.unstubAllEnvs();
 });
@@ -76,7 +61,7 @@ async function stage(): Promise<Stage> {
   return opened;
 }
 
-const outboxOf = (opened: Stage): string => join(opened.a.home, ".cairnfield/outbox");
+const outboxOf = (opened: Stage): string => join(opened.a.home, OUTBOX);
 
 /** The agent's part, played by the test: Team A's saved findings, each written where it belongs in the outbox. */
 const writesSaved = (opened: Stage): void => cpSync(`${FIXTURES}outboxes/team-a/records`, join(outboxOf(opened), "records"), { recursive: true });
@@ -95,7 +80,8 @@ function printed(name: string): { readonly [field: string]: unknown } {
   return JSON.parse(output.slice("team-a> ".length)) as { readonly [field: string]: unknown };
 }
 
-const ran = (name: string): number => said.filter((line) => line === `team-a$ cairnfield ${name}` || line.startsWith(`team-a$ cairnfield ${name} `)).length;
+/** How many times Team A ran one of the command's commands. */
+const timesRun = (name: string): number => said.filter((line) => line === `team-a$ cairnfield ${name}` || line.startsWith(`team-a$ cairnfield ${name} `)).length;
 
 /** The requests the fake nodes got on their admin routes, from one request on. */
 const adminCalls = (from: number): string[] => on.requests.slice(from).flatMap(({ url }) => (url.includes("/admin/") ? [url] : []));
@@ -121,9 +107,25 @@ function instead(respond: (seen: Seen, answered: () => ReturnType<Respond>) => R
   on.respond = (seen) => respond(seen, () => answered?.(seen));
 }
 
-const isNotice = (seen: Seen): boolean => seen.method === "POST" && seen.url === `${INDEX}/notices`;
-
 describe("the agent demo's operator script", () => {
+  beforeEach(() => {
+    on = bench();
+    teamB = on.another(TEAM_B, "cairnfield-team-b", TEAM_B_KEY);
+    commits = demoPlugin(on);
+    demoPlugin(teamB);
+    // The index reads a node two reads of a view after it is told, so a script that does not wait for it fails.
+    index = testIndex(on, new Map<string, Site>([[NODE, on], [TEAM_B, teamB]]), { registration: REGISTRATION_KEY, reset: RESET_KEY }, 2);
+    // The shell the script runs in holds every key of the demo.
+    Object.assign(on.env, { TEAM_A_ADMIN_KEY: ADMIN_KEY, TEAM_B_ADMIN_KEY: TEAM_B_KEY, CAIRNFIELD_RESET_KEY: RESET_KEY });
+    said = [];
+    const names = readdirSync(`${FIXTURES}outboxes/team-a/records/${commits.first}/finding`).sort();
+    saved = { paths: names.map((name) => `records/${commits.first}/finding/${name}`), ids: names.map((name) => name.replace(/\.json$/, "")) };
+  });
+
+  afterEach(() => {
+    on.dispose();
+  });
+
   it("resets, pins with the index, waits for the person, publishes what the agent wrote and ends once the index lists it", async () => {
     const opened = await stage();
     let pauses = 0;
@@ -221,7 +223,7 @@ describe("the agent demo's operator script", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(on.requests.slice(calls)).toEqual([]);
-    expect(ran("validate") + ran("publish")).toBe(0);
+    expect(timesRun("validate") + timesRun("publish")).toBe(0);
 
     go();
     await run;
@@ -243,7 +245,7 @@ describe("the agent demo's operator script", () => {
 
     expect(stopped).toContain("cairnfield.json");
     expect(adminCalls(calls)).toEqual([]);
-    expect(ran("validate") + ran("publish")).toBe(0);
+    expect(timesRun("validate") + timesRun("publish")).toBe(0);
     expect(existsSync(on.repo("team"))).toBe(false);
     expect(existsSync(teamB.repo("team"))).toBe(false);
   });
@@ -259,7 +261,7 @@ describe("the agent demo's operator script", () => {
     );
 
     expect(stopped).toContain("cairnfield.json");
-    expect(ran("validate") + ran("publish")).toBe(0);
+    expect(timesRun("validate") + timesRun("publish")).toBe(0);
   });
 
   it("says the outbox holds no record and pauses again, and publishes nothing until it holds one", async () => {
@@ -276,12 +278,12 @@ describe("the agent demo's operator script", () => {
       // The second pause: the script has said why it did not publish, and it made no call to a node.
       expect(said).toContain("The outbox holds no record, so nothing was published.");
       expect(adminCalls(calls)).toEqual([]);
-      expect(ran("publish")).toBe(0);
+      expect(timesRun("publish")).toBe(0);
       writesSaved(opened);
     });
 
     expect(pauses).toBe(2);
-    expect(ran("publish")).toBe(1);
+    expect(timesRun("publish")).toBe(1);
     expect(published(on)).toEqual(saved.paths);
   });
 
@@ -307,7 +309,7 @@ describe("the agent demo's operator script", () => {
       });
       expect(said).toContain("validate refused a file in the outbox, so nothing was published.");
       expect(adminCalls(calls)).toEqual([]);
-      expect(ran("publish")).toBe(0);
+      expect(timesRun("publish")).toBe(0);
       renameSync(join(folder, PLACEHOLDER), join(outboxOf(opened), record));
     });
 
@@ -392,7 +394,7 @@ describe("the pause", () => {
 
     const paused = enterAt(keys)().then(() => void (ended = true));
     keys.write("y");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setImmediate(resolve));
     expect(ended).toBe(false);
     keys.write("\n");
     await paused;
@@ -408,7 +410,7 @@ describe("the pause", () => {
     await pause();
     let ended = false;
     const second = pause().then(() => void (ended = true));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setImmediate(resolve));
     expect(ended).toBe(false);
     keys.write("\n");
     await second;

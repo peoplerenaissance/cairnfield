@@ -12,9 +12,9 @@
 // At Enter it publishes what the agent left in the outbox. It first holds the config file
 // to the bytes it pinned with, because an agent that has read a hostile component could
 // have rewritten it to name another node. It then runs `validate`, and waits again when
-// the outbox holds no record or a file is refused. After
-// `publish` it checks that the node's branch holds each record and that the index lists
-// each finding, and stops at the first that is missing or rejected.
+// the outbox holds no record or a file is refused. After `publish` it checks that the
+// node's branch holds each record and that the index lists each finding, and stops at the
+// first that is missing or rejected.
 //
 // The reset empties the public demo page, and this run leaves one team's findings on it.
 // So the script ends by naming the two commands that put the four-step demo back. It
@@ -32,7 +32,7 @@ import { fileURLToPath } from "node:url";
 import { parseRecordPath } from "@cairnfield/protocol";
 import { REGISTRATION_KEY } from "../cli/src/config.ts";
 import { EXIT } from "../cli/src/outcome.ts";
-import { KEYS, PLUGIN, RESET_KEY, Stopped, attempt, command, halt, launch, listingOf, notify, processed, settle, untilView } from "./demo-stage.ts";
+import { KEYS, PLUGIN, RESET_KEY, Stopped, attempt, halt, launch, notify, pin, processed, recordsOf, settle, untilView } from "./demo-stage.ts";
 import type { Stage } from "./demo-stage.ts";
 import { reset } from "./reset-demo.ts";
 
@@ -82,7 +82,7 @@ export async function agentDemo(stage: Stage, resetKey: string, pause: Pause): P
 
   // With an index in the config, `pin` registers the node and the commit (KTD12), and `publish` tells the index (KTD11).
   await settle(stage, a, { shares: true });
-  await command(stage, a, "pin", PLUGIN.url, "--branch", PLUGIN.branch, "--commit", first);
+  await pin(stage, a, first);
   const config = join(a.home, CONFIG_FILE);
   const pinnedWith = await readFile(config);
 
@@ -91,10 +91,10 @@ export async function agentDemo(stage: Stage, resetKey: string, pause: Pause): P
   await mkdir(dirname(skill), { recursive: true });
   await copyFile(SKILL, skill);
 
-  const node = (await readFile(new URL(".nvmrc", REPO), "utf8")).trim();
+  const nodeVersion = (await readFile(new URL(".nvmrc", REPO), "utf8")).trim();
   say(`The operator's folder: ${a.home}`);
   say(`The skill file is at ${SKILL_FOLDER}/SKILL.md there, where Claude Code reads a skill.`);
-  say(`Start the agent in another pane, on Node ${node} or later. This line starts Claude Code in that folder with every key of the demo unset:`);
+  say(`Start the agent in another pane, on Node ${nodeVersion} or later. This line starts Claude Code in that folder with every key of the demo unset:`);
   say(`cd ${word(a.home)} && env ${KEYS.map((name) => `-u ${name}`).join(" ")} claude`);
   say("Then give the agent this prompt:");
   say(`Use the cairnfield skill to review the checkout of ${first}. Start \`cairnfield\` as \`node ${word(LAUNCHER)} <command>\`. Stop when validate accepts your files.`);
@@ -107,9 +107,10 @@ export async function agentDemo(stage: Stage, resetKey: string, pause: Pause): P
     const now = await readFile(config).catch(() => undefined);
     if (!now?.equals(pinnedWith)) halt(`${CONFIG_FILE} is not the file this script pinned with, so nothing was published`);
     const checked = await attempt(stage, a, "validate");
-    if (checked.code === EXIT.ok && checked.output["records"] !== 0) break;
-    if (checked.code === EXIT.ok) say("The outbox holds no record, so nothing was published.");
-    else if (checked.code === EXIT.invalid) say("validate refused a file in the outbox, so nothing was published.");
+    if (checked.code === EXIT.ok) {
+      if (checked.output["records"] !== 0) break;
+      say("The outbox holds no record, so nothing was published.");
+    } else if (checked.code === EXIT.invalid) say("validate refused a file in the outbox, so nothing was published.");
     else halt(`${a.label}: cairnfield validate ended with exit code ${checked.code}`);
   }
 
@@ -122,9 +123,9 @@ export async function agentDemo(stage: Stage, resetKey: string, pause: Pause): P
   const { head, published } = pushed.output;
   if (typeof head !== "string" || !Array.isArray(published)) return halt("publish printed no head, or no list of the records it pushed");
 
-  const records = published.map((path: unknown) => parseRecordPath(path) ?? halt("publish printed a path that names no record"));
-  const held = new Set((await listingOf(stage, a))?.records.map(({ path }) => path));
-  for (const path of published.map(String)) if (!held.has(path)) halt(`${a.label}: the branch of the node's repo of records does not hold ${path}`);
+  const records = published.map((path: unknown) => ({ path: String(path), ...(parseRecordPath(path) ?? halt("publish printed a path that names no record")) }));
+  const held = new Set(await recordsOf(stage, a));
+  for (const { path } of records) if (!held.has(path)) halt(`${a.label}: the branch of the node's repo of records does not hold ${path}`);
 
   const view = await untilView(stage, first, "Team A's records", (seen) => seen.state === "ready" && processed(seen, [[a, head]]));
   const listed = new Set(view.findings.flatMap((group) => group.findings.flatMap(({ node, id }) => (node === a.node ? [id] : []))));
@@ -142,5 +143,6 @@ export async function agentDemo(stage: Stage, resetKey: string, pause: Pause): P
 }
 
 if (import.meta.main) {
+  // The registration key is not read here. Naming it has `launch` hold the run to it and hand it to Team A's command, for `pin`.
   await launch("agent demo", [RESET_KEY, REGISTRATION_KEY], (stage, resetKey) => agentDemo(stage, resetKey, enterAt(process.stdin)));
 }

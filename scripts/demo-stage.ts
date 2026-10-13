@@ -1,6 +1,7 @@
-// What the demo script, the reset script and the agent demo's script share (R27): the two demo teams, each with
-// a folder and an admin key of its own, the index they share through, and how a script
-// runs the `cairnfield` command for a team and waits for the index.
+// What the demo script, the reset script and the agent demo's script share (R27): the
+// two demo teams, each with a folder and an admin key of its own, the index they share
+// through, and how a script runs the `cairnfield` command for a team and waits for the
+// index.
 //
 // The scripts run the command in this process, through the entry point `main.ts` uses,
 // so a team's command sees that team's key and no other. No address and no key is in
@@ -269,7 +270,7 @@ export async function settle(stage: Stage, team: Team, as: { readonly shares: bo
 }
 
 /** Runs the command and says what it ran and what it printed. */
-async function ran(stage: Stage, who: string, io: Io, argv: readonly string[]): Promise<Outcome> {
+async function runAndSay(stage: Stage, who: string, io: Io, argv: readonly string[]): Promise<Outcome> {
   stage.say(`${who}$ cairnfield ${argv.join(" ")}`);
   const outcome = await run(io, argv);
   stage.say(`${who}> ${JSON.stringify(outcome.output)}`);
@@ -278,7 +279,7 @@ async function ran(stage: Stage, who: string, io: Io, argv: readonly string[]): 
 
 /** Runs the command, and stops the script at any exit code but 0. Returns what the command printed. */
 async function runs(stage: Stage, who: string, io: Io, argv: readonly string[]): Promise<Outcome["output"]> {
-  const outcome = await ran(stage, who, io, argv);
+  const outcome = await runAndSay(stage, who, io, argv);
   if (outcome.code !== EXIT.ok) halt(`${who}: cairnfield ${argv[0] ?? ""} ended with exit code ${outcome.code}`);
   return outcome.output;
 }
@@ -287,7 +288,11 @@ async function runs(stage: Stage, who: string, io: Io, argv: readonly string[]):
 export const command = (stage: Stage, team: Team, ...argv: string[]): Promise<Outcome["output"]> => runs(stage, team.label, team.io, argv);
 
 /** Runs the command for a team and stops at no exit code, for a call whose exit code the script reads. Returns the code and what the command printed. */
-export const attempt = (stage: Stage, team: Team, ...argv: string[]): Promise<Outcome> => ran(stage, team.label, team.io, argv);
+export const attempt = (stage: Stage, team: Team, ...argv: string[]): Promise<Outcome> => runAndSay(stage, team.label, team.io, argv);
+
+/** Pins a commit of the demo plugin for a team. */
+export const pin = (stage: Stage, team: Team, commit: string): Promise<Outcome["output"]> =>
+  command(stage, team, "pin", PLUGIN.url, "--branch", PLUGIN.branch, "--commit", commit);
 
 /** Runs the command as an engineer on another machine does: in the run's folder, with no config file and no key. */
 export const engineer = (stage: Stage, ...argv: string[]): Promise<Outcome["output"]> => runs(stage, "engineer", stage.io, argv);
@@ -300,6 +305,12 @@ export async function listingOf(stage: Stage, team: Team): Promise<NodeListing |
   const held = await nodeListing(stage.io, team.node);
   if (held.ok) return held.body;
   return notFound(held) ? undefined : halt(`${team.label}: the node did not list its records`);
+}
+
+/** The record files a team's node holds, by their path. */
+export async function recordsOf(stage: Stage, team: Team): Promise<string[]> {
+  const held = (await listingOf(stage, team)) ?? halt(`${team.label}: the node did not list its records`);
+  return held.records.map(({ path }) => path).sort();
 }
 
 /** The head of a team's repo of records. A node that holds no record stops the script. */

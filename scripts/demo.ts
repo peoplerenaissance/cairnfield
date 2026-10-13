@@ -40,7 +40,7 @@ import { fetchCommit, fetchRef, said, withScratch } from "../cli/src/git.ts";
 import type { Outcome } from "../cli/src/outcome.ts";
 import { pushPatch } from "../cli/src/patch/commit.ts";
 import { adminKey, forkAccess, writableFork } from "../cli/src/services.ts";
-import { FIXTURES, PLUGIN, command, engineer, halt, headOf, launch, listingOf, notify, processed, settle, untilView, viewNow } from "./demo-stage.ts";
+import { FIXTURES, PLUGIN, command, engineer, halt, headOf, launch, listingOf, notify, pin, processed, recordsOf, settle, untilView, viewNow } from "./demo-stage.ts";
 import type { Stage, Team } from "./demo-stage.ts";
 
 const { first, later } = PLUGIN;
@@ -154,9 +154,6 @@ async function toOutbox(team: Team, folder: string): Promise<void> {
   const { outbox } = await loadHome(team.io, undefined);
   await cp(`${FIXTURES}${folder}/records`, join(outbox, "records"), { recursive: true });
 }
-
-const pin = (stage: Stage, team: Team, commit: string): Promise<Outcome["output"]> =>
-  command(stage, team, "pin", PLUGIN.url, "--branch", PLUGIN.branch, "--commit", commit);
 
 /** Replays the recording of one patch run. Returns the patch ID. */
 async function replay(stage: Stage, team: Team, finding: string): Promise<string> {
@@ -316,12 +313,6 @@ async function carrying(stage: Stage, own: readonly string[], everyVariable: str
   const copy = await approve(stage, a, later, "later");
   must(copy.patches.every((patch) => patch.node === a.node) && sameIds(copy.patches.map(({ patchId }) => patchId), own), "a later copy that holds Team A's own patches and no other");
   return copy;
-}
-
-/** The record files a team's node holds, by their path. */
-async function recordsOf(stage: Stage, team: Team): Promise<string[]> {
-  const held = (await listingOf(stage, team)) ?? halt(`${team.label}: the node did not list its records`);
-  return held.records.map(({ path }) => path).sort();
 }
 
 /** Plays the four steps. Returns what the run made. */
