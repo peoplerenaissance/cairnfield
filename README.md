@@ -286,15 +286,51 @@ The work is split in three.
 2. The agent reads the checkout as data and writes one record file for each finding into the outbox. It runs `npx --no --offline cairnfield validate` until its files pass, and stops.
 3. The operator runs `publish`. It sends the admin key to the node that `cairnfield.json` names, and an agent that ran in that folder could have changed the file. So the operator reads `cairnfield.json` first, or starts the agent with only the outbox writable.
 
-Start the agent in the folder that holds `cairnfield.json`, and give it this instruction:
+Install the skill where the agent's harness reads one, as the next part says. Start the agent in the folder that holds `cairnfield.json`, and give it this instruction:
 
 ```
-Follow <repo>/skills/cairnfield/SKILL.md. Review the checkout of <commit>. Stop when validate accepts your files.
+Use the cairnfield skill to review the checkout of <commit>. Start `cairnfield` as `node <repo>/cli/bin/cairnfield.mjs <command>`. Stop when validate accepts your files.
 ```
 
-`<repo>` is the path to this repo, and `<commit>` is the full hash the operator pinned. A harness started in the repo root may also load this repo's `AGENTS.md` and `CLAUDE.md`, which are written for coding agents on this repo and give a review agent no instructions.
+`<commit>` is the full hash the operator pinned, and `<repo>` is the path to this repo. `<command>` stays as it is written: the agent runs `validate` there. The second sentence is for a folder outside this repo, where the command's name is not linked and the skill file's `npx` line finds nothing. A harness started in the repo root may also load this repo's `AGENTS.md` and `CLAUDE.md`, which are written for coding agents on this repo and give a review agent no instructions.
 
 Do not start the agent in a shell that holds `CAIRNFIELD_ADMIN_KEY` or `CAIRNFIELD_REGISTRATION_KEY`, the index's registration key, which `pin` reads when the config names an index. The agent has just read a component that may be hostile, and `validate` needs no key. The skill file tells the agent to check that neither key is set. The command cannot enforce where a key is set, so this rests on the operator.
+
+#### Install the skill
+
+A harness loads a skill from a folder of its own, and a skill file at any other path is only a file to read. The `skills` command-line tool installs a skill into a project. Run it in the operator's folder:
+
+```
+npx skills add peoplerenaissance/cairnfield
+```
+
+In place of the repo's name it takes the path of a clone. By its documentation, it writes one copy under `.agents/skills/` and links `.claude/skills/cairnfield` to that copy. It downloads and runs a package from npm. Nobody has run it on this repo yet.
+
+| Harness | Reads a project's skills from |
+| --- | --- |
+| Claude Code | `.claude/skills/` in the folder it starts in and in each folder above it |
+| Codex, and the other harnesses the tool installs for | `.agents/skills/` in the working folder and in each folder above it, up to the repository root |
+
+Both rows are from each harness's documentation.
+
+#### Instruction files in a checkout
+
+A checkout holds a component's own files, and a component can hold instruction files for a harness. By its documentation, Claude Code loads a `CLAUDE.md`, an `AGENTS.md` or a `.claude/skills/` folder that lies below the folder it started in, the first time the agent reads a file beside it. Other harnesses honor files of their own. The skill file tells the agent that such a file is the component's, and it cannot stop a harness from loading one. So the operator does one of the two things the [threat model](reference/threat-model.md) names: switch off the loading of nested instruction files in the harness, or keep the checkout outside the folder tree the agent starts in.
+
+#### Stage a review with an agent
+
+`npm run demo:agent` stages the demo's first step with a review agent in it, for a recording or a rehearsal. The script is the operator and holds the keys. The agent runs in another pane, which a person starts, and holds none. The script covers Claude Code. It needs the two nodes and the index of "Replay the demo", the three addresses, and all four keys of "Play it". It runs only from a terminal.
+
+1. **The script sets up.** It resets the demo, as `npm run demo:reset` does. In a new folder under the machine's temporary folder, it writes Team A's config with the index in it and pins the plugin's first commit. It copies the skill file to `.claude/skills/cairnfield/` in that folder.
+2. **It prints a line and a prompt, and waits.** The line changes to that folder and starts Claude Code with every key name of the demo unset. `ANTHROPIC_API_KEY` is among them, so Claude Code needs a login of its own. The prompt is the one above, with the commit and the launcher's path filled in. Paste the line into a second pane that runs Node 22.22.1 or later, and give the agent the prompt.
+3. **The agent reviews.** It runs the skill's key check, reads the checkout, writes its findings and runs `validate` until its files pass. Then it stops.
+4. **You say go.** Quit the agent, then press Enter in the script's pane. No other key ends the wait. The script watches neither the agent nor the outbox.
+5. **The script publishes.** It first holds `cairnfield.json` to the bytes it pinned with, and stops when they differ. It runs `validate`, and waits for Enter again when the outbox holds no record or a file is refused. Then it runs `publish`. When the push landed and the notice to the index failed, it sends the notice itself.
+6. **It checks.** It stops unless the node's branch holds each record it pushed and the index lists each finding. It names a record the index rejected, with the reason.
+
+The script starts the agent in the folder that holds the checkout, and switches off nothing in the harness. That is safe for this plugin alone: its first commit holds no `CLAUDE.md`, no `AGENTS.md` and no `.claude/` folder. It is a fact about `fellbeck-sync` and no method. For a component of your own, do one of the two things above.
+
+The findings are the agent's own. They need not be the saved ones, and the demo's later steps do not follow from them. The reset left the public page empty, and this run leaves one team's findings on it. So the script ends by naming the two commands that put the four-step demo back: `npm run demo:reset`, then `npm run demo`. It keeps its folder, whose outbox holds what the agent wrote.
 
 ## The protocol in brief
 
@@ -387,6 +423,7 @@ This table describes today.
 | Verdicts and checking an installed copy | built and run live | `cairnfield decide` writes down the verdict a person gave for a commit, under the Git URL it was pinned from, with the file-tree hash of the copy the team built. The person names that hash, so a copy built again since is not approved by mistake. `approvals` prints the team's table as its file holds it, one entry for each component. Its output saved to a file is the approvals file `verify` reads. `verify` works out the file-tree hash of a folder and compares it with the approved entry in the approvals file it is given. It runs no Git and reads no config file, so it runs on any machine with Node. The table is a local file and is never published. From a clean folder with no config file and no key, `verify` passed on a clone of a demo team's published copy and failed on a clone of the original. A run on a second machine is still to come. |
 | Carrying a team's own work to a new version | built and run live | `cairnfield carry` moves a team's own findings and patches from one pinned commit of a component to a newer one, and pins the newer commit. A finding carries when the newer commit still holds the content it cites, at the same path or at another. A patch carries when the newer commit still holds every content it replaces and every finding it cites carried. It is built again as a commit on the newer commit and keeps its patch ID. The command names each finding and patch that did not carry, with a reason code. It also names each patch of another team that the team's copy of the older commit held, and counts the paths the newer commit added, changed and removed. It carries nothing of another team. The tests run it on the demo plugin's two commits against a stand-in for the node. On a deployed node, one demo team carried its work to the demo plugin's later commit. Its patch kept its patch ID, its finding on the script that changed was reported as not carried, and the copy it then built passed `verify`. A second run published nothing. From a home whose copy of the older commit held the other team's patch, the command named that patch as left behind. |
 | Demo script | built and run live | `npm run demo` plays the demo's four steps from one script, with two teams, from the saved findings and the recordings of the patch runs. It calls no model. Two of the four recordings hold what a model wrote: one team's fix of the any-host rule and the other's fix of the every-variable rule. The other two are written by hand, with the model `none`: both teams' removal of the hidden instruction, which the patch agent did not write in any live run. One team alone goes from `pin` to a checked copy. Both teams' patch agents then claim and patch at the same moment, and one team publishes a patch made by hand that the index rejects. The first team names the second in its lens and builds its copy again. Then it carries its own work to the plugin's later commit. The script checks what each step must leave behind and stops at the first thing that is missing. `npm run demo:reset` puts the demo nodes and the index back to the start. The tests play both scripts against stand-ins for the two nodes and the index, and a second run after a reset gives the same record IDs, patch IDs and file-tree hashes, and leaves each fork's notes ref where it was. Both scripts ran on the two deployed nodes and the deployed index. The reset emptied both nodes and the index, and the demo then played its four steps to the end. A second reset and run left the page with the same finding IDs, patch IDs and file-tree hashes. |
+| Demo step with a review agent | built, not run on the deployed demo | `npm run demo:agent` is the operator's half of the demo's first step, for a recording with a team's own review agent in another pane. It resets the demo, pins with the index in the config, copies the skill file to where Claude Code reads one, and prints the line that starts Claude Code with every key name unset and the prompt for the agent. It waits for Enter, holds the config file to the bytes it pinned with, runs `validate`, publishes, and stops unless the node's branch holds each record and the index lists each finding. It starts no agent and calls no model. The tests play it against stand-ins for the two nodes and the index, and the test writes the saved findings in the agent's place. Its wait was tried on a terminal by itself. It has not run on the deployed nodes and index, and no agent has been started from the line it prints. |
 | Scale run | not in the prototype | A simulator would register a few hundred nodes with one index. `sim/` holds a placeholder. |
 | One-click deploy button for the team node | waiting on the platform | To be switched on once Cloudflare's button supports Artifacts, Workflows and push triggers. A setup script deploys the node until then. Nobody has tested the button on the node. |
 | Carrying other teams' work to a new version, domain verification, sealed findings | not in the prototype | Described in the repository. |
@@ -452,7 +489,7 @@ We would not deploy from the records repo. A push there would become a deploy, a
 | `reference/` | The protocol, the threat model with the disclosure policy, the platform notes and the architecture drawing. |
 | `fixtures/` | The demo: an invented plugin with planted problems, the two demo teams' lens files and their saved findings. Also two small components with planted instructions, for checking the patch agent, the recordings of the demo's four patch runs, two written by a model and two by hand, and a patch made by hand that an index rejects because it changes a line its finding does not cite. Not for installing. |
 | `sim/` | A placeholder. The scale run is not in the prototype. |
-| `scripts/` | The demo script and the script that resets the demo, which run the command for two teams on deployed nodes and an index. Also a check of a deployed node against the protocol's node contract. |
+| `scripts/` | The demo script and the script that resets the demo, which run the command for two teams on deployed nodes and an index. The operator's script for the demo's first step with a review agent. Also a check of a deployed node against the protocol's node contract. |
 | `site/` | The public site: one page that makes the case for Cairnfield. A Cloudflare Worker serving static files. |
 | `AGENTS.md` | Instructions and rules for coding agents working in this repo. |
 
