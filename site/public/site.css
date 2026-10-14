@@ -2,20 +2,37 @@
   @font-face { font-family: "Routed Gothic Wide"; src: url("fonts/routed-gothic-wide.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
   @font-face { font-family: "Hanken Grotesk"; src: url("fonts/hanken-grotesk.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; }
   @font-face { font-family: "Spline Sans Mono"; src: url("fonts/spline-sans-mono.woff2") format("woff2"); font-weight: 400 600; font-style: normal; font-display: swap; }
+  /* Every color a rule paints with is a token of this palette, and the block after the `body` rule gives the tokens other values for a
+     reader whose system asks for dark. Three things stay written out where they are used, in both schemes: the shade and grain of a
+     stone, a shadow that darkens, and every color of a terminal, which is dark in both. */
   :root {
+    color-scheme: light dark;
+    /* The four grounds, from darkest to lightest: the page, the head of a block, a section, a block inside a section. */
     --fog: #EDF0EE;
+    --band: #F1F4F2;
     --paper: #FAFBF9;
+    --card: #FFFFFF;
     --ink: #1E2A2E;
     --muted: #5B6B70;
     --line: #C9D1CC;
     --line-soft: #DDE3DF;
+    --focus: #5E6C76;
+    /* The bar and the hero are the paper with the map showing through, and inline code stands on a tint of the ink. */
+    --bar: rgba(250,251,249,.94);
+    --veil: rgba(250,251,249,.62);
+    --tint: rgba(30,42,46,.06);
     --lichen: #C8D645;
     --slate: #5E6C76; --slate-ink: #46535C;
     --sandstone: #C9AE84; --sandstone-ink: #7E5F2A;
     --ironstone: #A0624A; --ironstone-ink: #84472E;
-    --base: #AEB7B3;
+    --base: #AEB7B3; --sha: #3C4749; --waymark: #6F7F83;
     --add: #E4EFD6;
     --del: #F6DFE3;
+    --ok: #EAF1DC; --ok-line: #C9D8AD; --ok-ink: #2E4716;
+    /* The map: `map.js` reads its lines and spot heights from here at each draw, and the trail's two forms take theirs by a rule. */
+    --contour: #DAE0DC; --contour-5: #C6CFCA; --spot: #9AA6A3; --trail: #7F8D8A;
+    --code-key: #2C6490; --code-str: #2F6B3A; --code-lit: #6B6600;
+    --photo-edge: rgba(255,255,255,.6);
     --display: "Routed Gothic", "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
     --body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
     --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -24,10 +41,40 @@
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; scroll-padding-top: 64px; }
   body { margin: 0; background: var(--fog) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='640' viewBox='0 0 1200 640'%3E%3Cg fill='none' stroke='%23D6DDD8' stroke-width='1'%3E%3Cpath d='M0 60 C200 10 400 110 600 60 S1000 110 1200 60'/%3E%3Cpath d='M0 120 C200 80 400 160 600 120 S1000 160 1200 120'/%3E%3Cpath d='M0 200 C200 260 400 140 600 200 S1000 140 1200 200'/%3E%3Cpath d='M0 270 C200 310 400 230 600 270 S1000 230 1200 270'/%3E%3Cpath d='M0 360 C200 300 400 420 600 360 S1000 420 1200 360'/%3E%3Cpath d='M0 430 C200 395 400 465 600 430 S1000 465 1200 430'/%3E%3Cpath d='M0 520 C200 575 400 465 600 520 S1000 465 1200 520'/%3E%3Cpath d='M0 590 C200 560 400 620 600 590 S1000 620 1200 590'/%3E%3Cpath d='M250 315 C290 290 360 292 385 318 S350 356 300 350 S225 338 250 315Z'/%3E%3Cpath d='M880 470 C930 440 1010 446 1030 476 S985 512 930 505 S850 495 880 470Z'/%3E%3Cpath d='M905 474 C935 458 985 462 998 478 S970 497 938 493 S890 488 905 474Z'/%3E%3C/g%3E%3C/svg%3E") top center / 1200px 640px repeat; color: var(--ink); font: 400 17px/1.55 var(--body); }
+  /* The dark look takes its grounds and hues from the terminals below, so a terminal sits flush in its frame. A stone keeps its rock. The
+     block stands after the `body` rule because that rule's shorthand names the light tile, and would put it back over an image set
+     before it. The tile is the one above with a dark stroke: a token is not read inside an address. */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fog: #131B1E;
+      --band: #172024;
+      --paper: #1B2529;
+      --card: #222E33;
+      --ink: #E3E9E5;
+      --muted: #A3B0AE;
+      --line: #3E4E56;
+      --line-soft: #313F45;
+      --focus: #A9B8C3;
+      --bar: rgba(27,37,41,.94);
+      --veil: rgba(27,37,41,.62);
+      --tint: rgba(227,233,229,.08);
+      --slate: #8394A0; --slate-ink: #A9B8C3;
+      --sandstone-ink: #D9BE94;
+      --ironstone: #BD7B62; --ironstone-ink: #E39C80;
+      --add: #27402B;
+      --del: #57303A;
+      --ok: #2A3F1F; --ok-line: #4E6B35; --ok-ink: #BFDA9A;
+      --contour: #1E282D; --contour-5: #27343A; --spot: #465355; --trail: #5A6869;
+      --code-key: #8FBCDD; --code-str: #A9C77B; --code-lit: #C8D645;
+      --photo-edge: rgba(255,255,255,.08);
+    }
+    body { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='640' viewBox='0 0 1200 640'%3E%3Cg fill='none' stroke='%23202B2F' stroke-width='1'%3E%3Cpath d='M0 60 C200 10 400 110 600 60 S1000 110 1200 60'/%3E%3Cpath d='M0 120 C200 80 400 160 600 120 S1000 160 1200 120'/%3E%3Cpath d='M0 200 C200 260 400 140 600 200 S1000 140 1200 200'/%3E%3Cpath d='M0 270 C200 310 400 230 600 270 S1000 230 1200 270'/%3E%3Cpath d='M0 360 C200 300 400 420 600 360 S1000 420 1200 360'/%3E%3Cpath d='M0 430 C200 395 400 465 600 430 S1000 465 1200 430'/%3E%3Cpath d='M0 520 C200 575 400 465 600 520 S1000 465 1200 520'/%3E%3Cpath d='M0 590 C200 560 400 620 600 590 S1000 620 1200 590'/%3E%3Cpath d='M250 315 C290 290 360 292 385 318 S350 356 300 350 S225 338 250 315Z'/%3E%3Cpath d='M880 470 C930 440 1010 446 1030 476 S985 512 930 505 S850 495 880 470Z'/%3E%3Cpath d='M905 474 C935 458 985 462 998 478 S970 497 938 493 S890 488 905 474Z'/%3E%3C/g%3E%3C/svg%3E"); }
+  }
+
   a { color: inherit; text-decoration-color: var(--line); text-underline-offset: 3px; }
   a:hover { text-decoration-color: var(--ink); }
-  :focus-visible { outline: 3px solid var(--slate); outline-offset: 2px; }
-  code { font-family: var(--mono); font-size: 0.86em; background: rgba(30,42,46,.06); padding: 2px 5px; border-radius: 4px; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--tint); padding: 2px 5px; border-radius: 4px; }
   .wrap { max-width: 1168px; margin: 0 auto; padding: 0 clamp(28px, 6vw, 48px); }
 
   /* ---------- motion: every animated part rests in its final state ---------- */
@@ -44,7 +91,7 @@
   @keyframes drop { from { opacity: 0; transform: translateY(-40px); } }
 
   /* ---------- top bar ---------- */
-  .bar { position: sticky; top: 0; z-index: 5; background: rgba(250,251,249,.94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  .bar { position: sticky; top: 0; z-index: 5; background: var(--bar); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
   .bar .wrap { display: flex; align-items: center; gap: 20px; height: 52px; }
   .bar .mark { font: 400 24px/1.0 var(--display); letter-spacing: -0.01em; text-decoration: none; }
   .bar nav { display: flex; gap: 18px; margin-left: auto; font-size: 14px; font-weight: 500; overflow-x: auto; white-space: nowrap; }
@@ -67,7 +114,7 @@
   .stone.c { background-image: repeating-linear-gradient(172deg, rgba(60,20,8,.22) 0 1px, transparent 1px 3px, rgba(60,20,8,.1) 3px 5px, transparent 5px 9px, rgba(255,255,255,.12) 9px 10px, transparent 10px 14px); }
   /* The original carries its Git SHA, like a benchmark stamp */
   .stone[data-sha] { position: relative; }
-  .stone[data-sha]::after { content: attr(data-sha); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 9.5px/1 var(--mono); color: #3C4749; letter-spacing: .03em; }
+  .stone[data-sha]::after { content: attr(data-sha); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 600 9.5px/1 var(--mono); color: var(--sha); letter-spacing: .03em; }
   .cairn.xl .stone[data-sha]::after { font-size: 14px; }
   /* The original: pale granite, salt and pepper */
   .stone.o { background-image: radial-gradient(rgba(40,48,50,.26) .7px, transparent 1px), radial-gradient(rgba(255,255,255,.5) .8px, transparent 1.1px), radial-gradient(rgba(40,48,50,.16) .6px, transparent .9px); background-size: 9px 7px, 7px 11px, 13px 5px; background-position: 1px 1px, 4px 2px, 6px 3px; }
@@ -93,7 +140,7 @@
   .cairn.md > .stone.o { width: 62px; }
 
   /* ---------- hero ---------- */
-  .hero { position: relative; overflow: hidden; background: rgba(250,251,249,.62); border-bottom: 1px solid var(--line); }
+  .hero { position: relative; overflow: hidden; background: var(--veil); border-bottom: 1px solid var(--line); }
   .hero-inner { position: relative; padding-block: 72px 56px; }
   .hero .eyebrow { font-size: 14px; margin-bottom: 18px; }
   .hero h1 { font: 400 clamp(32px, 4.3vw, 54px)/1.1 var(--display); letter-spacing: 0.005em; margin: 0 0 20px; max-width: 20em; text-wrap: balance; }
@@ -107,7 +154,7 @@
   .contrast .fig text { font-size: 13px; }
 
   /* ---------- the three points a judge looks for: one form wherever one appears ---------- */
-  .point { background: #fff; border: 1px solid var(--line); border-left: 6px solid var(--lichen); border-radius: 10px; padding: 18px 22px 20px; }
+  .point { background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--lichen); border-radius: 10px; padding: 18px 22px 20px; }
   .point :is(h2, h3) { font: 400 27px/1.15 var(--display); letter-spacing: 0.005em; margin: 0 0 10px; }
   .point p { margin: 0 0 10px; max-width: 50em; font-size: 16px; }
   .point p:last-child { margin-bottom: 0; }
@@ -117,11 +164,12 @@
   main section > .wrap { position: relative; }
   .waymark { position: absolute; left: -46px; top: -8px; }
   .waymark .stone { box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
-  .w { --c: #6F7F83; }
-  main section > .wrap::before { content: ""; position: absolute; left: -32px; top: 34px; bottom: -74px; width: 2px; background: repeating-linear-gradient(to bottom, #9AA6A3 0 7px, transparent 7px 17px); }
+  .w { --c: var(--waymark); }
+  main section > .wrap::before { content: ""; position: absolute; left: -32px; top: 34px; bottom: -74px; width: 2px; background: repeating-linear-gradient(to bottom, var(--spot) 0 7px, transparent 7px 17px); }
   main section:last-of-type > .wrap::before { display: none; }
   .js-trail main section > .wrap::before { display: none; }
   #trail { position: absolute; top: 0; left: 0; z-index: -1; pointer-events: none; }
+  #trail path { stroke: var(--trail); }
   @media (max-width: 1239px) { .waymark, main section > .wrap::before { display: none; } }
 
   /* ---------- legend ---------- */
@@ -136,12 +184,14 @@
   .intro strong { color: var(--ink); font-weight: 600; }
 
   /* ---------- figures ---------- */
-  figure.fig { margin: 22px 0 26px; border: 1px solid var(--line-soft); border-radius: 10px; background: #fff; overflow: hidden; }
+  figure.fig { margin: 22px 0 26px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--card); overflow: hidden; }
   figure.fig svg { display: block; width: 100%; height: auto; }
   figure.fig figcaption { padding: 10px 14px; border-top: 1px solid var(--line-soft); font-size: 13.5px; color: var(--muted); background: var(--paper); }
   .fig text { font: 500 12px var(--mono); fill: var(--muted); }
   .fa { fill: var(--slate); } .fb { fill: var(--sandstone); } .fc { fill: var(--ironstone); }
   .la { stroke: var(--slate); } .lb { stroke: var(--sandstone); } .lc { stroke: var(--ironstone); }
+  /* The posts of the one gate, and each team's own repo. */
+  .fig .gate { fill: var(--ink); } .fig .repo { fill: var(--paper); }
 
   /* ---------- a terminal, painted as the demo script paints one: one div for each line ---------- */
   .term { --term: #1B2529; --pre: 9ch; --who: #D9BE94; background: var(--term); color: #D7DFDB; font: 400 13px/1.6 var(--mono); padding: 16px 18px 18px; overflow-x: auto; }
@@ -165,7 +215,7 @@
   /* ---------- the command: two teams' terminals ---------- */
   .term-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
   .frame { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: 0 18px 40px -28px rgba(30,42,46,.45); }
-  .chrome { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); background: #F1F4F2; font: 500 12px/1 var(--mono); color: var(--muted); }
+  .chrome { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); background: var(--band); font: 500 12px/1 var(--mono); color: var(--muted); }
   .chrome i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); display: inline-block; }
   .chrome .url { margin-left: 8px; background: var(--paper); border: 1px solid var(--line-soft); border-radius: 6px; padding: 6px 10px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chrome.team { border-top: 4px solid var(--c); }
@@ -183,9 +233,9 @@
   .lens h3 { font: 400 24px/1.08 var(--display); margin: 0; }
   .lens .host { font: 500 12px/1 var(--mono); color: var(--muted); }
   .lens pre { margin: 0; font: 400 12px/1.6 var(--mono); background: var(--fog); border-radius: 6px; padding: 10px 12px; overflow-x: auto; }
-  /* A lens file's keys, strings and literals, in the terminal's three hues, darkened for a light ground. None is a team's color. */
+  /* A lens file's keys, strings and literals, in three hues, none of them a team's color. On a dark ground they are the terminal's own, and on a light one those hues darkened. */
   .lens pre { color: var(--muted); }
-  .lens pre .key { color: #2C6490; } .lens pre .str { color: #2F6B3A; } .lens pre .lit { color: #6B6600; }
+  .lens pre .key { color: var(--code-key); } .lens pre .str { color: var(--code-str); } .lens pre .lit { color: var(--code-lit); }
   .lens .result { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: end; margin-top: auto; padding-top: 6px; }
   .lens .verdict { font: 400 20px/1.08 var(--display); }
   .lens .why { font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
@@ -195,7 +245,7 @@
   /* ---------- how it works: one block per step, then the three copies it leads to ---------- */
   .steps { display: grid; gap: 16px; margin-bottom: 16px; }
   .step { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
-  .step .stage { background: #fff; border-left: 1px solid var(--line-soft); margin: 0; padding: 24px 28px; display: flex; flex-direction: column; justify-content: center; gap: 20px; }
+  .step .stage { background: var(--card); border-left: 1px solid var(--line-soft); margin: 0; padding: 24px 28px; display: flex; flex-direction: column; justify-content: center; gap: 20px; }
   .step .art { display: flex; flex-direction: column; justify-content: center; gap: 10px; min-height: 104px; }
   .step .stage figcaption { border-top: 1px solid var(--line-soft); padding-top: 14px; font-size: 14.5px; line-height: 1.5; color: var(--muted); }
   .step .eg { display: block; font: 500 12.5px/1 var(--mono); margin-bottom: 8px; }
@@ -215,8 +265,8 @@
   .row > .cairn { justify-self: start; margin-left: 4px; }
   .row .what { font-weight: 600; font-size: 15px; }
   .row .where { font: 400 12px/1.4 var(--mono); color: var(--muted); }
-  .tag { display: inline-block; font: 600 11.5px/1 var(--mono); padding: 6px 8px; border-radius: 5px; border: 1px solid var(--line); background: #fff; width: fit-content; }
-  .tag.ok { background: #EAF1DC; border-color: #C9D8AD; color: #2E4716; }
+  .tag { display: inline-block; font: 600 11.5px/1 var(--mono); padding: 6px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--card); width: fit-content; }
+  .tag.ok { background: var(--ok); border-color: var(--ok-line); color: var(--ok-ink); }
   .diff { font: 400 11.5px/1.6 var(--mono); border: 1px solid var(--line-soft); border-radius: 6px; overflow: hidden; background: var(--paper); }
   .diff div { padding: 0 8px; white-space: pre; }
   .diff .m { background: var(--del); } .diff .p { background: var(--add); }
@@ -236,7 +286,7 @@
   footer.end .photo figcaption { margin-top: 10px; font-size: 13.5px; }
   footer.end .legal { margin-top: 28px; }
   footer.end .legal p { margin: 0; padding-top: 16px; border-top: 1px solid var(--line); }
-  footer.end .photo img { display: block; width: 100%; height: auto; border-radius: 6px; box-shadow: 0 1px 0 rgba(255,255,255,.6), 0 14px 32px -16px rgba(40,50,52,.45); }
+  footer.end .photo img { display: block; width: 100%; height: auto; border-radius: 6px; box-shadow: 0 1px 0 var(--photo-edge), 0 14px 32px -16px rgba(40,50,52,.45); }
 
   @media (max-width: 900px) {
     .hero-inner { padding-block: 40px 36px; }

@@ -1,11 +1,15 @@
 // The ground behind both pages: the contour map of the project's site, drawn from the
 // same heights, so the index stands on the land the site shows. It is decoration. It
-// reads nothing and writes no text and no number, so every text on a page is still a
+// reads no record and writes no text and no number, so every text on a page is still a
 // value of its endpoint or one of the page's own words (R13).
 //
-// The site draws its map once and makes it the page's background image, from a `data:`
-// address. The pages' policy takes an image from the index's own origin alone, so here
-// the map stays on the canvas it is drawn on, held still behind the page.
+// The one thing it reads is the two colors of its lines, from the palette of the page's
+// stylesheet, at each draw. So the stylesheet alone says how the map looks in a light
+// and in a dark scheme, and this script holds no color.
+//
+// The site makes its map the page's background image, from a `data:` address. The pages'
+// policy takes an image from the index's own origin alone, so here the map stays on the
+// canvas it is drawn on, held still behind the page.
 
 /** The side of one cell of the grid the heights are read on, in pixels. */
 const CELL = 8;
@@ -15,9 +19,9 @@ const PERIOD = 2400;
 const LINES = 12;
 const STEP = 0.24;
 const MIDDLE = 0.07;
-/** Every fifth line is an index line, drawn heavier. */
-const LINE = { color: "#DAE0DC", width: 1 };
-const INDEX_LINE = { color: "#C6CFCA", width: 1.5 };
+/** Every fifth line is an index line, drawn heavier. Each takes its color from a token of the stylesheet's palette. */
+const LINE = { token: "--contour", width: 1 };
+const INDEX_LINE = { token: "--contour-5", width: 1.5 };
 /** A screen with more pixels to the point is drawn at no more than this many. */
 const MAX_SCALE = 2;
 /** A change of the window's size is drawn this long after the last one. */
@@ -72,8 +76,11 @@ function pieces(above: number, top: Point, right: Point, bottom: Point, left: Po
   }
 }
 
+/** The colors of a line and of an index line, as the stylesheet holds them for the reader's scheme. */
+type Colors = readonly [ofLine: string, ofIndexLine: string];
+
 /** Draws the map over the whole of the canvas, at the size the stylesheet gives it. */
-function draw(canvas: HTMLCanvasElement): void {
+function draw(canvas: HTMLCanvasElement, [ofLine, ofIndexLine]: Colors): void {
   const width = canvas.clientWidth;
   const depth = canvas.clientHeight;
   const scale = Math.min(window.devicePixelRatio || 1, MAX_SCALE);
@@ -108,14 +115,14 @@ function draw(canvas: HTMLCanvasElement): void {
         }
       }
     }
-    const { color, width: weight } = line % 5 === 0 ? INDEX_LINE : LINE;
+    const [color, weight] = line % 5 === 0 ? [ofIndexLine, INDEX_LINE.width] : [ofLine, LINE.width];
     pen.strokeStyle = color;
     pen.lineWidth = weight;
     pen.stroke();
   }
 }
 
-/** Puts the map behind the page, and draws it again when the window gives it another size. */
+/** Puts the map behind the page, and draws it again when the window gives it another size or the reader's color scheme changes. */
 export function ground(): void {
   const canvas = document.createElement("canvas");
   canvas.className = "map";
@@ -124,10 +131,17 @@ export function ground(): void {
 
   let drawn = "";
   const redraw = (): void => {
-    const size = `${canvas.clientWidth}x${canvas.clientHeight}`;
-    if (size === drawn) return;
-    drawn = size;
-    draw(canvas);
+    const palette = getComputedStyle(document.documentElement);
+    // A token's text can start with a space. Trimmed, a token that no rule sets is the empty text.
+    const colors: Colors = [palette.getPropertyValue(LINE.token).trim(), palette.getPropertyValue(INDEX_LINE.token).trim()];
+    // A reader can hold an older stylesheet than this script, across a deploy, and that one sets neither token. A canvas ignores an empty
+    // color and draws in black, so nothing is drawn.
+    if (colors.includes("")) return;
+    // One key for the size and the colors, so a change of either draws the map again and nothing else does.
+    const key = [canvas.clientWidth, canvas.clientHeight, ...colors].join(" ");
+    if (key === drawn) return;
+    drawn = key;
+    draw(canvas, colors);
   };
   redraw();
 
@@ -136,4 +150,6 @@ export function ground(): void {
     clearTimeout(settling);
     settling = setTimeout(redraw, SETTLE_MS);
   });
+  // The stylesheet's tokens already hold the new scheme's colors when this event arrives, so the lines change in the frame the ground does.
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
 }

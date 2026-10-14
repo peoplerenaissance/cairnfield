@@ -8,11 +8,16 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #EDF0EE; color: #1E2A2E; font: 400 17px/1.5 "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif; }
+  /* The page loads no stylesheet, so it holds the three colors it draws under the names the site's palette gives them, for each scheme. */
+  :root { color-scheme: light dark; --fog: #EDF0EE; --ink: #1E2A2E; --muted: #5B6B70; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fog: #131B1E; --ink: #E3E9E5; --muted: #A3B0AE; }
+  }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--fog); color: var(--ink); font: 400 17px/1.5 "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif; }
   main { max-width: 28em; padding: 24px; }
   h1 { font-size: 28px; margin: 0 0 10px; }
-  p { margin: 0 0 14px; color: #5B6B70; }
-  a { color: #1E2A2E; }
+  p { margin: 0 0 14px; color: var(--muted); }
+  a { color: var(--ink); }
 </style>
 </head>
 <body>
