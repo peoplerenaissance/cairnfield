@@ -83,10 +83,10 @@ const PROTOCOL = "https://github.com/peoplerenaissance/cairnfield/blob/main/refe
 const tagsOf = (root: Drawing | undefined): string[] => withClass(root, "tag").map(textOf);
 
 /** What the word "declared" means before the model of a patch record. The page shows it while the word and the model are pointed at or focused. */
-const DECLARED = "This team's record states which model, if any, wrote the patch. The index cannot check that, and has not.";
+const DECLARED = "This team's record states which model wrote the patch. The word none means that a person or a script wrote it. The index cannot check that.";
 
 /** What the word "declared" means before a node's count of fetches. The page shows it while the word and the count are pointed at or focused. */
-const DECLARED_COUNT = "This team's node states how often its fork was fetched. It does not say by whom. The index cannot check the number, and has not.";
+const DECLARED_COUNT = "This team's node states how often its fork was fetched. It does not say by whom. The index cannot check the number.";
 
 /** The three things the page says of every count, in the line under the heading of its section. */
 const OF_A_COUNT = [
@@ -424,7 +424,7 @@ describe("findings (R14)", () => {
     // The one that two organizations report stands first, wherever the view holds it.
     expect(rows.map((row) => texts(withTag(row, "strong")[0])[0])).toEqual([says["writes-outside-workspace"], ...inTheView.filter((said) => said !== says["writes-outside-workspace"])]);
     // The section says in its own words how it is ordered.
-    expect(textOf(byId(await pageOf(on, component), "findings"))).toContain("The ones more organizations report stand first");
+    expect(textOf(byId(await pageOf(on, component), "findings"))).toContain("The findings more teams report stand first");
   });
 
   it("counts the organizations behind a finding for the criterion it sits under", async () => {
@@ -494,7 +494,7 @@ describe("patches (R16)", () => {
     expect(others).toEqual([]);
     for (const record of [first.finding, second.finding]) expect(elements(seen)).toContain(byId(page, `finding-${record}`));
     // So the entry names that finding once, and its one link leads to a record of it that the patch names.
-    expect(footOf(entry)).toBe(`patch ${id.slice(0, 8)}for hidden instruction`);
+    expect(footOf(entry)).toBe(`patch ${id.slice(0, 8)}for the finding that the component contains a hidden instruction for an agent`);
     const [target = "", ...targets] = placesFrom(entry);
     expect(targets).toEqual([]);
     expect([`#finding-${first.finding}`, `#finding-${second.finding}`]).toContain(target);
@@ -611,7 +611,7 @@ describe("patches (R16)", () => {
     for (const row of rows) expect(withTag(theOne(withClass(row, "where"), ""), "li")).toHaveLength(2);
 
     const links = withTag(entry, "a").filter((link) => (link.attributes["href"] ?? "").startsWith("#"));
-    expect(links.map(textOf).sort()).toEqual(["hidden instruction", "sends data to host"]);
+    expect(links.map(textOf).sort()).toEqual(["the finding that the component contains a hidden instruction for an agent", `the finding that the component sends data to ${HOST}`]);
     // Each link leads into the entry of one finding, and the two lead into two.
     const led = links.map((link) => rows.filter((row) => elements(row).some((element) => `#${element.attributes["id"]}` === link.attributes["href"])));
     expect(led.map((entries) => entries.length)).toEqual([1, 1]);
@@ -726,7 +726,7 @@ describe("recipes (KTD5)", () => {
     expect(more).toEqual([]);
     expect(textOf(shown)).toContain(tree);
     expect(tagsOf(shown)).toEqual(["published, not checked"]);
-    expect(textOf(shown)).toContain("2 organizations published this copy");
+    expect(textOf(shown)).toContain("2 teams published this copy");
     expect(textOf(shown)).toContain(asShown(NODE_A));
     expect(textOf(shown)).toContain(asShown(NODE_B));
     // A patch of the copy that the view shows leads to its entry on the page. The other is named, and is no link.
@@ -1016,7 +1016,7 @@ describe("the index's own page (R14, KTD14)", () => {
   /** The word of the mark that leads out to a component's repo. */
   const WAY_OUT = "source";
   /** What a row calls each import state, and what it says the label means. */
-  const HELD = ["copy held", "The index holds its own copy of this version, and checks every record against it."] as const;
+  const HELD = ["imported", "The index holds its own copy of this version, and checks every record against it."] as const;
   const IMPORTING = ["importing", "The index is still fetching its own copy of this version. It checks no record until it holds one."] as const;
   const FAILED = ["import failed", "The index could not fetch its own copy of this version, so it checks no record for it."] as const;
 
@@ -1194,7 +1194,7 @@ describe("the index's own page (R14, KTD14)", () => {
     on.artifacts.finish();
     await on.drain();
     const third = await read(on, "/", second.held, START + 4000);
-    expect(withClass(third.body, "row").map(tagsOf)).toEqual([["copy held"]]);
+    expect(withClass(third.body, "row").map(tagsOf)).toEqual([["imported"]]);
     expect(textOf(third.status)).toContain("12:00:04 UTC");
   });
 
@@ -1546,9 +1546,9 @@ describe("the pages' addresses on the index (KTD14)", () => {
     const [root = "", page = ""] = [env.PAGE_FILES["root.html"], env.PAGE_FILES["page.html"]];
     // The paragraph names the project, and the name is a link to its site.
     const index = [
-      "This index is a core part of",
+      "An index is the part of",
       "Cairnfield",
-      ". It collects findings, patches and recipes about AI tools from teams and their AI agents, and reports them together for each version of a tool, each checked against the index's own copy of that version. An index holds nothing original and gives no verdict. It is not what a team builds from: each team's command fetches patches from the nodes of the teams that wrote them, and checks them again.",
+      "that gathers what teams and their AI agents publish about AI tools: findings, patches and recipes. It shows them together for each version of a tool, and checks each one against its own copy of that version. Every record it shows comes from a team's node, and it gives no verdict. It is not what a team builds from: each team's command fetches patches from the nodes of the teams that wrote them, and checks them again.",
     ];
     const component = "This page gathers what teams report about one exact version of an AI tool: what their reviews found, the fixes they wrote, and the copies they built with those fixes. The index collects these reports and gives no verdict of its own.";
     expect(wordsIn(root)).toEqual(["Cairnfield index", "Cairnfield", "index", "Reading the index", "Cairnfield index", ...index, "The list of components needs the page's script. The rest of this page does not.", ...FOOTER_WORDS]);
@@ -2044,7 +2044,7 @@ describe("the demo on the page (R27)", () => {
       "patch ",
       "for ",
       "Recipes",
-      " organization published this copy",
+      " team published this copy",
       "tree ",
       "published, not checked",
       "Rejected work",
@@ -2052,10 +2052,10 @@ describe("the demo on the page (R27)", () => {
     // What each section holds, under its heading.
     const sections = [
       "A claim is a team's notice that it has started a review or a fix. It stays live until that team publishes the result or the claim runs out.",
-      "A finding is something a team's review reports seeing in this version, at the lines it names. It is that team's report, and no verdict of this index. The ones more organizations report stand first, and two organizations make a finding confirmed.",
-      "A patch is a fix one team wrote for a finding, and it changes only the lines that finding names. Patches for the same lines stand side by side, the ones more organizations stand behind first.",
-      "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more organizations published come first.",
-      "The index refused these records, because each failed one of its checks. A refused record counts for nothing on this page.",
+      "A finding is something a team's review reports seeing in this version, at the lines it names. It is that team's report, not a verdict by this index. The findings more teams report stand first, and two teams make a finding confirmed.",
+      "A patch is a fix a team wrote for a finding, and it changes only the lines that finding names. Patches whose lines overlap or adjoin stand side by side. Those that more teams stand behind come first.",
+      "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more teams published come first.",
+      "The index rejected these records, because each failed one of its checks. A rejected record counts for nothing on this page.",
     ];
     // What a finding says of the component, by its observation. One that names a host has the host between its words.
     const says = [
@@ -2065,6 +2065,13 @@ describe("the demo on the page (R27)", () => {
       "This component sends data to ",
       ".",
       "This component acts without reading a setting that its documentation says controls it.",
+    ];
+    // The same, as a clause that names a finding in a link to it: after a patch's "for", and in a claim.
+    const clauses = [
+      "the finding that the component acts without reading a setting that its documentation says controls it",
+      "the finding that the component allows access to every environment variable",
+      "the finding that the component allows network access to any host",
+      "the finding that the component sends data to ",
     ];
     // What each criterion of this view promises, and where its label leads.
     const promises = [
@@ -2077,18 +2084,18 @@ describe("the demo on the page (R27)", () => {
     const meanings = [
       "A component is one version of an AI tool, such as a plugin, a skill or a server: its Git repository at one commit.",
       "The teams with records on this version. A team is counted by the address of its node, and nothing more is proven about who runs it. Each has a stone of its own color, which tells the teams apart and says nothing else.",
-      "One stone for each organization that reports this finding, in that organization's color.",
-      "Two or more organizations report this or have re-checked it, and their reports count against this criterion.",
-      "Fewer than two organizations report this against this criterion. Two make it confirmed.",
-      "Two or more organizations stand behind this patch. Each wrote the same patch, or re-checked it and found that it resolves its finding.",
-      "Fewer than two organizations stand behind this patch. An organization stands behind a patch by writing the same one, or by re-checking it and finding that it resolves its finding.",
+      "One stone for each team that reports this finding, in that team's color.",
+      "Two or more teams report this or have re-checked it, and their reports count against this criterion.",
+      "Fewer than two teams report this against this criterion. Two make it confirmed.",
+      "Two or more teams stand behind this patch. Each wrote the same patch, or re-checked it and found that it resolves its finding.",
+      "Fewer than two teams stand behind this patch. A team stands behind a patch by writing the same one, or by re-checking it and finding that it resolves its finding.",
       "This patch only takes lines out. It adds no line and changes no file's mode.",
       "This patch adds or rewrites lines, or changes a file's mode.",
       DECLARED,
       "The team published this hash of its copy's files. The index has not built the copy, so it has not checked the hash.",
       "The patch adds a file, changes content that its findings do not cite, or changes lines outside the ones they cite.",
     ];
-    const words = [...labels, ...sections, ...says, ...promises, ...meanings];
+    const words = [...labels, ...sections, ...says, ...clauses, ...promises, ...meanings];
     expect([...new Set(texts(page).filter((text) => !isOfTheView(text)))].sort()).toEqual([...words].sort());
 
     // A target on the page is a section, a finding of the view or a patch of the view.

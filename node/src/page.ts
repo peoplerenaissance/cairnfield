@@ -35,19 +35,19 @@ const WORDS = {
   here: "node",
   title: "Cairnfield team node",
   about: [
-    "This page is this team's own list of the records it has published. Nothing on it was checked: a node validates no record, and this page reads none.",
-    "Each record stands under its component, by the type and the ID that the path of its file gives. A component is one version of an AI tool: its Git repository at one commit.",
+    "This page is this team's own list of the records it has published. Nothing on it was checked: a node validates no record, and this page takes each record's type and ID from the name of its file, which it does not open.",
+    "Each record is listed under its component by type and ID. A component is one version of an AI tool: its Git repository at one commit.",
   ],
   address: "Node address",
-  head: "Team repo head",
-  drawn: "Drawn at",
+  head: "Latest commit of the team repo",
+  drawn: "Read at",
   component: "Component",
   nothingYet: "This team has published nothing yet.",
   noRecord: "The team repo holds no record.",
   unreadable: "The node could not read its team repo.",
-  recordsLeft: "Records not drawn here:",
-  componentsLeft: "Components not drawn here:",
-  allRecords: "The node's records route lists every record.",
+  recordsLeft: "Records not shown here:",
+  componentsLeft: "Components not shown here:",
+  allRecords: "The address of this node with /records added lists every record.",
 } as const;
 
 /** One contour line of a hill: how far it stands from the hill's top, and how far across and down it is moved. */
@@ -251,7 +251,9 @@ function fact(words: string, value: string, stone = false): string {
 /** The whole document: the page's own words, the node's address, the head and the time of the walk, and then what the walk gave. */
 function documentOf(address: string | undefined, at: number, { head, lines }: Listed): string {
   // The time is that of the walk, to the second, so a reader of a kept page can tell its age.
+  // It is written in UTC as the index's pages write theirs, with the date, which a kept page needs.
   const time = new Date(at).toISOString().replace(/\.\d+Z$/, "Z");
+  const shown = time.replace("T", " ").replace("Z", " UTC");
   const [lead, about] = WORDS.about;
   const facts = [...(address === undefined ? [] : [fact(WORDS.address, address, true)]), ...(head === undefined ? [] : [fact(WORDS.head, head)])];
   return [
@@ -268,7 +270,7 @@ function documentOf(address: string | undefined, at: number, { head, lines }: Li
     '<header class="bar">',
     '<div class="wrap">',
     `<p class="trail"><a class="mark" href="${escaped(SITE)}">${escaped(WORDS.project)}</a> <span class="here">${escaped(WORDS.here)}</span></p>`,
-    `<p class="status">${escaped(WORDS.drawn)} <time>${escaped(time)}</time></p>`,
+    `<p class="status">${escaped(WORDS.drawn)} <time datetime="${escaped(time)}">${escaped(shown)}</time></p>`,
     "</div>",
     "</header>",
     "<main>",
