@@ -10,27 +10,16 @@ Every note carries one of three labels.
 
 The platform changes. Check a note against the live service before you rely on it.
 
-## Local environment
+## Wrangler
 
-**Observed in October 2026.**
+**Working notes.** `AGENTS.md` gives the setup rules: the Node version, a Wrangler of each project's own, secrets set by hand, and the tests' stand-in for Artifacts.
 
-- Outside the repo folder a shell may fall back to an older Node. The command needs Node 22.22, and Wrangler does not start on Node 20. Run `nvm use` in the repo root. `.nvmrc` names 22.22.1.
-
-**Working notes.**
-
-- Wrangler 4.147 needs Node 22. A global Wrangler 4.43 had no `artifacts` commands. Use the Wrangler installed in each project, never a global one.
+- A global Wrangler 4.43 had no `artifacts` commands.
 - `node/` pins Wrangler to one exact version, because the push trigger shape it accepts differs from the guide and may change. Run the dry-run deploy again after any upgrade.
-- Worker secrets are set by hand, with `wrangler secret put`. No secret is written to a file in the repo.
-- When Wrangler is not logged in, it suggests `wrangler deploy --temporary`. That flag creates a temporary Cloudflare account and accepts Cloudflare's terms for whoever runs it. Do not run it.
 - `wrangler dev` with `"remote": true` on the `artifacts` binding runs a Worker locally against the real Artifacts service.
 - A Worker registered as a queue consumer must export a queue handler, or the deploy fails.
 - Leaving a KV namespace ID out of the Wrangler config provisions the namespace on deploy.
 - `"workers_dev": false` with `"preview_urls": false` deploys a Worker with no public URL.
-- npm 10 crashes while it resolves the peer set of Vitest 4.1, which the Workers test pool needs. `.npmrc` sets `legacy-peer-deps` in the repo root and in `node/` for that reason.
-
-## Tests and the Artifacts binding
-
-**Observed in October 2026.** Artifacts has no local simulation. The Workers test pool would open a session on the developer's Cloudflare account to reach it. `remoteBindings: false` in `node/vitest.config.ts` and `index/vitest.config.ts` stops that. The tests put an in-memory fake in place of the binding, and no test reaches the live service.
 
 ## Artifacts, first check
 
@@ -54,7 +43,6 @@ The platform changes. Check a note against the live service before you rely on i
 - Two rejections appear when pushes collide: `! [rejected] (fetch first)` and `! [remote rejected] (stale ref)`. Treat both as "pull and retry". Three pushes at once to one branch all landed within three tries.
 - `git fetch <remote> <full commit hash>` works, so one patch commit can be fetched with no branch name.
 - A clone that held only a fork's URL and a read token fetched a patch commit from the fork, with no Cloudflare credentials. This was within one account.
-- A repo marked read-only accepted pushes and a force-push from a write token. So Cairnfield never issues a write token for a component copy, and names a component by commit hash, never by branch.
 - A force-push is allowed, so a team can rewrite the history of its own repo.
 
 ### The Workers binding
@@ -138,7 +126,6 @@ This entry in a Wrangler config deployed and fired. The Artifacts guide shows an
 - The index read the nodes over HTTP. The index and the nodes are Workers in one account, and each sets the `global_fetch_strictly_public` compatibility flag.
 - A node shows a new head in the index within about a minute of a push.
 - **Observed on Oct 11, 2026**, after a deploy of the index. Its two pages answered with the content type `text/html`, and their script and stylesheet with `text/javascript` and `text/css`, each with no charset. The stand-in for the assets binding in the tests answers `text/html; charset=utf-8`.
-- **Observed on Oct 11, 2026**, in a browser. Cloudflare added the script of its Web Analytics beacon, from `static.cloudflareinsights.com`, to both pages of the index. The pages' content security policy takes scripts from the index's own origin alone, so the browser refused it and wrote one error to the console on each load. The pages drew as they should. The HTML that `curl` received held no such script.
 - **Observed on Oct 12, 2026**, after a deploy of the index and of both nodes with the count of fetches. A node's config has two Workflows and three event triggers, and a fetch was counted on a deployed node.
   - One node answered `not-found` for the count of its fork. One `git fetch --depth=1` of the component's commit into an empty repo followed, with the token from that node's `read-token` route. The node answered `not-found` 1, 3 and 5 seconds after the fetch, and a count of 1 after 8 seconds. No more looks were made in between.
   - The index's view held no count for the node about 8 and 12 seconds after the node first served one, and held it after about 16. The other node did not run the new code yet. It answered 404 for the route, and its entry held no count.
@@ -214,7 +201,6 @@ These notes say what each command has done on the demo's deployed nodes and inde
 ### Where the documentation is stale
 
 - The documentation shows the token prefix `art_v1_`. The service issued `art_v2_` (observed Oct 4).
-- The documentation presents `readOnly` as a guard. A write token still pushed to a read-only repo (observed Oct 4).
 - The documentation says `list()` returns a `status` for each repo. The types have no such field, so readiness comes from `get()`.
 - One page says the binding cannot read files. The types have `readFile`, `readTree` and `readBlob`, and `readFile` was observed on Oct 4.
 
@@ -226,24 +212,6 @@ These notes say what each command has done on the demo's deployed nodes and inde
 - Import by branch from a public HTTPS remote, and no Wrangler command for import or fork.
 - The fields of the push payload.
 
-## A walk shared between requests
-
-**Observed on Oct 12, 2026, in local workerd only.** The runtime was workerd 1.20260815.1 through Miniflare, at the compatibility date `2026-08-15`. The Worker kept a promise in module state, as the node's page does, and a slow service binding stood in for Artifacts.
-
-- Two requests that arrived while a first request's reads ran got that walk's answer when it ended, about 1.2 seconds in.
-- They still got it when the first request's reader left 200 ms in, before the walk ended.
-- The same run without the hand-off to `waitUntil` gave the same answers. So the local runtime does not show what the hand-off adds.
-- A request after the walk got the kept answer at once.
-
-**Observed on Oct 12, 2026, on a deployed node.** Five requests for a node's page were sent together, 35 seconds after the last view of it, so the node kept no page.
-
-- All five answered 200 between 1.5397 and 1.5411 seconds after they were sent, each with the same time of drawing. The page gives that time to the second. This fits one walk that all five waited on, and does not show it: several isolates that each walked would give the same second.
-- A request five seconds later got the same page, with that time.
-- The page carried its policy with the hash of its one style, `cache-control: no-store`, `x-robots-tag: noindex, nofollow`, `referrer-policy: no-referrer` and `nosniff`. A request with a query answered 400.
-- In a browser the style applied under the policy, at 1280 and at 390 pixels wide, with no message in the console. A team's name on the index's page led to that team's page.
-
-**Not known.** Whether the five requests reached one isolate and shared one walk, or reached several that each walked: nothing in the check counted the node's reads of Artifacts. What the hand-off to `waitUntil` adds on a deployed Worker: no reader left during a walk in this check.
-
 ## Platform limits
 
 **Documentation, not run.**
@@ -252,7 +220,7 @@ These notes say what each command has done on the demo's deployed nodes and inde
 - **D1.** 10 GB per database. 1,000 queries per Worker invocation. 100 bound parameters per query. One writer per database. `db.batch()` runs as one transaction.
 - **Queues.** No built-in deduplication.
 - **Artifacts.** 2,000 control-plane requests per 10 seconds per namespace. 2,000 Git requests per 10 seconds per repo. 1 GB per repo, 32 MB per blob and 1 TB per account. The documentation classes the binding as control plane, so a node's reads and its token mints share one namespace budget.
-- **Artifacts pricing.** The first 10,000 operations and the first 1 GB each month are included. A clone or a fetch with a read token that a node issued is an operation on that node's account. The pricing page and the changelog say billing starts Oct 14, 2026. The announcement post says Oct 15.
+- **Artifacts pricing.** The first 10,000 operations and the first 1 GB each month are included. A clone or a fetch with a read token that a node issued is an operation on that node's account.
 - **Worker to Worker.** A `fetch` from one Worker to another in the same account fails with error 1042 unless `global_fetch_strictly_public` is set.
 - **Plan.** Artifacts needs the Workers Paid plan.
 
@@ -291,33 +259,3 @@ So each demo node environment in `node/wrangler.jsonc` repeats its `artifacts` b
 - Builds for other branches must be switched on. A push then creates or updates a Preview URL for the branch.
 - The repository must hold the source and the configuration to build and deploy. An empty repository connects, and its first build fails until a commit arrives.
 - The account role needs the Artifacts Read and Artifacts Edit permissions.
-
-One consequence holds for Cairnfield whatever a test shows. Nothing deploys from a records repo. A push there would become a deploy, and a token that can write records could then change a Worker.
-
-## Workers Builds and Access for the site
-
-**Observed on Oct 11, 2026**, on the site's Worker, which serves static files and has no script.
-
-- Importing the GitHub repository in the dashboard made the Worker and ran one build from the repository's default branch. The form had a field for the folder to build in, and none for the branch.
-- The branch a Worker deploys from is set afterwards, in the Worker's build settings. Changing it started no build.
-- With the folder set to `/site/`, the build ran `npx wrangler deploy` there with the repo's own config. That deploy attached the custom domain the config names and made its DNS record.
-- With `workers_dev` and `preview_urls` set to false in the config, the Worker's address on `workers.dev` answered 404.
-- An Access application for the domain's hostname was made before the Worker existed. From the first deploy, every path answered with a redirect to the login, `robots.txt` among them. So Access stands in front of a Worker that only serves static files, and a crawler sees no page of it.
-- A push to the deploy branch started a build. The first release was a pull request merged as a merge commit. Its build ran and deployed in about 25 seconds, and GitHub showed it as a check on that commit.
-
-**Documentation, read on Oct 11, 2026. Not run.**
-
-- Access can also be attached to a Worker by name. It then covers every address of that Worker: its routes, its custom domains, its address on `workers.dev` and its previews.
-- A build for a branch other than the deploy branch runs only when preview builds are switched on.
-
-## The demo's account
-
-The demo's two nodes and its index run as separate Workers in one Cloudflare account. Each node has its own Artifacts namespace. The index was never shown reading a node in another account.
-
-## Leftovers of the first check
-
-The check of Oct 4 left a namespace with five repos, a Worker with its Workflow, a KV namespace and a queue. All were deleted on Oct 9, 2026. No part of Cairnfield used them.
-
-A report to Cloudflare that a read-only repo accepts pushes was drafted and not sent.
-
-Each run of the check of Oct 12 deleted its repos, its Worker and its Workflow at its end. The check left its namespace, empty, to be deleted in the dashboard: Wrangler 4.147 has no command that deletes a namespace. It did not look at its three event triggers, because Wrangler lists none.
