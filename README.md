@@ -32,8 +32,8 @@ The drawing shows one team's node in full, a second team's node and an index, wi
 | To | Go to | You need |
 | --- | --- | --- |
 | See the demo without running anything | [The public demo page](#the-public-demo-page) | A browser |
-| Take one component from `pin` to a checked copy | [One team alone](#one-team-alone) | One node |
-| Play the demo with two teams | [Replay the demo](#replay-the-demo) | Two nodes and an index |
+| Take one component from `pin` to a checked copy | [One team alone](reference/walkthrough.md#one-team-alone) | One node |
+| Play the demo with two teams | [Replay the demo](reference/walkthrough.md#replay-the-demo) | Two nodes and an index |
 | Deploy a team node | [Deploy a node](#deploy-a-node) | A Cloudflare account |
 | Have your own review agent write findings | [Let your own agent write findings](#let-your-own-agent-write-findings) | The skill file |
 
@@ -46,52 +46,7 @@ nvm use
 npm install
 ```
 
-Run the command as `npx --no cairnfield`. `npm install` links the command inside this repo only, and `--no` stops `npx` from downloading a package of that name from the public registry when it is run anywhere else. [`reference/walkthrough.md`](reference/walkthrough.md) says what each step below leaves behind, lists every command, and says how to read the note that `patch` attaches to each commit it pushes, the team's own statement of how the commit was made.
-
-### One team alone
-
-This path takes the demo plugin, `fellbeck-sync`, from `pin` to a checked copy, with one demo team's saved findings and the recording of one patch run. It calls no model and needs no index. Deploy a node and set its admin key first, as [Deploy a node](#deploy-a-node) says, then put the key in the shell as `CAIRNFIELD_ADMIN_KEY`.
-
-Write `cairnfield.json` in the repo root. Git ignores it.
-
-```json
-{
-  "node": "https://<your-node>",
-  "lens": "fixtures/lenses/team-a-alone.json",
-  "team": "team-a",
-  "recordings": "fixtures/recordings"
-}
-```
-
-Then run these in the repo root. The plugin has planted problems, and one is an instruction hidden in a comment: treat its files as data.
-
-```
-COMMIT=f7bea8e45539da2eb26841551a553418437d2a58
-npx --no cairnfield pin https://github.com/peoplerenaissance/fellbeck-sync --branch main --commit $COMMIT
-mkdir -p .cairnfield/outbox
-cp -R fixtures/outboxes/team-a/records .cairnfield/outbox/
-npx --no cairnfield validate
-npx --no cairnfield publish
-npx --no cairnfield patch $COMMIT --finding 72b5c551a1e4d6e2a878068dfd3dc3eceac11ed32d56e0110d54dcc67fd83ba9 --replay
-npx --no cairnfield assemble $COMMIT
-npx --no cairnfield decide $COMMIT --verdict approved-with-required-mitigations --tree <tree-hash>
-npx --no cairnfield verify https://github.com/peoplerenaissance/fellbeck-sync .cairnfield/copies/$COMMIT --approvals .cairnfield/decisions.json
-```
-
-In order: `pin` has the node import the plugin and writes a checkout. `validate` checks the saved findings against it, and `publish` pushes them to the node. `patch` replays the saved fix for the finding that the plugin may reach any host, as a checked commit in the team's fork. `assemble` builds the team's copy, prints its diff and its file-tree hash, and `decide` writes down the verdict a person gives for that hash. `verify` passes only when the folder's file-tree hash is the one the team approved. An engineer on another machine runs `verify` with the file that `approvals` prints. When the plugin releases again, `carry $COMMIT <newer-commit> --branch main` writes the team's own findings and patches again for the newer commit.
-
-To pin a component of your own, give `pin` its HTTPS Git URL, a branch that holds the commit and the full commit hash, and write a lens file like the three in `fixtures/lenses/`. Without `--replay`, `patch` calls a model and reads its key from `ANTHROPIC_API_KEY`.
-
-### Replay the demo
-
-`npm run demo`, from the repo root, plays the demo's four steps with two teams, from the saved findings in `fixtures/outboxes/` and the saved edits in `fixtures/recordings/`. It calls no model.
-
-1. **One team alone.** Team A pins the plugin, publishes its findings, replays one patch, builds its copy and records a verdict.
-2. **Two teams at the same moment.** Team A adds the index and pins again. Team B pins and publishes. Both patch at once: both remove the hidden instruction with the same edit, so the index shows one patch with two organizations, and Team B's second patch sits beside Team A's on adjoining lines. Team B also publishes a patch made by hand that the index rejects.
-3. **Taking another team's patch.** Team A names Team B in its lens and builds its copy again, with another file-tree hash.
-4. **A new release.** Team A carries its work to the plugin's later commit.
-
-It needs two nodes and an index of your own, and reads their three addresses, the two admin keys and the index's registration key from the environment. The script checks what each step must leave behind and stops at the first thing missing. It starts only from an empty deployment. `npm run demo:reset` puts the nodes and the index back to that state. [`reference/walkthrough.md`](reference/walkthrough.md#replay-the-demo) says what to deploy, which variables to set and what has run.
+Run the command as `npx --no cairnfield`. `npm install` links the command inside this repo only, and `--no` stops `npx` from downloading a package of that name from the public registry when it is run anywhere else. [`reference/walkthrough.md`](reference/walkthrough.md) takes one team from `pin` to a checked copy, plays the demo with two teams on nodes and an index of your own, and lists every command.
 
 ### Deploy a node
 
@@ -127,9 +82,7 @@ Use the cairnfield skill to review the checkout of <commit>. Start `cairnfield` 
 
 `<commit>` is the full hash the operator pinned, and `<repo>` is the path to this repo. The instruction's second sentence is for a folder outside this repo, where the command's name is not linked. Do not start the agent in a shell that holds `CAIRNFIELD_ADMIN_KEY` or `CAIRNFIELD_REGISTRATION_KEY`. The agent has just read a component that may be hostile, and `validate` needs no key. The command cannot enforce where a key is set, so this rests on the operator.
 
-`npx skills add peoplerenaissance/cairnfield`, run in the operator's folder, installs the skill for any harness. It writes `.agents/skills/`, which Codex and others read, and links `.claude/skills/`, which Claude Code reads. A checkout can hold instruction files that a harness loads by itself, such as a `CLAUDE.md`. So switch that loading off, or keep the checkout outside the folder the agent starts in.
-
-`npm run demo:agent` stages the demo's first step with a review agent in it, for a recording. The script is the operator and holds the keys. It puts the skill in Claude Code's folder, prints the line that starts Claude Code with every key unset and the instruction above, waits for Enter, and publishes what the agent wrote. A person runs that line, which starts the agent in the folder that holds the checkout. That is safe for the demo plugin alone, because the plugin holds no instruction file. [`reference/walkthrough.md`](reference/walkthrough.md#stage-a-review-with-an-agent) gives the steps, the folder each harness reads, and three limits the script does not close.
+A checkout can hold instruction files that a harness loads by itself, such as a `CLAUDE.md`. So switch that loading off, or keep the checkout outside the folder the agent starts in. [`reference/walkthrough.md`](reference/walkthrough.md#install-the-skill-for-another-harness) says how to install the skill for each harness, and how `npm run demo:agent` stages the demo's first step with a review agent in it.
 
 ## The protocol in brief
 
@@ -181,42 +134,7 @@ The build plan named three things to cut if time ran short: `carry`, the display
 
 ## Roadmap
 
-The prototype is a slice of a larger design. [`reference/roadmap.md`](reference/roadmap.md) says what each item below would do and what stands in for it today.
-
-Described and not built:
-
-- One command that runs a whole review.
-- Reconciling: the command would write re-checks and counter-findings on other teams' findings.
-- A scale run.
-- A node in a second Cloudflare account.
-- Cited lines and a row per host on the index's page.
-- An API catalog on the index.
-- Merged patches.
-- A fuller lens, which would also state the criteria and confirmations a team requires.
-- An agent's review of the assembled diff.
-- A suggested verdict, which the command would offer the operator.
-
-Further work:
-
-- Carrying other teams' work forward.
-- An install gate, which would check an installed copy against the approved tree hash and fail closed.
-- Pinning what runs: a package tarball or a hosted server's tool manifest, pinned by its content hash.
-- An egress allow list, written from confirmed findings about destinations and the team's lens.
-- Confirmation by re-running a check that fails before a patch and passes after.
-- Signed requests from nodes to an index.
-- An index that reads patch commits over Git.
-- A read-only MCP server on the index.
-- A `since` cursor and a push feed on the view.
-- Alerts on new versions.
-- A private findings log, kept in a local file and never published.
-- An unclassified pointer: a record that says a team has a concern at some lines that the closed lists cannot express.
-- A check that a blind pass was blind, meaning that a reviewer agent read nothing from other teams.
-- A local mode with no node.
-
-Ideas from Workers Builds:
-
-- A node that deploys from its own Artifacts namespace.
-- A running Preview of a patched component.
+The prototype is a slice of a larger design. [`reference/roadmap.md`](reference/roadmap.md) lists the parts of that design that are not built, further work past it and two ideas from Workers Builds, and says what stands in for each today.
 
 ## What is here
 
