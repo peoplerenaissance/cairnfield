@@ -479,7 +479,7 @@ The notes ref is pushed alone, after the patch branch. One push of both refs cou
 
 The page's `content-security-policy` is `default-src 'none'` with the SHA-256 hash of the page's one style, `base-uri 'none'`, `form-action 'none'` and `frame-ancestors 'none'`. The style is written into the page because the node has no assets binding and no build step. `cache-control` is `no-store`: the kept page already bounds the reads, and a browser's copy on top would show a reader an older page. `x-robots-tag` is `noindex, nofollow`, because each record link costs the node two reads of the binding that nothing keeps. `referrer-policy` is `no-referrer`. A request with any query is refused as `bad-request`, so nothing a caller sends reaches the kept page.
 
-The rendered page is kept in the isolate, as a promise, for 30 seconds. Requests that arrive together then walk the repo once. The request that starts a walk hands the promise to `waitUntil`, so a reader who leaves does not end a walk that others wait on. Requests that share one walk were seen in local workerd. On a deployed node, five requests sent together answered alike, which fits one walk and does not show one. `platform-notes.md` holds what was seen. The page gives the time of its walk, so a reader can tell the age of a kept page. No cache stands in front of the Worker, so a `records` answer is never a kept one.
+The rendered page is kept in the isolate, as a promise, for 30 seconds. Requests that arrive together then walk the repo once. The request that starts a walk hands the promise to `waitUntil`, so a reader who leaves does not end a walk that others wait on. On Oct 12, 2026, requests that shared one walk were seen in local workerd 1.20260815.1. On a deployed node that day, five requests sent together answered alike, which fits one walk and does not show one. The page gives the time of its walk, so a reader can tell the age of a kept page. No cache stands in front of the Worker, so a `records` answer is never a kept one.
 
 A node with no team repo, with one still being made or with one that has no push answers 200 and says that nothing is published yet. A head with no record path under it answers 200 and says that the team repo holds no record. When Artifacts fails, the node serves the last page that a walk gave. It keeps that page as a value, so a failed walk waits on no walk before it. A walk that lasts longer than 30 seconds can end after the walk that began next. Its page is the older of the two, and it does not take the place of the newer one. With no such page it answers 503 with fixed words. A failed walk is kept for the same 30 seconds, so a failing Artifacts is asked once in that time.
 
@@ -529,7 +529,7 @@ Each example is a case that a test covers. The test's name cites it as `AE<n>`.
 
 ### Appendix B. What Artifacts was seen to do
 
-The first check of Cloudflare Artifacts against the live service, on Oct 4, 2026. `platform-notes.md` holds it in full. Comments and the test fakes of the Artifacts binding cite it for these facts.
+The first check of Cloudflare Artifacts against the live service, on Oct 4, 2026. `platform-notes.md` holds more of what it found. Comments and the test fakes of the Artifacts binding cite it for these facts.
 
 - An import returns before it finishes.
 - An imported repo reported `main` as its default branch when its only branch was `master`.
@@ -574,7 +574,7 @@ The first check of Cloudflare Artifacts against the live service, on Oct 4, 2026
 
 ### Appendix M. What the Artifacts reference says
 
-A reading of the Artifacts reference and of the binding types bundled with Wrangler 4.147.0, on Oct 6, 2026. Nothing in that reading was run against the live service. `platform-notes.md` holds it in full. Comments and the test fakes cite it for these points.
+A reading of the Artifacts reference and of the binding types bundled with Wrangler 4.147.0, on Oct 6, 2026. Nothing in that reading was run against the live service. `platform-notes.md` holds more of what it found. Comments and the test fakes cite it for these points.
 
 - Every create, import and fork returns a token. A token's default scope is write and its default life is 24 hours.
 - A fork copies only the default branch unless `defaultBranchOnly` is false.
