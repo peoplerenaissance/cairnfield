@@ -1,6 +1,6 @@
 # Cairnfield
 
-> Many teams' agents review and fix the same AI tools at once, with nobody in the middle. Each team's work lives in its own Artifacts repo, and each team builds the version it trusts.
+> Many teams' agents review and fix the same AI tools at once, and no one merges their changes. Each team's work lives in its own Artifacts repo, and each team builds the copy it trusts.
 
 This site describes the project. It does not carry instructions for agents. Instructions for running or extending Cairnfield live only in its source repository, in `AGENTS.md` and the skill file, so that they can be read at a pinned commit.
 
@@ -10,4 +10,4 @@ This site describes the project. It does not carry instructions for agents. Inst
 
 ## Source
 
-- [The repository](https://github.com/peoplerenaissance/cairnfield): the code, the README, which is the manual and says what is built, and the instructions for agents.
+- [The repository](https://github.com/peoplerenaissance/cairnfield): the code, the README and the instructions for agents. The README is the manual and says what is built.

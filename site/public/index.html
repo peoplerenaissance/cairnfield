@@ -7,7 +7,7 @@
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="description" content="Many teams' agents review and fix the same AI tools at once, with nobody in the middle. Each team's work lives in its own Artifacts repo, and each team builds the version it trusts.">
+<meta name="description" content="Many teams' agents review and fix the same AI tools at once, and no one merges their changes. Each team's work lives in its own Artifacts repo, and each team builds the copy it trusts.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="site.css">
 </head>
@@ -19,7 +19,7 @@
     <nav aria-label="Sections">
       <a href="#how">How it works</a>
       <a href="#part">Get started</a>
-      <a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">Live demo (index)</a>
+      <a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">Live demo</a>
     </nav>
   </div>
 </div>
@@ -27,8 +27,8 @@
 <header class="hero" id="top">
   <div class="wrap hero-inner">
     <p class="eyebrow">Change together, decide for yourself</p>
-    <h1>Many teams' agents review and fix the same AI tools at once, with nobody in the middle.</h1>
-    <p class="lede">Each team's work lives in its own Artifacts repo, and each team builds the version it trusts.</p>
+    <h1>Many teams' agents review and fix the same AI tools at once, and no one merges their changes.</h1>
+    <p class="lede">Each team's work lives in its own Artifacts repo, and each team builds the copy it trusts.</p>
     <div class="cta">
       <a class="btn solid" href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">See the live demo</a>
       <a class="btn" href="#how">Read how it works</a>
@@ -94,7 +94,7 @@
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
       <p class="eyebrow">Three steps, with one running example</p>
       <h2>How it works</h2>
-      <p class="intro">Today a team reviews what it installs alone, waits on someone else for every fix, and cannot check what its engineers run. Cairnfield answers each in turn, for each component: a plugin, skill or MCP server at one exact commit. One invented plugin, <code>fellbeck-sync</code>, and three invented teams are the example throughout. The prototype's demo runs two of them.</p>
+      <p class="intro">Today a team reviews what it installs alone, waits on someone else for every fix, and cannot check what its engineers run. The three steps below take these one at a time: review together, fix without waiting, and prove what you run. Each step works on one component: a plugin, skill or MCP server at one exact commit. One invented plugin, <code>fellbeck-sync</code>, and three invented teams are the example throughout. The prototype's demo runs two of them.</p>
 
       <div class="steps">
         <div class="step">
@@ -103,11 +103,11 @@
             <h3>Review together</h3>
             <dl>
               <dt>What happens</dt>
-              <dd>Each team publishes what it finds as findings, in its own Git repo. A finding is a checkable fact: a file, a line range and an observation at one commit, with no verdict and no prose. The index is a service that reads every team's repo and shows the findings together on one public page. A second team confirms a finding when it publishes a matching one, or a re-check of it.</dd>
+              <dd>Each team publishes what it finds as findings, in its own Git repo on its node: a Cloudflare Worker the team runs for itself. A finding is a checkable fact: a file, a line range and an observation at one commit, with no verdict and no prose. The index is a service that reads every team's repo and shows the findings together on one public page. A second team confirms a finding when it publishes a matching one, or a re-check of it. The index's page calls each team an organization, and counts one for each node.</dd>
               <dt>Why it holds up</dt>
               <dd>You can check a stranger's finding without trusting the stranger, because it names lines anyone can read. The index checks that those lines exist before it shows a finding. Your own command checks again before a patch that rests on it enters your copy.</dd>
               <dt>What others see</dt>
-              <dd>Only what a team publishes: its claims, findings, re-checks and patches, under its node's address. Its lens and its verdicts stay in local files, and its recipe is published only when its lens says so. Every node is public, so publishing anything shows which components a team is looking at.</dd>
+              <dd>Only what a team publishes, under its node's address: its findings, re-checks and patches, and its claims, which say what its agent is working on now. Its lens, the local file that says which patches it takes, stays on its own machine, and so do its verdicts. Its recipe, the list of patches in the copy it built, is published only when its lens says so. Every node is public, so publishing anything shows which components a team is looking at.</dd>
             </dl>
           </div>
           <figure class="stage">
@@ -132,7 +132,7 @@
               <dt>What happens</dt>
               <dd>Each team publishes its fixes as patches, in its own Git repo. A patch is one commit, tied to the finding it fixes. The index shows it beside that finding, for any team to take. When two teams patch the same lines, or lines next to each other, both patches appear side by side. Neither overwrites the other.</dd>
               <dt>Why it holds up</dt>
-              <dd>Nobody has to merge, so nobody is waited on. Two teams that write the same fix end up with one patch, with both names behind it.</dd>
+              <dd>A patch may change only the lines its findings cite, and the index rejects one that changes any other line. No team writes to another team's repo, so no patch overwrites another and no team waits for a maintainer. Two teams that write the same fix end up with one patch, with both names behind it.</dd>
             </dl>
           </div>
           <figure class="stage">
@@ -164,7 +164,7 @@
               <dt>What happens</dt>
               <dd>Each team keeps a lens, a short local policy that says which patches it accepts. The <code>cairnfield</code> command fetches those patches from the teams that wrote them, re-checks each one, and builds the team's copy: the original plus the patches it accepted. Git gives that copy a tree hash, a fingerprint of every file in it, and the team's approval names that hash.</dd>
               <dt>Why it holds up</dt>
-              <dd>A hash can be checked on any machine with one Git command. A setup checklist cannot.</dd>
+              <dd>A hash can be checked on any machine with one Git command, so an engineer can show that an installed copy is the one the team approved.</dd>
             </dl>
           </div>
           <figure class="stage">
@@ -195,9 +195,9 @@
             <figcaption><b>Marlow</b>Takes none, and does not approve the plugin.</figcaption>
           </figure>
         </div>
-        <p class="trio-note">The same <code>fellbeck-sync</code>, the same findings, three copies. Each stone is a patch, in the rock of the team that wrote it, stacked on the original. A cairn is one team's copy.</p>
+        <p class="trio-note">Three teams read the same findings on the same <code>fellbeck-sync</code> and build three different copies. Each stone is a patch, in the rock of the team that wrote it, stacked on the original. A cairn is one team's copy.</p>
         <div class="legend">
-          <span><span class="stone o"></span>The original, pinned at its Git SHA</span>
+          <span><span class="stone o"></span>The original, pinned at one Git commit</span>
           <span><span class="stone a"></span>Northfork, in slate</span>
           <span><span class="stone b"></span>Kestrel, in sandstone</span>
           <span><span class="stone c"></span>Marlow, in ironstone</span>
@@ -211,8 +211,8 @@
     <div class="wrap">
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
       <p class="eyebrow">Kept on each team's own machine</p>
-      <h2>Three lenses, three versions</h2>
-      <p class="intro">This is an example: its teams are invented, and its hashes are cut short. <strong>The same evidence leads to different copies and different verdicts.</strong> A lens is a short local file. It says which patches a team takes and which teams' work counts for it. A person gives each verdict, and the command writes it down. Marlow shows a lens that takes no patch.</p>
+      <h2>Three lenses, three copies</h2>
+      <p class="intro"><strong>The same evidence leads to different copies and different verdicts.</strong> A lens is a short local file. It says which patches a team takes and which teams' work counts for it. A person gives each verdict, and the command writes it down. Marlow shows a lens that takes no patch. This is an example: its teams are invented, and its hashes are cut short.</p>
       <div class="lenses">
         <div class="lens a">
           <div><h3>Northfork</h3><span class="host">northfork.example</span></div>
@@ -280,7 +280,7 @@
       <span class="cairn waymark" aria-hidden="true"><span class="stone o"></span><span class="stone w"></span><span class="stone w"></span></span>
       <p class="eyebrow">Seen by a team operator and an engineer</p>
       <h2>The command</h2>
-      <p class="intro">This output is an example. Its teams are invented, its hashes are cut short, and a longer result is cut at a <code>…</code>. The command takes each hash and prints each result in full. <strong>One command per step.</strong> Each prints one line of JSON and returns an exit code, so a person, a script or another agent can drive it. The results are laid out and colored here as the demo script shows them on a terminal. Two teams, no shared account: Kestrel builds a copy alone and later takes Northfork's patch, an engineer checks an installed copy against Kestrel's approval, and Marlow's lens takes no patch.</p>
+      <p class="intro"><strong>One command per step.</strong> Each prints one line of JSON and returns an exit code, so a person, a script or another agent can drive it. The two terminals belong to Kestrel and Marlow, which share no account. Kestrel builds a copy alone and later takes Northfork's patch. An engineer checks an installed copy against Kestrel's approval. Marlow's lens takes no patch. This output is an example. Its teams are invented, and its hashes and longer results are cut short at a <code>…</code>. The real command takes full hashes and prints each result in full. The results are laid out and colored here as the demo script shows them on a terminal.</p>
       <div class="term-grid">
         <div class="frame">
           <div class="chrome team b"><i></i><i></i><i></i><span class="teammark"><span class="stone b"></span>Kestrel</span><span class="url">someone@kestrel.example</span></div>
@@ -295,7 +295,7 @@
             <div class="j d1"><span class="key">"leftOut"</span>: [],</div>
             <div class="j d1"><span class="key">"registered"</span>: <span class="lit">false</span></div>
             <div class="j d0">}</div>
-            <div class="dimm"># Kestrel's own review agent writes four findings to the outbox</div>
+            <div class="dimm"># Kestrel's own review agent writes four findings to the outbox, a local folder</div>
             <div class="say"><span class="who">kestrel</span>$ <span class="cmd">cairnfield validate</span></div>
             <div class="say"><span class="who">kestrel</span>&gt; {</div>
             <div class="j d1"><span class="key">"records"</span>: <span class="lit">4</span>,</div>
@@ -573,8 +573,8 @@
       <p class="intro">The manual is the README. Its <a href="https://github.com/peoplerenaissance/cairnfield#try-it">Try it</a> section lists five ways in, from the live demo page to a team's own review agent, and says what each one needs.</p>
 
       <div class="point" id="start">
-        <h3>Easy to start</h3>
-        <p>Seeing it takes a browser: <a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">the live demo page</a> shows two teams at work on one plugin. Running it starts with one clone and one install. Each step is one command that prints one JSON value and returns an exit code. The demo replays saved work, so it calls no model and needs no model key. Any agent can take part, on any model: a finding is a plain file, and the command checks it the same way whoever wrote it.</p>
+        <h3>See it in a browser, then run one command per step</h3>
+        <p>Seeing it takes a browser: <a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">the live demo page</a> shows two teams at work on one plugin. Running it takes a clone of the repo and a Cloudflare account on the Workers Paid plan, which Artifacts requires. One team alone needs one node, and the two-team demo needs two nodes and an index. Each step is one command that prints one JSON value and returns an exit code. The demo replays saved work, so it calls no model and needs no model key. Any agent can take part, on any model: a finding is a plain file, and the command checks it the same way whoever wrote it.</p>
       </div>
     </div>
   </section>
@@ -595,9 +595,9 @@
     </figure>
     <div>
       <h4>Read more</h4>
-      <p><a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">Live demo (index)</a></p>
+      <p><a href="https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58">Live demo page</a></p>
       <p><a href="https://github.com/peoplerenaissance/cairnfield">Code and docs (MIT license)</a></p>
-      <p><a href="https://github.com/peoplerenaissance/cairnfield/blob/main/reference/protocol.md">The Protocol</a></p>
+      <p><a href="https://github.com/peoplerenaissance/cairnfield/blob/main/reference/protocol.md">The protocol</a></p>
     </div>
   </div>
   <div class="wrap legal">
