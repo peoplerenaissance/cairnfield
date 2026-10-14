@@ -206,7 +206,7 @@ A registered node's entry in the view holds the commit of its team repo that the
 
 **R14.** The index serves two pages: its own, at `/`, and one per component commit, at `/components/<commit>`.
 
-The index's own page says in one paragraph what an index is and what it is not: a part of Cairnfield that collects findings, patches and recipes and reports them together, that holds nothing original and gives no verdict, and that no team builds from. Under it the page lists the components the index holds. The versions of one repo stand together under its Git URL, and in it the versions of one branch. A repo stands where its first version was registered, and so does a branch, and the versions of a branch stand in the order they were registered. A failed component that is registered again keeps its place. Each version is a row with its commit, which is a link to that commit's page on the index, and its import state. A mark beside a repo's Git URL leads out to the repo when the URL is an HTTPS address. An address of the form `/?repo=<Git URL>` narrows the page to the versions of that repo, and the page says that it is narrowed. The page of a component commit links there, so a reader gets from one version of a repo to its others. The page narrows the list itself: `GET /view` still takes no query. It shows a Git URL only as the list holds it, and never what the address names. Each import state is a label, and the page shows what the label means when a reader points at it or focuses it.
+The index's own page says in one paragraph what an index is and what it is not: the part of Cairnfield that gathers findings, patches and recipes and shows them together, that shows only what teams' nodes publish and gives no verdict, and that no team builds from. Under it the page lists the components the index holds. The versions of one repo stand together under its Git URL, and in it the versions of one branch. A repo stands where its first version was registered, and so does a branch, and the versions of a branch stand in the order they were registered. A failed component that is registered again keeps its place. Each version is a row with its commit, which is a link to that commit's page on the index, and its import state. A mark beside a repo's Git URL leads out to the repo when the URL is an HTTPS address. An address of the form `/?repo=<Git URL>` narrows the page to the versions of that repo, and the page says that it is narrowed. The page of a component commit links there, so a reader gets from one version of a repo to its others. The page narrows the list itself: `GET /view` still takes no query. It shows a Git URL only as the list holds it, and never what the address names. Each import state is a label, and the page shows what the label means when a reader points at it or focuses it.
 
 The page of a component commit says in two sentences what it gathers, and that the index gives no verdict of its own. It shows live claims, work that is being checked, findings by criterion, patches, recipes, each team's fetches and rejected work, in that order. Under its heading each section says in plain words what it holds.
 
@@ -242,7 +242,7 @@ Until the index holds its own copy, the page of a component commit shows no coun
 | The index holds no component | "No component registered" |
 | The index is importing a component's copy | "importing" |
 | The import failed | "import failed" |
-| The copy is ready | "copy held", and never "ready" |
+| The copy is ready | "imported", and never "ready" |
 
 **R15.** A claim says that work has started. The page shows live claims only. The index shows a claim as closed when a finding or a patch record from the same node cites it. A record from another node closes nothing. A claim expires a set time after the index received it.
 
@@ -479,7 +479,7 @@ The notes ref is pushed alone, after the patch branch. One push of both refs cou
 
 The page's `content-security-policy` is `default-src 'none'` with the SHA-256 hash of the page's one style, `base-uri 'none'`, `form-action 'none'` and `frame-ancestors 'none'`. The style is written into the page because the node has no assets binding and no build step. `cache-control` is `no-store`: the kept page already bounds the reads, and a browser's copy on top would show a reader an older page. `x-robots-tag` is `noindex, nofollow`, because each record link costs the node two reads of the binding that nothing keeps. `referrer-policy` is `no-referrer`. A request with any query is refused as `bad-request`, so nothing a caller sends reaches the kept page.
 
-The rendered page is kept in the isolate, as a promise, for 30 seconds. Requests that arrive together then walk the repo once. The request that starts a walk hands the promise to `waitUntil`, so a reader who leaves does not end a walk that others wait on. Requests that share one walk were seen in local workerd. On a deployed node, five requests sent together answered alike, which fits one walk and does not show one. `platform-notes.md` holds what was seen. The page gives the time of its walk, so a reader can tell the age of a kept page. No cache stands in front of the Worker, so a `records` answer is never a kept one.
+The rendered page is kept in the isolate, as a promise, for 30 seconds. Requests that arrive together then walk the repo once. The request that starts a walk hands the promise to `waitUntil`, so a reader who leaves does not end a walk that others wait on. On Oct 12, 2026, requests that shared one walk were seen in local workerd 1.20260815.1. On a deployed node that day, five requests sent together answered alike, which fits one walk and does not show one. The page gives the time of its walk, so a reader can tell the age of a kept page. No cache stands in front of the Worker, so a `records` answer is never a kept one.
 
 A node with no team repo, with one still being made or with one that has no push answers 200 and says that nothing is published yet. A head with no record path under it answers 200 and says that the team repo holds no record. When Artifacts fails, the node serves the last page that a walk gave. It keeps that page as a value, so a failed walk waits on no walk before it. A walk that lasts longer than 30 seconds can end after the walk that began next. Its page is the older of the two, and it does not take the place of the newer one. With no such page it answers 503 with fixed words. A failed walk is kept for the same 30 seconds, so a failing Artifacts is asked once in that time.
 
@@ -529,7 +529,7 @@ Each example is a case that a test covers. The test's name cites it as `AE<n>`.
 
 ### Appendix B. What Artifacts was seen to do
 
-The first check of Cloudflare Artifacts against the live service, on Oct 4, 2026. `platform-notes.md` holds it in full. Comments and the test fakes of the Artifacts binding cite it for these facts.
+The first check of Cloudflare Artifacts against the live service, on Oct 4, 2026. `platform-notes.md` holds more of what it found. Comments and the test fakes of the Artifacts binding cite it for these facts.
 
 - An import returns before it finishes.
 - An imported repo reported `main` as its default branch when its only branch was `master`.
@@ -574,7 +574,7 @@ The first check of Cloudflare Artifacts against the live service, on Oct 4, 2026
 
 ### Appendix M. What the Artifacts reference says
 
-A reading of the Artifacts reference and of the binding types bundled with Wrangler 4.147.0, on Oct 6, 2026. Nothing in that reading was run against the live service. `platform-notes.md` holds it in full. Comments and the test fakes cite it for these points.
+A reading of the Artifacts reference and of the binding types bundled with Wrangler 4.147.0, on Oct 6, 2026. Nothing in that reading was run against the live service. `platform-notes.md` holds more of what it found. Comments and the test fakes cite it for these points.
 
 - Every create, import and fork returns a token. A token's default scope is write and its default life is 24 hours.
 - A fork copies only the default branch unless `defaultBranchOnly` is false.
