@@ -43,18 +43,18 @@ const BAD_REQUEST = { status: 400, body: { error: "bad-request" } };
 const BAR = ["Cairnfield", "node"];
 const TITLE = "Cairnfield team node";
 const ABOUT = [
-  "This page is this team's own list of the records it has published. Nothing on it was checked: a node validates no record, and this page reads none.",
-  "Each record stands under its component, by the type and the ID that the path of its file gives. A component is one version of an AI tool: its Git repository at one commit.",
+  "This page is this team's own list of the records it has published. Nothing on it was checked: a node validates no record, and this page takes each record's type and ID from the name of its file, which it does not open.",
+  "Each record is listed under its component by type and ID. A component is one version of an AI tool: its Git repository at one commit.",
 ];
 const ADDRESS = "Node address";
-const HEAD = "Team repo head";
-const DRAWN = "Drawn at";
+const HEAD = "Latest commit of the team repo";
+const DRAWN = "Read at";
 const NOTHING_YET = "This team has published nothing yet.";
 const NO_RECORD = "The team repo holds no record.";
 const UNREADABLE = "The node could not read its team repo.";
-const RECORDS_LEFT = "Records not drawn here:";
-const COMPONENTS_LEFT = "Components not drawn here:";
-const ALL_RECORDS = "The node's records route lists every record.";
+const RECORDS_LEFT = "Records not shown here:";
+const COMPONENTS_LEFT = "Components not shown here:";
+const ALL_RECORDS = "The address of this node with /records added lists every record.";
 
 // Reading a page.
 
@@ -359,7 +359,7 @@ describe("the node's page", () => {
   it("covers AE20: answers 200 and says in fixed words that nothing is published, for a node with no team repo, a team repo still being made, a team repo with no push and a head with no records folder", async () => {
     const artifacts = new FakeArtifacts();
     const node = await freshNode(artifacts);
-    const time = new Date(START).toISOString().replace(".000Z", "Z");
+    const time = new Date(START).toISOString().replace("T", " ").replace(".000Z", " UTC");
     const nothingYet = [...BAR, TITLE, ...ABOUT, ADDRESS, DRAWN, NOTHING_YET].sort();
     /** The page a request draws once the kept one has run out. */
     const next = async (): Promise<Page> => {

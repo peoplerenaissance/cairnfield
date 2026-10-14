@@ -217,29 +217,29 @@ function said({ observation, host }: { readonly observation: Observation; readon
 const ABOUT = {
   claims: "A claim is a team's notice that it has started a review or a fix. It stays live until that team publishes the result or the claim runs out.",
   pending: "These records have reached the index, which has not finished checking them. Nothing here counts until it has.",
-  findings: "A finding is something a team's review reports seeing in this version, at the lines it names. It is that team's report, and no verdict of this index. The ones more organizations report stand first, and two organizations make a finding confirmed.",
-  patches: "A patch is a fix one team wrote for a finding, and it changes only the lines that finding names. Patches for the same lines stand side by side, the ones more organizations stand behind first.",
-  recipes: "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more organizations published come first.",
+  findings: "A finding is something a team's review reports seeing in this version, at the lines it names. It is that team's report, not a verdict by this index. The findings more teams report stand first, and two teams make a finding confirmed.",
+  patches: "A patch is a fix a team wrote for a finding, and it changes only the lines that finding names. Patches whose lines overlap or adjoin in one file stand side by side, and the patches more teams stand behind come first. Files with identical content count as one file here.",
+  recipes: "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more teams published come first.",
   // What a fetch is, and three things of every count (R45): whose number it is, what it counts, and that a missing count is not a count of zero.
   fetches:
     "A fetch is one download over Git of a team's fork: the team's own repository of this version, where it keeps its patches. Each team's node states its own number, and the index cannot check it. The number counts the fetches of that fork since its node began to count them, and the team's own commands add to it. A team that is not listed here has no count in this view, which is not a count of zero.",
-  rejected: "The index refused these records, because each failed one of its checks. A refused record counts for nothing on this page.",
+  rejected: "The index rejected these records, because each failed one of its checks. A rejected record counts for nothing on this page.",
 } as const;
 
 /** What the two words at the head of a component's page mean. */
 const COMPONENT = "A component is one version of an AI tool, such as a plugin, a skill or a server: its Git repository at one commit.";
 const ORGANIZATIONS = "The teams with records on this version. A team is counted by the address of its node, and nothing more is proven about who runs it. Each has a stone of its own color, which tells the teams apart and says nothing else.";
-const CAIRN = "One stone for each organization that reports this finding, in that organization's color.";
+const CAIRN = "One stone for each team that reports this finding, in that team's color.";
 
 /** What "confirmed" and "unconfirmed" mean on a finding and on a patch (R10, R24). */
 const CONFIRMATION = {
   finding: {
-    confirmed: "Two or more organizations report this or have re-checked it, and their reports count against this criterion.",
-    unconfirmed: "Fewer than two organizations report this against this criterion. Two make it confirmed.",
+    confirmed: "Two or more teams report this or have re-checked it, and their reports count against this criterion.",
+    unconfirmed: "Fewer than two teams report this against this criterion. Two make it confirmed.",
   },
   patch: {
-    confirmed: "Two or more organizations stand behind this patch. Each wrote the same patch, or re-checked it and found that it resolves its finding.",
-    unconfirmed: "Fewer than two organizations stand behind this patch. An organization stands behind a patch by writing the same one, or by re-checking it and finding that it resolves its finding.",
+    confirmed: "Two or more teams stand behind this patch. Each wrote the same patch, or re-checked it and found that it resolves its finding.",
+    unconfirmed: "Fewer than two teams stand behind this patch. A team stands behind a patch by writing the same one, or by re-checking it and finding that it resolves its finding.",
   },
 } as const;
 
@@ -257,8 +257,8 @@ const NOT_CHECKED = "The team published this hash of its copy's files. The index
  * check of the index reaches it (R14).
  */
 const DECLARED = {
-  model: "This team's record states which model, if any, wrote the patch. The index cannot check that, and has not.",
-  fetches: "This team's node states how often its fork was fetched. It does not say by whom. The index cannot check the number, and has not.",
+  model: "This team's record states which model wrote the patch. The word none means that a person or a script wrote it. The index cannot check that.",
+  fetches: "This team's node states how often its fork was fetched. It does not say by whom. The index cannot check the number.",
 } as const;
 
 /** Why the index refuses a record, by the reason it stores (KTD31). Each says what the check found. */
@@ -266,7 +266,7 @@ const REFUSED: { readonly [R in RejectionReason]: string } = {
   "unknown-field": "The record holds a field its type does not have, or its file is not written exactly as a record is.",
   "unknown-value": "The record holds a value outside the protocol's lists and forms, or lacks a field it needs.",
   "too-large": "The record, a list in it, or content it points at is larger than the protocol allows.",
-  "bad-path": "The record cites a path that breaks the path rule, or that is no regular file in the index's copy.",
+  "bad-path": "The record cites a path that breaks the path rule, or that is not a regular file in the index's copy.",
   "lines-out-of-range": "The record cites lines that its file does not have.",
   "host-not-in-lines": "The finding names a host that does not stand in the lines it cites.",
   "hash-mismatch": "The record's file is not named by the hash of its content, or sits under another component or type.",
@@ -366,10 +366,23 @@ const mostBacked = <T>(all: readonly T[], backing: (member: T) => number): T[] =
 /** A path with the line or lines cited in it. */
 const where = ({ path, start, end }: Cited): (Drawing | string)[] => [code(path), el("span", { class: "lines" }, start === end ? ["line ", String(start)] : ["lines ", String(start), "–", String(end)])];
 
-/** A link to a finding's entry on the page, by what the finding observed. A finding the view does not hold is named by its ID. */
+/**
+ * What a finding says, as a clause that names it: its sentence after "the finding that",
+ * with the component in lower case and no full stop. An observation that this page has no
+ * sentence for stands in the protocol's own words.
+ */
+function clause({ observation, host }: FindingGroup): (Drawing | string)[] {
+  const sentence: readonly [string, string] | undefined = SAYS[observation];
+  if (sentence === undefined) return [words(observation)];
+  const named = host === undefined ? [] : [el("code", { class: "host" }, host)];
+  const [before, after] = sentence;
+  return [`the finding that ${before.replace(/^This component /, "the component ").replace(/\.$/, "")}`, ...named, after.replace(/\.$/, "")].filter((part) => part !== "");
+}
+
+/** A link to a finding's entry on the page, by what the finding says. A finding the view does not hold is named by its ID. */
 function findingLink(reading: Reading, id: string): Drawing {
   const group = reading.findings.get(id);
-  return group === undefined ? el("span", { class: "ref" }, "finding ", code(short(id))) : el("a", { href: `#finding-${id}` }, words(group.observation));
+  return group === undefined ? el("span", { class: "ref" }, "finding ", code(short(id))) : el("a", { href: `#finding-${id}` }, clause(group));
 }
 
 /** A section of a page: its heading, a count beside it where it has one, what the section holds in plain words, and its entries. */
@@ -601,7 +614,7 @@ function recipes(reading: Reading): Drawing {
     el(
       "li",
       { class: "recipe" },
-      el("div", { class: "used" }, el("b", {}, String(nodes.length)), nodes.length === 1 ? " organization published this copy" : " organizations published this copy"),
+      el("div", { class: "used" }, el("b", {}, String(nodes.length)), nodes.length === 1 ? " team published this copy" : " teams published this copy"),
       el("div", { class: "tree" }, "tree ", code(tree), explained(focusable("tag un", "published, not checked"), NOT_CHECKED)),
       organizations(reading, nodes),
       el("ul", { class: "taken" }, [...new Set(records.flatMap(({ record }) => record.patches))].map((id) => el("li", {}, patchLink(reading, id)))),
@@ -654,7 +667,7 @@ function viewed(place: ComponentPlace, view: View): Drawing {
         "div",
         { id: "narrowed", class: "notice" },
         el("strong", {}, "Narrowed view"),
-        el("span", {}, "Only the work of the listed organizations is shown and counted."),
+        el("span", {}, "Only the work of the listed teams is shown and counted."),
         organizations(reading, view.nodes.map(({ node }) => node)),
       )
     : undefined;
@@ -680,11 +693,11 @@ type Listed = ComponentList["components"][number];
  * The import state of a listed component, in words: its label, the class of the label
  * and what the label means, which the page shows when the label is pointed at or
  * focused. The index stores a copy it holds as `ready`, which would read as an
- * all-clear (R14), so the label says what the index holds and nothing of the component.
+ * all-clear (R14), so the label says what the index did and nothing of the component.
  * The object must name every state, so the type check fails when that list changes.
  */
 const IMPORT: { readonly [S in Listed["state"]]: { readonly label: string; readonly tag: string; readonly means: string } } = {
-  ready: { label: "copy held", tag: "tag", means: "The index holds its own copy of this version, and checks every record against it." },
+  ready: { label: "imported", tag: "tag", means: "The index holds its own copy of this version, and checks every record against it." },
   importing: { label: "importing", tag: "tag un", means: "The index is still fetching its own copy of this version. It checks no record until it holds one." },
   failed: { label: "import failed", tag: "tag rej", means: "The index could not fetch its own copy of this version, so it checks no record for it." },
 };
