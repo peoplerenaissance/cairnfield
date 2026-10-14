@@ -2053,7 +2053,7 @@ describe("the demo on the page (R27)", () => {
     const sections = [
       "A claim is a team's notice that it has started a review or a fix. It stays live until that team publishes the result or the claim runs out.",
       "A finding is something a team's review reports seeing in this version, at the lines it names. It is that team's report, not a verdict by this index. The findings more teams report stand first, and two teams make a finding confirmed.",
-      "A patch is a fix a team wrote for a finding, and it changes only the lines that finding names. Patches whose lines overlap or adjoin stand side by side. Those that more teams stand behind come first.",
+      "A patch is a fix a team wrote for a finding, and it changes only the lines that finding names. Patches whose lines overlap or adjoin in one file stand side by side, and the patches more teams stand behind come first. Files with identical content count as one file here.",
       "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more teams published come first.",
       "The index rejected these records, because each failed one of its checks. A rejected record counts for nothing on this page.",
     ];

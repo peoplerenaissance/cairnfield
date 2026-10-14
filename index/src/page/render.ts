@@ -218,7 +218,7 @@ const ABOUT = {
   claims: "A claim is a team's notice that it has started a review or a fix. It stays live until that team publishes the result or the claim runs out.",
   pending: "These records have reached the index, which has not finished checking them. Nothing here counts until it has.",
   findings: "A finding is something a team's review reports seeing in this version, at the lines it names. It is that team's report, not a verdict by this index. The findings more teams report stand first, and two teams make a finding confirmed.",
-  patches: "A patch is a fix a team wrote for a finding, and it changes only the lines that finding names. Patches whose lines overlap or adjoin stand side by side. Those that more teams stand behind come first.",
+  patches: "A patch is a fix a team wrote for a finding, and it changes only the lines that finding names. Patches whose lines overlap or adjoin in one file stand side by side, and the patches more teams stand behind come first. Files with identical content count as one file here.",
   recipes: "A recipe records the copy a team built for itself: the patches it took and the hash of the files that came out. The copies more teams published come first.",
   // What a fetch is, and three things of every count (R45): whose number it is, what it counts, and that a missing count is not a count of zero.
   fetches:
