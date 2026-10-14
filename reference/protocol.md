@@ -4,7 +4,7 @@ Cairnfield lets teams publish checkable findings and patches about a shared comp
 
 The code is the truth. `protocol/src/` holds every record, limit and check as pure functions. `protocol/schemas/` holds the record shapes as JSON Schema files, and the index routes as an OpenAPI description in `protocol/schemas/openapi.json`. Both are generated from that code. Where this document and the code differ, the code is right.
 
-Two documents sit beside this one. `threat-model.md` says which attacks the prototype defends against and which it does not. `platform-notes.md` says what Cloudflare Artifacts and Workers were seen to do.
+One document sits beside this one. `threat-model.md` says which attacks the prototype defends against and which it does not.
 
 ## The parts
 
@@ -266,7 +266,7 @@ Until the index holds its own copy, the page of a component commit shows no coun
 
 **R27.** The demo has two teams and four steps. One team alone goes from `pin` to a verified copy. Both teams' patch agents then run at the same moment, and the page shows one patch that both wrote identically, two patches side by side on adjoining lines, and one rejected patch. The first team names the second in its lens, takes its patch, and its tree hash changes. The first team carries its work to the plugin's later commit. The steps play from the saved findings in `fixtures/outboxes/` and the saved edits in `fixtures/recordings/`. A test in `index/test/page.test.ts` draws the page as the third step leaves it. The status table in `README.md` says how much of the demo has run.
 
-**R30.** The repo holds what a stranger needs to run and judge the prototype: a README with run instructions, a setup script that deploys a team node, the protocol, the threat model with what the prototype builds, and a disclosure policy. The protocol, the threat model and the platform notes are in `reference/`. The setup script is `npm run setup` in `node/`. The license is MIT, in `LICENSE`. The project's planning documents are private and are in no commit.
+**R30.** The repo holds what a stranger needs to run and judge the prototype: a README with run instructions, a setup script that deploys a team node, the protocol, the threat model with what the prototype builds, and a disclosure policy. The protocol and the threat model are in `reference/`. The setup script is `npm run setup` in `node/`. The license is MIT, in `LICENSE`. The project's planning documents are private and are in no commit.
 
 **R31.** A person should see the lines a finding cites, read from the index's own copy through a route of its own. That is not built. The library holds the shape of the answer and the one field kind that carries text for a person. No Worker serves the route, and the page shows no cited line. No record carries component text.
 
@@ -465,7 +465,7 @@ Only the sync of a node that started last writes a count, as only it says what i
 
 **Observed on Oct 12, 2026**, on the live service, with Wrangler 4.147.0. A config with triggers for the three event types deployed. It was the probe's own, with one Workflow as the target of all three. The node's config has two Workflows. It was deployed to both demo nodes later that day, and a fetch with a node's public read token showed in that node's count within eight seconds. A `git fetch --depth=1` of one commit sent one `cloned` event when the repo it fetched into held nothing, and one `fetched` event when that repo already held a commit. An event came some seconds after its fetch: 3.5, 3.6 and 5.4 seconds in three cases. A fetch with a write token sent the event as a fetch with a read token did. A plain `git clone` sent one `cloned` event. `git ls-remote` sent no event, and neither did `readCommit`, `readTree`, `readBlob`, `readFile` or `log` on the binding. So a node's own routes raise no count, and neither does an index that reads the node. A repo that was only pushed to got neither event. Each event held an ID, its type and a source with the namespace and the repo name, and its inner payload was empty. Of 38 events no two had the same ID, and each Workflow instance had its event's ID as its own.
 
-**Not known.** What a fetch that brings nothing new sends, and whether one event can arrive twice. `platform-notes.md` holds the whole check.
+**Not known.** What a fetch that brings nothing new sends, and whether one event can arrive twice.
 
 **KTD44.** `patch` writes the note on a patch commit, and `publish` does not. `publish` holds a token for the team repo only. `patch` holds a write token for the fork and a scratch repo with the commit in it.
 
@@ -529,7 +529,7 @@ Each example is a case that a test covers. The test's name cites it as `AE<n>`.
 
 ### Appendix B. What Artifacts was seen to do
 
-The first check of Cloudflare Artifacts against the live service, on Oct 4, 2026. `platform-notes.md` holds more of what it found. Comments and the test fakes of the Artifacts binding cite it for these facts.
+The first check of Cloudflare Artifacts against the live service, on Oct 4, 2026. Comments and the test fakes of the Artifacts binding cite it for these facts.
 
 - An import returns before it finishes.
 - An imported repo reported `main` as its default branch when its only branch was `master`.
@@ -574,7 +574,7 @@ The first check of Cloudflare Artifacts against the live service, on Oct 4, 2026
 
 ### Appendix M. What the Artifacts reference says
 
-A reading of the Artifacts reference and of the binding types bundled with Wrangler 4.147.0, on Oct 6, 2026. Nothing in that reading was run against the live service. `platform-notes.md` holds more of what it found. Comments and the test fakes cite it for these points.
+A reading of the Artifacts reference and of the binding types bundled with Wrangler 4.147.0, on Oct 6, 2026. Nothing in that reading was run against the live service. Comments and the test fakes cite it for these points.
 
 - Every create, import and fork returns a token. A token's default scope is write and its default life is 24 hours.
 - A fork copies only the default branch unless `defaultBranchOnly` is false.

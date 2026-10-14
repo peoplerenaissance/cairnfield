@@ -62,7 +62,7 @@ The script deploys the node on `workers.dev`, or on a hostname of your own. It s
 
 A node answers its own address with a page that lists the records its team has published, by component. The page is the team's own list: nothing on it was checked, and no index and no command reads it.
 
-The script's tests run it against a stand-in for Wrangler. It has not run on a Cloudflare account yet. A one-click deploy button waits on platform support.
+The script's tests run it against a stand-in for Wrangler. It has not run on a Cloudflare account yet.
 
 ### Let your own agent write findings
 
@@ -88,7 +88,7 @@ A checkout can hold instruction files that a harness loads by itself, such as a 
 
 A component is one Git commit. A record is one small JSON file with no free text that states one checkable thing about it. A patch is one commit on the pinned commit that may change only the lines its findings cite. The command and the index each check every record. Two findings from different organizations that cite the same lines for the same reason confirm each other. A team's lens says whose patches it takes.
 
-[`reference/protocol.md`](reference/protocol.md) states the rest: the record types, the limits, the matching and patch rules, and each requirement and decision that a comment in the code cites, such as `R2` or `KTD4`, under the same ID. `protocol/schemas/` holds the record shapes as JSON Schema files and the index routes as an OpenAPI description. [`reference/platform-notes.md`](reference/platform-notes.md) says what Cloudflare Artifacts and Workers were seen to do, and what was only read in documentation.
+[`reference/protocol.md`](reference/protocol.md) states the rest: the record types, the limits, the matching and patch rules, and each requirement and decision that a comment in the code cites, such as `R2` or `KTD4`, under the same ID. `protocol/schemas/` holds the record shapes as JSON Schema files and the index routes as an OpenAPI description.
 
 ## The public demo page
 
@@ -96,7 +96,7 @@ The demo's index draws the page of the demo plugin's first commit here:
 
 https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58
 
-The page draws only the index's view, which it reads every two seconds. The view holds live claims, findings by criterion, patches side by side, recipes, each team's fetches, and pending and rejected work. A recipe lists the patches in a copy a team built, with the copy's file-tree hash. A team's fetches are a number its node states, and the index cannot check it. The view itself is JSON, at the same address with `/view` added. The [status table](#status-as-of-october-12-2026) says what has run on that index.
+The page draws only the index's view, which it reads every two seconds. The view holds live claims, findings by criterion, patches side by side, recipes, each team's fetches, and pending and rejected work. A recipe lists the patches in a copy a team built, with the copy's file-tree hash. A team's fetches are a number its node states, and the index cannot check it. The view itself is JSON, at the same address with `/view` added. The [status table](#status-as-of-october-13-2026) says what has run on that index.
 
 ## Limits and threat model
 
@@ -104,16 +104,14 @@ The prototype shows the mechanism at one commit of one component. A hosted tool 
 
 Cairnfield assumes that some contributors are hostile, and that any component under review may be. The prototype builds four defenses: checks on records and patches, tokens scoped to one repo, checking again at assembly, and a lens that names teams. [`reference/threat-model.md`](reference/threat-model.md) goes through the threats one by one and says what the prototype builds for each, names four risks an operator should know, lists the parts of the design that are not built, and ends with the disclosure policy. This repo holds no finding about a real product and takes none. [`SECURITY.md`](SECURITY.md) says how to report a flaw in Cairnfield in private.
 
-## Status, as of October 12, 2026
-
-[`reference/platform-notes.md`](reference/platform-notes.md#what-the-command-has-done-on-the-deployed-demo) says what each run on the deployed demo showed, by date.
+## Status, as of October 13, 2026
 
 | Part | State | Note |
 | --- | --- | --- |
 | Platform behavior the design depends on | verified live | Scoped tokens, concurrent pushes, push triggers, file reads at a commit, forks, fetching a patch with a read token, and the fetch events a node counts. |
 | Concept and plan | written | Both are private. [`reference/protocol.md`](reference/protocol.md) states each of the plan's requirements and decisions that the code cites. |
 | Record formats and checks | built | The protocol library in `protocol/`, with its tests. |
-| Protocol, threat model and platform notes | written | In `reference/`, with the walkthrough and the roadmap. |
+| Protocol and threat model | written | In `reference/`, with the walkthrough. |
 | Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its two commits are public at https://github.com/peoplerenaissance/fellbeck-sync. |
 | Team node | built and deployed | The Worker in `node/`. Two demo nodes run on Cloudflare, each with its import of the demo plugin, its fork, its own page and its count of each fork's fetches. |
 | Setup script for a team node | built, not run on an account | `npm run setup` in `node/`. Its tests run it against a stand-in for Wrangler. |
@@ -125,16 +123,9 @@ Cairnfield assumes that some contributors are hostile, and that any component un
 | Verdicts and checking an installed copy | built and run live | `cairnfield decide`, `approvals` and `verify`. `verify` passed on a clone of a published copy and failed on the original. A run on a second machine is still to come. |
 | Carrying a team's own work to a new version | built and run live | `cairnfield carry`. One demo team carried its work to the plugin's later commit, and the copy it built there passed `verify`. |
 | Demo script | built and run live | `npm run demo` and `npm run demo:reset`. Both ran twice on the deployed demo, and the second run left the same IDs and hashes. |
-| Demo step with a review agent | built, not run live | `npm run demo:agent`, the operator's half of the demo's first step beside a team's own agent. Its tests play the agent's part. It has not run on the deployed demo, and no agent has been started from the line it prints. |
-| Scale run | not in the prototype | `sim/` holds a placeholder. |
-| One-click deploy button for the team node | waiting on the platform | Nobody has tested the button on the node. |
-| Carrying other teams' work forward, domain verification, sealed findings, deploys from Artifacts | not in the prototype | Described in `reference/`. |
+| Demo step with a review agent | built and run live | `npm run demo:agent`, the operator's half of the demo's first step beside a team's own agent. Its tests play the agent's part. It ran on the deployed demo on Oct 13. |
 
 The build plan named three things to cut if time ran short: `carry`, the display of live claims and the demo's rejected patch. None was cut.
-
-## Roadmap
-
-The prototype is a slice of a larger design. [`reference/roadmap.md`](reference/roadmap.md) lists the parts of that design that are not built, further work past it and two ideas from Workers Builds, and says what stands in for each today.
 
 ## What is here
 
@@ -145,7 +136,7 @@ The prototype is a slice of a larger design. [`reference/roadmap.md`](reference/
 | `index/` | The index Worker, its migrations and its two pages. |
 | `cli/` | The `cairnfield` command and its patch agent. |
 | `skills/` | The skill file for a team's own review agent. |
-| `reference/` | The protocol, the threat model, the platform notes, the walkthrough, the roadmap and the architecture drawing. |
+| `reference/` | The protocol, the threat model, the walkthrough and the architecture drawing. |
 | `fixtures/` | The demo plugin, lenses, saved findings, recordings, injection fixtures and the rejected patch. |
 | `sim/` | A placeholder for the scale run. |
 | `scripts/` | The demo script, its reset, the operator's script for a review with an agent, and the node contract check. |
