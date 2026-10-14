@@ -2,29 +2,28 @@
 
 Change together, decide for yourself.
 
-Many teams' agents review and fix the same AI tools at once, with nobody in the middle. Each team's work lives in its own Artifacts repo, and each team builds the version it trusts.
+Many teams' agents review and fix the same AI tools at once, and no one merges their changes. Each team's work lives in its own Artifacts repo, and each team builds the copy it trusts.
 
-- **The video** makes the pitch, then shows the demo's four steps.
 - **[The live demo page](https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58)** shows two teams' work on one plugin, as the demo's index holds it.
 - **[The homepage](https://cairnfield.net)** makes the case on one page.
 
 The homepage makes three points in full:
 
-- **[New: across organizations, with no merge](https://cairnfield.net/#across).** Teams that share no repo and no account work on one component, and nothing is merged.
-- **[Agents work at the same moment](https://cairnfield.net/#at-once).** Two teams' agents patch one plugin at once, and patches for the same lines stand side by side.
-- **[Easy to start](https://cairnfield.net/#start).** Each step is one command, and the demo replays saved work, so it calls no model.
+- **[New: across organizations, with no merge](https://cairnfield.net/#across).** Teams that share no repo, no account and no maintainer work on one component, and each writes only to its own repo.
+- **[Agents work at the same moment](https://cairnfield.net/#at-once).** In the demo, two teams' patch agents claim and patch one plugin. The index shows patches for adjoining lines side by side, and two identical patches as one.
+- **[See it in a browser, then run one command per step](https://cairnfield.net/#start).** The live demo page needs only a browser. Running Cairnfield needs a Cloudflare account on the Workers Paid plan, and the demo replays saved work, so it calls no model.
 
 ## What it does
 
 Many teams review the same AI tools, each alone, and keep the results private. Cairnfield lets them work on one component together, with no shared repo and no maintainer who merges.
 
-1. **Review together.** A team pins a component at one Git commit. Its review agent writes findings: small JSON files that each name a file, a line range and one problem from a closed list. No finding holds free text. So another team's machine can check each one, and no agent reads another team's prose.
-2. **Fix without waiting.** A patch is one commit on the pinned commit, in the fork of the team that wrote it. It may change only the lines its findings cite. An index reads the nodes registered with it, checks each record against its own copy of the component, and shows patches for the same lines side by side. Nothing is merged.
-3. **Prove what you run.** Each team builds its own copy: the pinned commit with the patches its own policy lets in. A person reads the diff and gives the verdict. An engineer then checks an installed copy by its file-tree hash.
+1. **Review together.** A team pins a component at one Git commit, on its node, the server where the team keeps its own repos. Its review agent writes findings: small JSON files that each name a file, a line range and one problem from a closed list. No finding holds free text. So another team's machine can check each one, and no agent reads another team's prose.
+2. **Fix without waiting.** A patch is one commit on the pinned commit, in the fork of the team that wrote it. It may change only the lines its findings cite. Findings, patches and the other JSON files a team publishes are called records. An index is a service that reads the nodes registered with it, and counts each node as one organization. It checks each record against its own copy of the component, and shows patches for the same lines side by side. Nothing is merged.
+3. **Prove what you run.** Each team builds its own copy: the pinned commit with the patches its lens lets in. A lens is a short local file that says which patches the team takes. A person reads the diff and gives the verdict. An engineer then checks an installed copy by its file-tree hash.
 
 Each team hosts one piece, its node: a Cloudflare Worker that keeps the team's repos in the team's own Artifacts namespace. The `cairnfield` command runs on the team's machine. It validates, pushes, runs the patch agent and builds copies. A team working alone needs its node and the command, and no index.
 
-[![The parts of Cairnfield and the Cloudflare service behind each. A team's machine runs the cairnfield command. The command pushes to the team's node: a Worker with an Artifacts namespace, a Durable Object and a Workflow. An index reads each node: a Worker with an Artifacts namespace of its own, a D1 database, a Queue and static assets.](reference/architecture.png)](reference/architecture.png)
+[![The parts of Cairnfield and the Cloudflare service behind each. A team's machine runs the cairnfield command. The command pushes to the team's node: a Worker with an Artifacts namespace, a Durable Object and two Workflows. An index reads each node: a Worker with an Artifacts namespace of its own, a D1 database, a Queue and static assets.](reference/architecture.png)](reference/architecture.png)
 
 The drawing shows one team's node in full, a second team's node and an index, with the Cloudflare service behind each part. Its two node addresses are invented. Select the drawing to see it at full size.
 
@@ -38,7 +37,7 @@ The drawing shows one team's node in full, a second team's node and an index, wi
 | Deploy a team node | [Deploy a node](#deploy-a-node) | A Cloudflare account |
 | Have your own review agent write findings | [Let your own agent write findings](#let-your-own-agent-write-findings) | The skill file |
 
-The command needs Node 22.22 and Git, and is written for macOS and Linux. On an older Node it prints `{"error":"node-too-old",...}`, says which Node it needs and stops. Node 23 before 23.6 counts as older. Windows is not supported in the prototype. A node and an index each run in a Cloudflare account on the Workers Paid plan, which Artifacts requires.
+The command needs Node.js 22.22 and Git, and is written for macOS and Linux. On an older Node.js it prints `{"error":"node-too-old",...}`, says which Node.js it needs and stops. Node.js 23 before 23.6 counts as older. Windows is not supported in the prototype. A node and an index each run in a Cloudflare account on the Workers Paid plan, which Artifacts requires.
 
 Install once, in the repo root:
 
@@ -47,7 +46,7 @@ nvm use
 npm install
 ```
 
-Run the command as `npx --no cairnfield`. `npm install` links the command inside this repo only, and `--no` stops `npx` from downloading a package of that name from the public registry when it is run anywhere else. [`reference/walkthrough.md`](reference/walkthrough.md) says what each step below leaves behind, lists every command, and says how to read the note on a patch commit.
+Run the command as `npx --no cairnfield`. `npm install` links the command inside this repo only, and `--no` stops `npx` from downloading a package of that name from the public registry when it is run anywhere else. [`reference/walkthrough.md`](reference/walkthrough.md) says what each step below leaves behind, lists every command, and says how to read the note that `patch` attaches to each commit it pushes, the team's own statement of how the commit was made.
 
 ### One team alone
 
@@ -79,7 +78,7 @@ npx --no cairnfield decide $COMMIT --verdict approved-with-required-mitigations 
 npx --no cairnfield verify https://github.com/peoplerenaissance/fellbeck-sync .cairnfield/copies/$COMMIT --approvals .cairnfield/decisions.json
 ```
 
-In order: `pin` has the node import the plugin and writes a checkout. `validate` checks the saved findings against it, and `publish` pushes them to the node. `patch` replays the saved fix for the any-host finding as a checked commit in the team's fork. `assemble` builds the team's copy, prints its diff and its file-tree hash, and `decide` writes down the verdict a person gives for that hash. `verify` passes only when the folder's file-tree hash is the one the team approved. An engineer on another machine runs `verify` with the file that `approvals` prints. When the plugin releases again, `carry $COMMIT <newer-commit> --branch main` writes the team's own findings and patches again for the newer commit.
+In order: `pin` has the node import the plugin and writes a checkout. `validate` checks the saved findings against it, and `publish` pushes them to the node. `patch` replays the saved fix for the finding that the plugin may reach any host, as a checked commit in the team's fork. `assemble` builds the team's copy, prints its diff and its file-tree hash, and `decide` writes down the verdict a person gives for that hash. `verify` passes only when the folder's file-tree hash is the one the team approved. An engineer on another machine runs `verify` with the file that `approvals` prints. When the plugin releases again, `carry $COMMIT <newer-commit> --branch main` writes the team's own findings and patches again for the newer commit.
 
 To pin a component of your own, give `pin` its HTTPS Git URL, a branch that holds the commit and the full commit hash, and write a lens file like the three in `fixtures/lenses/`. Without `--replay`, `patch` calls a model and reads its key from `ANTHROPIC_API_KEY`.
 
@@ -92,7 +91,7 @@ To pin a component of your own, give `pin` its HTTPS Git URL, a branch that hold
 3. **Taking another team's patch.** Team A names Team B in its lens and builds its copy again, with another file-tree hash.
 4. **A new release.** Team A carries its work to the plugin's later commit.
 
-It needs two nodes and an index of your own, and reads their three addresses, the two admin keys and the index's registration key from the environment. The script stops at the first thing a step must leave behind and does not, and starts only from an empty deployment. `npm run demo:reset` puts the nodes and the index back to that state. [`reference/walkthrough.md`](reference/walkthrough.md#replay-the-demo) says what to deploy, which variables to set and what has run.
+It needs two nodes and an index of your own, and reads their three addresses, the two admin keys and the index's registration key from the environment. The script checks what each step must leave behind and stops at the first thing missing. It starts only from an empty deployment. `npm run demo:reset` puts the nodes and the index back to that state. [`reference/walkthrough.md`](reference/walkthrough.md#replay-the-demo) says what to deploy, which variables to set and what has run.
 
 ### Deploy a node
 
@@ -126,15 +125,15 @@ Install the skill where the agent's harness reads one. Start the agent in the fo
 Use the cairnfield skill to review the checkout of <commit>. Start `cairnfield` as `node <repo>/cli/bin/cairnfield.mjs`. Stop when validate accepts your files.
 ```
 
-`<commit>` is the full hash the operator pinned, and `<repo>` is the path to this repo. The second sentence is for a folder outside this repo, where the command's name is not linked. Do not start the agent in a shell that holds `CAIRNFIELD_ADMIN_KEY` or `CAIRNFIELD_REGISTRATION_KEY`. The agent has just read a component that may be hostile, and `validate` needs no key. The command cannot enforce where a key is set, so this rests on the operator.
+`<commit>` is the full hash the operator pinned, and `<repo>` is the path to this repo. The instruction's second sentence is for a folder outside this repo, where the command's name is not linked. Do not start the agent in a shell that holds `CAIRNFIELD_ADMIN_KEY` or `CAIRNFIELD_REGISTRATION_KEY`. The agent has just read a component that may be hostile, and `validate` needs no key. The command cannot enforce where a key is set, so this rests on the operator.
 
 `npx skills add peoplerenaissance/cairnfield`, run in the operator's folder, installs the skill for any harness. It writes `.agents/skills/`, which Codex and others read, and links `.claude/skills/`, which Claude Code reads. A checkout can hold instruction files that a harness loads by itself, such as a `CLAUDE.md`. So switch that loading off, or keep the checkout outside the folder the agent starts in.
 
-`npm run demo:agent` stages the demo's first step with a review agent in it, for a recording. The script is the operator and holds the keys. It puts the skill in Claude Code's folder, prints the line that starts Claude Code with every key unset and the instruction above, waits for Enter, and publishes what the agent wrote. It starts the agent beside the checkout, which is safe for the demo plugin alone: that plugin holds no instruction file. [`reference/walkthrough.md`](reference/walkthrough.md#stage-a-review-with-an-agent) gives the steps, the folder each harness reads, and three limits the script does not close.
+`npm run demo:agent` stages the demo's first step with a review agent in it, for a recording. The script is the operator and holds the keys. It puts the skill in Claude Code's folder, prints the line that starts Claude Code with every key unset and the instruction above, waits for Enter, and publishes what the agent wrote. A person runs that line, which starts the agent in the folder that holds the checkout. That is safe for the demo plugin alone, because the plugin holds no instruction file. [`reference/walkthrough.md`](reference/walkthrough.md#stage-a-review-with-an-agent) gives the steps, the folder each harness reads, and three limits the script does not close.
 
 ## The protocol in brief
 
-A component is one Git commit, a record is one small JSON file with no free text that states one checkable thing about it, and a patch is one commit on the pinned commit that may change only the lines its findings cite. The command and the index each check every record, two findings that cite the same lines for the same reason confirm each other across organizations, and a team's lens says whose patches it takes.
+A component is one Git commit. A record is one small JSON file with no free text that states one checkable thing about it. A patch is one commit on the pinned commit that may change only the lines its findings cite. The command and the index each check every record. Two findings from different organizations that cite the same lines for the same reason confirm each other. A team's lens says whose patches it takes.
 
 [`reference/protocol.md`](reference/protocol.md) states the rest: the record types, the limits, the matching and patch rules, and each requirement and decision that a comment in the code cites, such as `R2` or `KTD4`, under the same ID. `protocol/schemas/` holds the record shapes as JSON Schema files and the index routes as an OpenAPI description. [`reference/platform-notes.md`](reference/platform-notes.md) says what Cloudflare Artifacts and Workers were seen to do, and what was only read in documentation.
 
@@ -144,28 +143,28 @@ The demo's index draws the page of the demo plugin's first commit here:
 
 https://index.cairnfield.net/components/f7bea8e45539da2eb26841551a553418437d2a58
 
-The page reads the index's view every two seconds and draws nothing else: live claims, findings by criterion, patches side by side, recipes, each team's fetches, and pending and rejected work. A team's fetches are a number its node states, and the index cannot check it. The view itself is JSON, at the same address with `/view` added. The [status table](#status-as-of-october-12-2026) says what has run on that index.
+The page draws only the index's view, which it reads every two seconds. The view holds live claims, findings by criterion, patches side by side, recipes, each team's fetches, and pending and rejected work. A recipe lists the patches in a copy a team built, with the copy's file-tree hash. A team's fetches are a number its node states, and the index cannot check it. The view itself is JSON, at the same address with `/view` added. The [status table](#status-as-of-october-12-2026) says what has run on that index.
 
 ## Limits and threat model
 
-The prototype shows the mechanism at one commit of one component. A hosted tool with no Git commit cannot be pinned. Only a team's own findings and patches carry forward to a new version, so carrying other teams' work forward is the first follow-up after the prototype. A patch changes the component, not a team's environment: Cairnfield does not replace environment controls, and the two work as a pair. An index takes at most 8 nodes.
+The prototype shows the mechanism at one commit of one component. A hosted tool with no Git commit cannot be pinned. Only a team's own findings and patches carry forward to a new version, so carrying other teams' work forward is the first follow-up after the prototype. A patch changes the component, not a team's environment. Cairnfield does not replace environment controls, such as limits on which hosts a tool can reach when it runs. A patch removes a problem from the component's code, and an environment control limits what any component can do. An index takes at most 8 nodes.
 
 Cairnfield assumes that some contributors are hostile, and that any component under review may be. The prototype builds four defenses: checks on records and patches, tokens scoped to one repo, checking again at assembly, and a lens that names teams. [`reference/threat-model.md`](reference/threat-model.md) goes through the threats one by one and says what the prototype builds for each, names four risks an operator should know, lists the parts of the design that are not built, and ends with the disclosure policy. This repo holds no finding about a real product and takes none. [`SECURITY.md`](SECURITY.md) says how to report a flaw in Cairnfield in private.
 
 ## Status, as of October 12, 2026
 
-This table describes today. [`reference/platform-notes.md`](reference/platform-notes.md#what-the-command-has-done-on-the-deployed-demo) says what each run on the deployed demo showed, by date.
+[`reference/platform-notes.md`](reference/platform-notes.md#what-the-command-has-done-on-the-deployed-demo) says what each run on the deployed demo showed, by date.
 
 | Part | State | Note |
 | --- | --- | --- |
 | Platform behavior the design depends on | verified live | Scoped tokens, concurrent pushes, push triggers, file reads at a commit, forks, fetching a patch with a read token, and the fetch events a node counts. |
-| Concept and plan | written | The concept was reviewed by seven reviewer agents and the plan by five. |
+| Concept and plan | written | Both are private. [`reference/protocol.md`](reference/protocol.md) states each of the plan's requirements and decisions that the code cites. |
 | Record formats and checks | built | The protocol library in `protocol/`, with its tests. |
 | Protocol, threat model and platform notes | written | In `reference/`, with the walkthrough and the roadmap. |
 | Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its two commits are public at https://github.com/peoplerenaissance/fellbeck-sync. |
 | Team node | built and deployed | The Worker in `node/`. Two demo nodes run on Cloudflare, each with its import of the demo plugin, its fork, its own page and its count of each fork's fetches. |
 | Setup script for a team node | built, not run on an account | `npm run setup` in `node/`. Its tests run it against a stand-in for Wrangler. |
-| Index | built in part, deployed | The Worker in `index/`. It checks every record and patch against its own copy, serves one view and one page per component commit and a page of its own, and carries each node's declared model and fetch count. It does not show cited lines, a row per host or the index lag. |
+| Index | built in part, deployed | The Worker in `index/`. It checks every record and patch against its own copy, serves one view and one page per component commit and a page of its own, and carries each node's declared model and fetch count. It does not show cited lines, a row per host or how far the index lags behind the nodes. |
 | The command | built in part | `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim`, `view`, `patch`, `assemble`, `decide`, `approvals`, `verify` and `carry`. |
 | Skill file for a team's own review agent | written | `skills/cairnfield/SKILL.md`. |
 | Patch agent | built and run live | `cairnfield patch`, from a live model call or from a recording, with a note on each commit it pushes. Two live runs patched the demo plugin on deployed nodes. On its hidden instruction the agent wrote no patch in four live runs. |
@@ -184,9 +183,40 @@ The build plan named three things to cut if time ran short: `carry`, the display
 
 The prototype is a slice of a larger design. [`reference/roadmap.md`](reference/roadmap.md) says what each item below would do and what stands in for it today.
 
-- **Described and not built:** one command that runs a whole review, reconciling, a scale run, a node in a second Cloudflare account, cited lines and a row per host on the page, an API catalog on the index, merged patches, a fuller lens, an agent's review of the assembled diff, and a suggested verdict.
-- **Further work:** carrying other teams' work forward, an install gate, pinning what runs, an egress allow list, confirmation by re-running, signed requests from nodes, an index that reads patch commits over Git, a read-only MCP server, a `since` cursor and a push feed, alerts on new versions, a private findings log, an unclassified pointer, a check that a blind pass was blind, and a local mode with no node.
-- **Ideas from Workers Builds:** a node that deploys from its own Artifacts namespace, and a running Preview of a patched component.
+Described and not built:
+
+- One command that runs a whole review.
+- Reconciling: the command would write re-checks and counter-findings on other teams' findings.
+- A scale run.
+- A node in a second Cloudflare account.
+- Cited lines and a row per host on the index's page.
+- An API catalog on the index.
+- Merged patches.
+- A fuller lens, which would also state the criteria and confirmations a team requires.
+- An agent's review of the assembled diff.
+- A suggested verdict, which the command would offer the operator.
+
+Further work:
+
+- Carrying other teams' work forward.
+- An install gate, which would check an installed copy against the approved tree hash and fail closed.
+- Pinning what runs: a package tarball or a hosted server's tool manifest, pinned by its content hash.
+- An egress allow list, written from confirmed findings about destinations and the team's lens.
+- Confirmation by re-running a check that fails before a patch and passes after.
+- Signed requests from nodes to an index.
+- An index that reads patch commits over Git.
+- A read-only MCP server on the index.
+- A `since` cursor and a push feed on the view.
+- Alerts on new versions.
+- A private findings log, kept in a local file and never published.
+- An unclassified pointer: a record that says a team has a concern at some lines that the closed lists cannot express.
+- A check that a blind pass was blind, meaning that a reviewer agent read nothing from other teams.
+- A local mode with no node.
+
+Ideas from Workers Builds:
+
+- A node that deploys from its own Artifacts namespace.
+- A running Preview of a patched component.
 
 ## What is here
 
@@ -208,7 +238,12 @@ To see the site locally, run `nvm use` and `npm run dev:site` in the repo root. 
 
 ## Credit
 
-Cairnfield borrows four ideas: one site per party, where a change is a fork shown beside the original and nothing is merged (Ward Cunningham's [Federated Wiki](http://fed.wiki.org)), audits published per organization with a local policy (cargo-vet), publishing from your own repo into a rebuildable aggregate (cargo-crev), and a pinned original plus a list of patches (Nix, quilt, patch-package).
+Cairnfield borrows four ideas:
+
+- One site per party, where a change is a fork shown beside the original and nothing is merged, from Ward Cunningham's Federated Wiki.
+- Audits published per organization with a local policy, from cargo-vet.
+- Publishing from your own repo into a rebuildable aggregate, from cargo-crev.
+- A pinned original plus a list of patches, from Nix, quilt and patch-package.
 
 The architecture drawing uses product icons from the [Cloudflare Docs](https://github.com/cloudflare/cloudflare-docs/tree/production/src/icons), under the [Creative Commons Attribution 4.0 license](https://github.com/cloudflare/cloudflare-docs/blob/production/LICENSE). Each icon is recolored in orange.
 
