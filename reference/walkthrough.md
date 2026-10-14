@@ -8,7 +8,7 @@ Every command is run as `npx --no cairnfield <command>`, from a folder that hold
 
 This path takes the demo plugin, `fellbeck-sync`, from `pin` to a checked copy. It uses one demo team's saved findings and the recording of one patch run, so it calls no model and needs no model key. It needs no index and no other team.
 
-The test named AE18 in `cli/test/verify.test.ts` plays this path from `pin` to `verify` against a stand-in for the node. The [status table](../README.md#status-as-of-october-12-2026) says which steps have run on a deployed node.
+The test named AE18 in `cli/test/verify.test.ts` plays this path from `pin` to `verify` against a stand-in for the node. The [status table](../README.md#status-as-of-october-13-2026) says which steps have run on a deployed node.
 
 1. Deploy a node and set its admin key, as [Deploy a node](../README.md#deploy-a-node) says.
 
@@ -141,7 +141,7 @@ One more patch in the demo is written by hand: the one the index rejects, in [`f
 
 ### What you deploy first
 
-The replay needs two nodes and an index of your own, in a Cloudflare account on the Workers Paid plan. Nobody has yet followed these steps from the first one in a new account. [`platform-notes.md`](platform-notes.md#what-the-command-has-done-on-the-deployed-demo) says what has run on the demo's own deployment.
+The replay needs two nodes and an index of your own, in a Cloudflare account on the Workers Paid plan. Nobody has yet followed these steps from the first one in a new account.
 
 Deploy the index first. Run these in `index/`. `GIT_URLS` is the list of Git URLs the index may import, and the demo imports one.
 
@@ -155,7 +155,7 @@ npx wrangler secret put RESET_KEY
 git restore wrangler.jsonc
 ```
 
-Wrangler prints the address the index answers at. Give the two keys different values. `openssl rand -hex 32` prints a new key. The first deploy creates the index's database and its queue, and writes their IDs into `index/wrangler.jsonc`. `git restore` takes them out again, because Wrangler finds both by name. The view answers HTTP 500 until `npm run migrate` has run. [`platform-notes.md`](platform-notes.md#the-indexs-first-deploy) records what Wrangler did on the first deploy.
+Wrangler prints the address the index answers at. Give the two keys different values. `openssl rand -hex 32` prints a new key. The first deploy creates the index's database and its queue, and writes their IDs into `index/wrangler.jsonc`. `git restore` takes them out again, because Wrangler finds both by name. The view answers HTTP 500 until `npm run migrate` has run.
 
 Then deploy the two nodes. The demo's nodes are the `team-a` and `team-b` environments of `node/wrangler.jsonc`. Each has a Worker, an Artifacts namespace and two Workflows of its own, so both fit in one account. A node is given its own address when it deploys, so set these three in the shell first.
 
@@ -206,7 +206,7 @@ The reset takes every record off the two nodes' branches. It adds a commit with 
 
 ## Stage a review with an agent
 
-`npm run demo:agent` stages the demo's first step with a review agent in it, for a recording or a rehearsal. The script is the operator and holds the keys. The agent runs in another pane, which a person starts, and holds none. The script covers Claude Code. It needs the two nodes and the index of [What you deploy first](#what-you-deploy-first), the three addresses, and all four keys of [Play it](#play-it). It runs only from a terminal. The README's [status table](../README.md#status-as-of-october-12-2026) says what of it has run.
+`npm run demo:agent` stages the demo's first step with a review agent in it, for a recording or a rehearsal. The script is the operator and holds the keys. The agent runs in another pane, which a person starts, and holds none. The script covers Claude Code. It needs the two nodes and the index of [What you deploy first](#what-you-deploy-first), the three addresses, and all four keys of [Play it](#play-it). It runs only from a terminal. The README's [status table](../README.md#status-as-of-october-13-2026) says what of it has run.
 
 1. **The script sets up.** It resets the demo, as `npm run demo:reset` does. In a new folder under the machine's temporary folder, it writes Team A's config with the index in it and pins the plugin's first commit. It copies the skill file to `.claude/skills/cairnfield/` in that folder.
 2. **It prints a line and a prompt, and waits.** The line changes to that folder and starts Claude Code with every key name of the demo unset. `ANTHROPIC_API_KEY` is among them, so Claude Code needs a login of its own. The prompt is the README's instruction for the agent, with the commit and the launcher's path filled in. Paste the line into a second pane that runs Node 22.22.1 or later, and give the agent the prompt.

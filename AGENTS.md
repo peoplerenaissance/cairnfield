@@ -9,7 +9,7 @@ The repo holds a static site, the workspace scaffold, the protocol library in `p
 - The build plan is a private planning document. It lives under `docs/`, which Git ignores, so it is not part of this repo. Never commit a file under `docs/`.
 - When `docs/plans/` exists in your checkout, the plan there is the source of truth. Read its Goal Capsule first, then the unit you are working on and the requirements (R) and decisions (KTD) that unit cites. Do not read the whole file to find your way; scan its headings.
 - Never edit anything under `docs/brainstorms/`. It is a historical record, and the plan overrides it wherever they differ.
-- Public documentation is in `reference/`: the protocol, the threat model, the platform notes, the walkthrough and the roadmap. The README keeps each topic short and links there, so a detail that leaves the README goes to the file that owns its topic. `reference/protocol.md` states each requirement, decision and example that a comment in the code cites, under the same ID. When you cite an ID in a comment that it does not hold yet, add it there. Keep what was observed on the platform apart from what was only read in its documentation, as `reference/platform-notes.md` does.
+- Public documentation is in `reference/`: the protocol, the threat model and the walkthrough. The README keeps each topic short and links there, so a detail that leaves the README goes to the file that owns its topic. `reference/protocol.md` states each requirement, decision and example that a comment in the code cites, under the same ID. When you cite an ID in a comment that it does not hold yet, add it there. The platform notes and the roadmap are private, in `docs/reference/`. Keep what was observed on the platform apart from what was only read in its documentation, as the platform notes do.
 - `reference/architecture.png` is the drawing the README shows. A script kept with the private plan builds it, under `docs/submission/diagrams/`, so change the drawing there and never by hand. Its two node addresses are invented. Its icons are Cloudflare's, under CC BY 4.0, and the README's "Credit" section carries the credit the license asks for. Keep the two together.
 - `skills/cairnfield/SKILL.md` is for a team's own review agent, which writes findings to the outbox and runs `validate` and no other command (R21). It ships in this repo and is never served by the index. Bring it up to date when a record's fields, a closed list or the output of `validate` changes.
 - `site/` is the public microsite, a Cloudflare Worker that serves static files from `site/public/`. It answers at its own domain, which `site/wrangler.jsonc` names, and has no address on `workers.dev` and no version URLs. It deploys from the `production` branch, as "Branches and releases" below says.
@@ -122,7 +122,7 @@ The `.snyk` files in the repo root, `index/`, `sim/` and `node/` ignore two advi
 | `sim/` | Scale simulator | |
 | `fixtures/` | Demo plugin, lens files, each demo team's saved findings, injection fixtures, recordings and the hand-made patch an index rejects | The plugin's two commits are frozen |
 | `site/` | Microsite | Self-contained, its own lockfile |
-| `reference/` | Public protocol, threat model, platform notes, walkthrough, roadmap and the architecture drawing | |
+| `reference/` | Public protocol, threat model, walkthrough and the architecture drawing | |
 | `skills/cairnfield/` | The skill file for a team's own review agent | Never served by the index |
 
 ## Rules that must not break
