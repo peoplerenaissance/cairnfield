@@ -89,7 +89,3 @@ Then name the node in the `cairnfield.json` of the folder you work in:
 ```json
 { "node": "https://node.team-a.example" }
 ```
-
-## The one-click button
-
-A one-click deploy button for the node waits on platform support. Cloudflare's documentation for the button does not list Artifacts, Workflows or event triggers among what it sets up, and nobody has tested it on a node. The setup script is the way to deploy one until a test shows that the button sets up all three. `package.json` already describes the node's three settings for the button's setup page.
