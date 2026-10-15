@@ -27,6 +27,13 @@ const KEPT_FOR = 30_000;
 const SITE = "https://cairnfield.net";
 
 /**
+ * The image of the page's share card: the project's logo, which the site serves. A card's
+ * image takes a whole address, so it is the site's, fixed here as the site's own is. It is
+ * named in the head for a chat that draws a card of a link, and no browser loads it.
+ */
+const LOGO = `${SITE}/share.png`;
+
+/**
  * Every word the page says of its own. Each says what a thing on the page is, and none
  * tells a reader to do anything (R47).
  */
@@ -48,6 +55,7 @@ const WORDS = {
   recordsLeft: "Records not shown here:",
   componentsLeft: "Components not shown here:",
   allRecords: "The address of this node with /records added lists every record.",
+  logo: "The Cairnfield logo, a cairn of four stones",
 } as const;
 
 /** One contour line of a hill: how far it stands from the hill's top, and how far across and down it is moved. */
@@ -263,6 +271,17 @@ function documentOf(address: string | undefined, at: number, { head, lines }: Li
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${escaped(WORDS.title)}</title>`,
+    // The share card: the page's title, the first thing it says of itself and the logo.
+    `<meta name="description" content="${escaped(lead)}">`,
+    '<meta property="og:type" content="website">',
+    `<meta property="og:site_name" content="${escaped(WORDS.project)}">`,
+    `<meta property="og:title" content="${escaped(WORDS.title)}">`,
+    `<meta property="og:description" content="${escaped(lead)}">`,
+    `<meta property="og:image" content="${escaped(LOGO)}">`,
+    '<meta property="og:image:width" content="600">',
+    '<meta property="og:image:height" content="600">',
+    `<meta property="og:image:alt" content="${escaped(WORDS.logo)}">`,
+    '<meta name="twitter:card" content="summary">',
     `<style>${STYLE}</style>`,
     "</head>",
     "<body>",

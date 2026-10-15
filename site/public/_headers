@@ -13,3 +13,6 @@
 
 /photo_small.jpg
   Cache-Control: public, max-age=604800
+
+/share.png
+  Cache-Control: public, max-age=604800

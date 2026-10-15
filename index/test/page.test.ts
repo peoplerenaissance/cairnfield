@@ -1586,6 +1586,36 @@ describe("the pages' addresses on the index (KTD14)", () => {
     expect(root.slice(root.indexOf("<footer"))).toBe(page.slice(page.indexOf("<footer")));
   });
 
+  // A link to a page shared in a chat shows a card of its title, its description and an
+  // image. The image is the site's logo, at the site's fixed address, because a card's
+  // image takes a whole address and an index is told none of its own. No browser loads it.
+  it("names a share card in its head: its own title, the first sentence it says of itself and the site's logo", () => {
+    const [root = "", page = ""] = [env.PAGE_FILES["root.html"], env.PAGE_FILES["page.html"]];
+    const cardOf = (html: string): { [name: string]: string } =>
+      Object.fromEntries([...html.matchAll(/<meta (?:property|name)="(description|og:[a-z:_]+|twitter:[a-z]+)" content="([^"]*)">/g)].map(([, name = "", content = ""]) => [name, content]));
+    const pages = [
+      [root, "Cairnfield index", "An index is the part of Cairnfield that gathers what teams and their AI agents publish about AI tools: findings, patches and recipes."],
+      [page, "Cairnfield index: one component version", "This page gathers what teams report about one exact version of an AI tool: what their reviews found, the fixes they wrote, and the copies they built with those fixes."],
+    ] as const;
+    for (const [html, title, said] of pages) {
+      expect(html).toContain(`<title>${title}</title>`);
+      // The sentence is the page's own, written in its body too.
+      expect(wordsIn(html).join(" ")).toContain(said);
+      expect(cardOf(html)).toEqual({
+        description: said,
+        "og:type": "website",
+        "og:site_name": "Cairnfield",
+        "og:title": title,
+        "og:description": said,
+        "og:image": `${SITE}/share.png`,
+        "og:image:width": "600",
+        "og:image:height": "600",
+        "og:image:alt": "The Cairnfield logo, a cairn of four stones",
+        "twitter:card": "summary",
+      });
+    }
+  });
+
   it("serves the page's scripts and stylesheet with their media types, and never lets a browser guess one", async () => {
     const on = bench();
     for (const [path, type] of [
