@@ -35,6 +35,7 @@ The drawing shows one team's node in full, a second team's node and an index, wi
 | Take one component from `pin` to a checked copy | [One team alone](reference/walkthrough.md#one-team-alone) | One node |
 | Play the demo with two teams | [Replay the demo](reference/walkthrough.md#replay-the-demo) | Two nodes and an index |
 | Deploy a team node | [Deploy a node](#deploy-a-node) | A Cloudflare account |
+| Run an index | [What you deploy first](reference/walkthrough.md#what-you-deploy-first) | A Cloudflare account |
 | Have your own review agent write findings | [Let your own agent write findings](#let-your-own-agent-write-findings) | The skill file |
 
 The command needs Node.js 22.22 and Git, and is written for macOS and Linux. On an older Node.js it prints `{"error":"node-too-old",...}`, says which Node.js it needs and stops. Node.js 23 before 23.6 counts as older. Windows is not supported in the prototype. A node and an index each run in a Cloudflare account on the Workers Paid plan, which Artifacts requires.

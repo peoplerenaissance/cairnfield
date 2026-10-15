@@ -235,6 +235,30 @@ describe("the node's page", () => {
     for (const { text } of page.links) expect(text).not.toBe("");
   });
 
+  it("names a share card in its head: its title, the first thing it says of itself and the site's logo", async () => {
+    const { node } = await published(filesAt([CLAIM]));
+    const page = await read(node.get(""));
+
+    const card = page.elements
+      .filter(({ tag, attributes }) => tag === "meta" && /^(description|og:|twitter:)/.test(attributes["property"] ?? attributes["name"] ?? ""))
+      .map(({ attributes }) => [attributes["property"] ?? attributes["name"], attributes["content"]]);
+    const lead =
+      "This page is this team's own list of the records it has published. Nothing on it was checked: a node validates no record, and this page takes each record's type and ID from the name of its file, which it does not open.";
+    expect(page.texts).toContain(lead);
+    expect(card).toEqual([
+      ["description", lead],
+      ["og:type", "website"],
+      ["og:site_name", "Cairnfield"],
+      ["og:title", TITLE],
+      ["og:description", lead],
+      ["og:image", "https://cairnfield.net/share.png"],
+      ["og:image:width", "600"],
+      ["og:image:height", "600"],
+      ["og:image:alt", "The Cairnfield logo, a cairn of four stones"],
+      ["twitter:card", "summary"],
+    ]);
+  });
+
   it("draws components in ascending order of commit, and a component's records in ascending order of type and then of ID", async () => {
     const later = "f0".repeat(20);
     const types = ["claim", "counter-finding", "finding", "patch", "patch-re-check", "re-check", "recipe"];
