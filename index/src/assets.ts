@@ -8,7 +8,11 @@
 // icon, which a browser fetches as an image. Nothing else is allowed: no frame, no form.
 // The policy is written here and is no setting, so every index serves its pages under
 // the same one.
+//
+// A page's answer also names, in a `link` header, the data endpoint its script draws from
+// and the API catalog (R34), so a tool that asks for the page is pointed at the data.
 
+import { CATALOG_LINK } from "./describe.ts";
 import type { Env } from "./env.ts";
 import { refusal } from "./respond.ts";
 
@@ -29,11 +33,19 @@ const FONTS = "/page/fonts/";
 /** A browser keeps a font this long. A font's file never changes under its name, and a page that fetched its fonts on every load would draw its text twice each time. */
 const FONT_SECONDS = 7 * 24 * 60 * 60;
 
-/** One file of the pages, or `not-found` when the build made no such file. `path` is `ROOT`, `PAGE` or a path that `PAGE_FILE` matches. */
-export async function pageFile(env: Env, request: Request, path: string): Promise<Response> {
+/** The `link` header of a page whose script draws `data`: that endpoint, and the API catalog. */
+export const pageLinks = (data: string): string => `<${data}>; rel="alternate"; type="application/json", ${CATALOG_LINK}`;
+
+/**
+ * One file of the pages, or `not-found` when the build made no such file. `path` is
+ * `ROOT`, `PAGE` or a path that `PAGE_FILE` matches. For a page, `data` is the path of
+ * the endpoint its script draws from, which the answer names in its `link` header.
+ */
+export async function pageFile(env: Env, request: Request, path: string, data?: string): Promise<Response> {
   const found = await env.ASSETS.fetch(new URL(path, request.url));
   if (found.status !== 200) return refusal("not-found");
   const headers = new Headers({ "content-security-policy": POLICY, "x-content-type-options": "nosniff" });
+  if (data !== undefined) headers.set("link", pageLinks(data));
   // The assets binding names the media type of each file, and no browser is left to guess one.
   const type = found.headers.get("content-type");
   if (type !== null) headers.set("content-type", type);

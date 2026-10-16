@@ -415,16 +415,24 @@ export type CitedLines = Infer<typeof CITED_LINES>;
 
 export const LINK_TYPES = ["application/openapi+json", "application/schema+json"] as const;
 const LINK = shape({ href: url(), type: oneOf(LINK_TYPES) });
+const ITEM = shape({ href: url() });
 const MAX_LINKS = 32;
 
 /**
- * The API catalog (R34): a link set that points to the OpenAPI description and to the
- * record schemas. The link-set format allows no other member beside `linkset`, so this
- * one body carries no schema version.
+ * The API catalog (R34): a link set in the form of RFC 9727. One context is the catalog
+ * itself, whose `item` links name each API; the other is an API, whose `service-desc`
+ * links name its OpenAPI description and whose `describedby` links name the record
+ * schemas. The link-set format allows no other member beside `linkset`, so this one
+ * body carries no schema version.
  */
 export const API_CATALOG = shape({
   linkset: listOf(
-    shape({ anchor: url(), "service-desc": listOf(LINK, MAX_LINKS), describedby: listOf(LINK, MAX_LINKS) }),
+    shape({
+      anchor: url(),
+      item: optional(listOf(ITEM, MAX_LINKS)),
+      "service-desc": optional(listOf(LINK, MAX_LINKS)),
+      describedby: optional(listOf(LINK, MAX_LINKS)),
+    }),
     MAX_LINKS,
   ),
 });

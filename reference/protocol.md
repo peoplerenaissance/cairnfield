@@ -118,7 +118,7 @@ A node also serves a page at its own address, `GET /`, which lists what its team
 
 ## The index routes
 
-`protocol/schemas/openapi.json` describes twelve routes. The index in this repo serves six of them. The other six are shapes in the library that no Worker answers yet.
+`protocol/schemas/openapi.json` describes twelve routes. The index in this repo serves nine of them. The other three are shapes in the library that no Worker answers yet.
 
 | Name | Call | Needs | In this repo's index |
 | --- | --- | --- | --- |
@@ -131,11 +131,11 @@ A node also serves a page at its own address, `GET /`, which lists what its team
 | `lookup` | `GET /components?url=` | Nothing | Described only |
 | `criteria` | `GET /components/{component}/criteria` | Nothing | Described only |
 | `lines` | `GET /components/{component}/findings/{finding}/lines` | Nothing | Described only |
-| `catalog` | `GET /.well-known/api-catalog` | Nothing | Described only |
-| `description` | `GET /openapi.json` | Nothing | Described only |
-| `schema` | `GET /schemas/{type}.json` | Nothing | Described only |
+| `catalog` | `GET /.well-known/api-catalog` | Nothing | Served |
+| `description` | `GET /openapi.json` | Nothing | Served |
+| `schema` | `GET /schemas/{type}.json` | Nothing | Served |
 
-The index also serves a page for each component commit, at `GET /components/{component}`, which reads that commit's view. The index's own page, at `GET /`, reads `GET /view` in the same way. Neither page is part of the contract. Every JSON answer carries the schema version, and a refusal is a code from a closed list.
+The index also serves a page for each component commit, at `GET /components/{component}`, which reads that commit's view. The index's own page, at `GET /`, reads `GET /view` in the same way. Neither page is part of the contract. A page's answer carries a `link` header that names the endpoint its script reads, as `rel="alternate"`, and the catalog, as `rel="api-catalog"`. The index also serves `/robots.txt`, outside the contract: it allows every crawler every path and states the content signals `search=yes, ai-input=yes`. A zone in front of an index that serves none may answer with a file of comments alone, which a crawler reads as no file. Every JSON answer carries the schema version, and a refusal is a code from a closed list.
 
 ## Matching and confirmation
 
@@ -274,7 +274,7 @@ Until the index holds its own copy, the page of a component commit shows no coun
 
 **R33.** The view carries one row per host: each host that a destination finding names, with the number of findings that name it. The page does not show the rows.
 
-**R34.** An index should serve an API catalog at `/.well-known/api-catalog` that points to a description of its routes and to the record schemas. The library generates both, and they are in `protocol/schemas/`. The index in this repo serves none of the three routes.
+**R34.** An index should serve an API catalog at `/.well-known/api-catalog` that points to a description of its routes and to the record schemas. The library generates both, and they are in `protocol/schemas/`. The index in this repo serves the catalog, the description at `/openapi.json` and each schema at `/schemas/<type>.json`, built from the library at the first request, so a deployed index serves the files its code was built with. The catalog is a link set in the form of RFC 9727: its first context is the catalog, whose one `item` is the index's API at its own address, and its second is that API, with its OpenAPI description as `service-desc` and the record schemas as `describedby`. Every address in it is under the one the request was made to, because an index is told none of its own. The catalog's answer carries a `link` header that names the catalog, to a `HEAD` as to a `GET`, as the RFC asks. The index answers a `HEAD` to any `GET` route with the headers of that answer and no body. The catalog is the one JSON answer that carries no schema version: the link-set format allows no member beside `linkset`.
 
 **R35.** Every record and every JSON answer of the index carries the schema version. The index serves data and never instructions for agents. A refusal is a code from a closed list: `bad-request`, `unauthorized`, `not-found`, `not-allowed`, `limit-reached` or `already-registered`. The page says what the index holds and tells a reader nothing to do.
 
