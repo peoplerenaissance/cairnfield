@@ -105,7 +105,7 @@ The prototype shows the mechanism at one commit of one component. A hosted tool 
 
 Cairnfield assumes that some contributors are hostile, and that any component under review may be. The prototype builds four defenses: checks on records and patches, tokens scoped to one repo, checking again at assembly, and a lens that names teams. [`reference/threat-model.md`](reference/threat-model.md) goes through the threats one by one and says what the prototype builds for each, names four risks an operator should know, lists the parts of the design that are not built, and ends with the disclosure policy. This repo holds no finding about a real product and takes none. [`SECURITY.md`](SECURITY.md) says how to report a flaw in Cairnfield in private.
 
-## Status, as of October 13, 2026
+## Status, as of October 15, 2026
 
 | Part | State | Note |
 | --- | --- | --- |
@@ -116,7 +116,7 @@ Cairnfield assumes that some contributors are hostile, and that any component un
 | Demo plugin, lenses and saved findings | built | `fellbeck-sync`, an invented plugin with three planted problems, in `fixtures/`. Its two commits are public at https://github.com/peoplerenaissance/fellbeck-sync. |
 | Team node | built and deployed | The Worker in `node/`. Two demo nodes run on Cloudflare, each with its import of the demo plugin, its fork, its own page and its count of each fork's fetches. |
 | Setup script for a team node | built, not run on an account | `npm run setup` in `node/`. Its tests run it against a stand-in for Wrangler. |
-| Index | built in part, deployed | The Worker in `index/`. It checks every record and patch against its own copy, serves one view and one page per component commit and a page of its own, and carries each node's declared model and fetch count. It does not show cited lines, a row per host or how far the index lags behind the nodes. |
+| Index | built in part, deployed | The Worker in `index/`. It checks every record and patch against its own copy, serves one view and one page per component commit and a page of its own, and carries each node's declared model and fetch count. It serves an API catalog, the OpenAPI description of its routes and the record schemas, and a `robots.txt`. It does not show cited lines, a row per host or how far the index lags behind the nodes. |
 | The command | built in part | `cairnfield` in `cli/`: `pin`, `validate`, `publish`, `claim`, `view`, `patch`, `assemble`, `decide`, `approvals`, `verify` and `carry`. |
 | Skill file for a team's own review agent | written | `skills/cairnfield/SKILL.md`. |
 | Patch agent | built and run live | `cairnfield patch`, from a live model call or from a recording, with a note on each commit it pushes. Two live runs patched the demo plugin on deployed nodes. On its hidden instruction the agent wrote no patch in four live runs. |
