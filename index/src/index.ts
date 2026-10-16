@@ -13,7 +13,7 @@
 import { INDEX_ROUTES, REGISTRATION_KEY_HEADER, RESET_KEY_HEADER, conforms, isCommit } from "@cairnfield/protocol";
 import { PAGE, PAGE_FILE, ROOT, pageFile } from "./assets.ts";
 import { registeredComponents } from "./components.ts";
-import { ROBOTS, ROBOTS_PATH, catalog, description, schema, schemaTypeOf } from "./describe.ts";
+import { CATALOG_LINK, ROBOTS, ROBOTS_PATH, catalog, description, schema, schemaTypeOf } from "./describe.ts";
 import type { Env } from "./env.ts";
 import { jsonOf, readUpTo } from "./fetch.ts";
 import { consume, notice } from "./queue.ts";
@@ -59,7 +59,8 @@ async function list(env: Env, url: URL): Promise<Response> {
 }
 
 /** A fixed text under its media type: what the index says of itself (R34). */
-const fixed = (body: string, type: string): Response => new Response(body, { headers: { "content-type": type, "x-content-type-options": "nosniff" } });
+const fixed = (body: string, type: string, link?: string): Response =>
+  new Response(body, { headers: { "content-type": type, "x-content-type-options": "nosniff", ...(link === undefined ? {} : { link }) } });
 
 /** What the index says of itself at `url`, or nothing when no such answer stands there. None takes a query, so one of any kind is refused. */
 function described(url: URL): Response | undefined {
@@ -70,25 +71,35 @@ function described(url: URL): Response | undefined {
   if (url.searchParams.size > 0) return refusal("bad-request");
   if (type !== undefined) return fixed(schema(type), INDEX_ROUTES.schema.response.media);
   if (path === ROBOTS_PATH) return fixed(ROBOTS, "text/plain; charset=utf-8");
-  if (path === INDEX_ROUTES.catalog.path) return fixed(JSON.stringify(catalog(url.origin)), INDEX_ROUTES.catalog.media);
+  // The catalog's own answer names the catalog, as RFC 9727 asks of the answer to a `HEAD` there.
+  if (path === INDEX_ROUTES.catalog.path) return fixed(JSON.stringify(catalog(url.origin)), INDEX_ROUTES.catalog.media, CATALOG_LINK);
   return fixed(description(), INDEX_ROUTES.description.response.media);
+}
+
+/** The answer to a `GET`. */
+async function get(request: Request, env: Env, url: URL): Promise<Response> {
+  const path = url.pathname;
+  // The index's own page, at the index's own address. The query of the address is the page's to read, and it passes none on.
+  if (path === "/") return pageFile(env, request, ROOT, INDEX_ROUTES.list.path);
+  if (path === INDEX_ROUTES.list.path) return list(env, url);
+  const viewed = VIEW_PATH.exec(path);
+  if (viewed) return view(env, url, viewed[1] ?? "");
+  // The page is the same for a commit nobody registered: it reads the view, and says what the view says.
+  const paged = PAGE_PATH.exec(path);
+  if (paged) return isCommit(paged[1]) ? pageFile(env, request, PAGE, `${path}/view`) : refusal("not-found");
+  if (PAGE_FILE.test(path)) return pageFile(env, request, path);
+  return described(url) ?? refusal("not-found");
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
-    if (request.method === "GET") {
-      // The index's own page, at the index's own address. The query of the address is the page's to read, and it passes none on.
-      if (path === "/") return pageFile(env, request, ROOT, INDEX_ROUTES.list.path);
-      if (path === INDEX_ROUTES.list.path) return list(env, url);
-      const viewed = VIEW_PATH.exec(path);
-      if (viewed) return view(env, url, viewed[1] ?? "");
-      // The page is the same for a commit nobody registered: it reads the view, and says what the view says.
-      const paged = PAGE_PATH.exec(path);
-      if (paged) return isCommit(paged[1]) ? pageFile(env, request, PAGE, `${path}/view`) : refusal("not-found");
-      if (PAGE_FILE.test(path)) return pageFile(env, request, path);
-      return described(url) ?? refusal("not-found");
+    if (request.method === "GET") return get(request, env, url);
+    // A `HEAD` is answered as the `GET` would be, with the headers and no body. A tool that looks for the catalog starts with one (RFC 9727).
+    if (request.method === "HEAD") {
+      const answer = await get(request, env, url);
+      return new Response(null, { status: answer.status, headers: answer.headers });
     }
     if (request.method !== "POST") return refusal("not-found");
     if (path === INDEX_ROUTES.notice.path) return notice(env, await bodyOf(request), Date.now());

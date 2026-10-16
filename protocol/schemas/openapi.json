@@ -28,6 +28,25 @@
                             "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
                             "maxLength": 2048
                           },
+                          "item": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "href": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "pattern": "^https://(?![^/?#]*@)[^\\s\\\\]+$",
+                                  "maxLength": 2048
+                                }
+                              },
+                              "required": [
+                                "href"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 32
+                          },
                           "service-desc": {
                             "type": "array",
                             "items": {
@@ -82,9 +101,7 @@
                           }
                         },
                         "required": [
-                          "anchor",
-                          "service-desc",
-                          "describedby"
+                          "anchor"
                         ],
                         "additionalProperties": false
                       },

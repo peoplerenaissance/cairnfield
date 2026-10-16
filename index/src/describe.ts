@@ -37,12 +37,21 @@ export const description = (): string => generated()[OPENAPI_FILE] ?? "";
 /** The JSON Schema of a record type, as `protocol/schemas/<type>.json` holds it. */
 export const schema = (type: RecordType): string => generated()[`${type}.json`] ?? "";
 
-/** The API catalog of the index at `origin`, which is the address the request was made to. */
+/** The `link` header that names the catalog (RFC 9727). A page's answer carries it, and so does the catalog's own, to a `HEAD` as to a `GET`. */
+export const CATALOG_LINK = `<${INDEX_ROUTES.catalog.path}>; rel="api-catalog"`;
+
+/**
+ * The API catalog of the index at `origin`, which is the address the request was made
+ * to. Its first context is the catalog, whose one item is the index's API at its own
+ * address. Its second is that API: its OpenAPI description, and the schema of each
+ * record type.
+ */
 export function catalog(origin: string): ApiCatalog {
   const at = (path: string): string => new URL(path, origin).href;
   const [openapi, jsonSchema] = LINK_TYPES;
   return {
     linkset: [
+      { anchor: at(INDEX_ROUTES.catalog.path), item: [{ href: at("/") }] },
       {
         anchor: at("/"),
         "service-desc": [{ href: at(INDEX_ROUTES.description.path), type: openapi }],

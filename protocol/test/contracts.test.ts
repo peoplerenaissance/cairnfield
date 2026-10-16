@@ -388,8 +388,10 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
   it("serves the API catalog at /.well-known/api-catalog as a link set", () => {
     expect(INDEX_ROUTES.catalog.path).toBe("/.well-known/api-catalog");
     expect(INDEX_ROUTES.catalog.response).toBe(API_CATALOG);
+    // The catalog names the API as an item, and the API names its description and the schemas (RFC 9727).
     const body = {
       linkset: [
+        { anchor: "https://index.cairnfield.example/.well-known/api-catalog", item: [{ href: "https://index.cairnfield.example/" }] },
         {
           anchor: "https://index.cairnfield.example/",
           "service-desc": [{ href: "https://index.cairnfield.example/openapi.json", type: "application/openapi+json" }],
@@ -401,6 +403,7 @@ describe("index contract (R13, R34, KTD11, KTD12, KTD30)", () => {
     };
     expect(reasonOf(API_CATALOG, body)).toBe("ok");
     expect(reasonOf(API_CATALOG, { ...body, next: "read the docs" })).toBe("unknown-field");
+    expect(reasonOf(API_CATALOG, { linkset: [{ anchor: "https://index.cairnfield.example/", item: [{ href: "ftp://x" }] }] })).toBe("unknown-value");
   });
 
   it("registers a component by Git URL, branch and commit", () => {

@@ -129,6 +129,8 @@ export interface Bench {
   call(method: string, path: string, body?: unknown, key?: readonly [header: string, value: string]): Promise<Answer>;
   /** A `GET` as a browser makes it, with the answer as it is: its status, its headers and a body that may not be JSON. */
   get(path: string): Promise<Response>;
+  /** A `HEAD`, with the answer as it is. */
+  head(path: string): Promise<Response>;
   registerNode(url: string): Promise<Answer>;
   registerComponent(component: { readonly url: string; readonly branch: string; readonly commit: string }): Promise<Answer>;
   notice(node: string): Promise<Answer>;
@@ -218,6 +220,7 @@ export function bench(settings: Settings = {}): Bench {
     env: bindings,
     call,
     get: async (path) => worker.fetch(new Request(`${INDEX}${path}`), bindings),
+    head: async (path) => worker.fetch(new Request(`${INDEX}${path}`, { method: "HEAD" }), bindings),
     registerNode: (url) => call("POST", "/nodes", { url }, [REGISTRATION_HEADER, REGISTRATION_KEY]),
     registerComponent: (component) => call("POST", "/components", component, [REGISTRATION_HEADER, REGISTRATION_KEY]),
     notice: (node) => call("POST", "/notices", { node }),

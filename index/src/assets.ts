@@ -12,7 +12,7 @@
 // A page's answer also names, in a `link` header, the data endpoint its script draws from
 // and the API catalog (R34), so a tool that asks for the page is pointed at the data.
 
-import { INDEX_ROUTES } from "@cairnfield/protocol";
+import { CATALOG_LINK } from "./describe.ts";
 import type { Env } from "./env.ts";
 import { refusal } from "./respond.ts";
 
@@ -34,7 +34,7 @@ const FONTS = "/page/fonts/";
 const FONT_SECONDS = 7 * 24 * 60 * 60;
 
 /** The `link` header of a page whose script draws `data`: that endpoint, and the API catalog. */
-export const pageLinks = (data: string): string => `<${data}>; rel="alternate"; type="application/json", <${INDEX_ROUTES.catalog.path}>; rel="api-catalog"`;
+export const pageLinks = (data: string): string => `<${data}>; rel="alternate"; type="application/json", ${CATALOG_LINK}`;
 
 /**
  * One file of the pages, or `not-found` when the build made no such file. `path` is

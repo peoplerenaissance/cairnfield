@@ -31,28 +31,45 @@ describe("robots.txt", () => {
 });
 
 describe("the API catalog (R34)", () => {
-  it("is a link set from the index's own address to the OpenAPI description and to the schema of each record type", async () => {
+  it("is a link set whose one item is the index's API, with the OpenAPI description and the schema of each record type", async () => {
     const on = bench();
     const response = await on.get(INDEX_ROUTES.catalog.path);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/linkset+json");
+    expect(response.headers.get("link")).toBe('</.well-known/api-catalog>; rel="api-catalog"');
     const body: unknown = await response.json();
     expect(conforms(API_CATALOG, body)).toBeUndefined();
-    const { linkset } = body as ApiCatalog;
-    expect(linkset).toHaveLength(1);
-    const [set] = linkset;
-    // The anchor is the address the request was made to: an index is told none of its own.
-    expect(set?.anchor).toBe(`${INDEX}/`);
-    expect(set?.["service-desc"]).toEqual([{ href: `${INDEX}/openapi.json`, type: "application/openapi+json" }]);
-    expect(set?.describedby).toEqual(RECORD_TYPES.map((type) => ({ href: `${INDEX}/schemas/${type}.json`, type: "application/schema+json" })));
+    // Every address is under the one the request was made to: an index is told none of its own.
+    expect((body as ApiCatalog).linkset).toEqual([
+      { anchor: `${INDEX}/.well-known/api-catalog`, item: [{ href: `${INDEX}/` }] },
+      {
+        anchor: `${INDEX}/`,
+        "service-desc": [{ href: `${INDEX}/openapi.json`, type: "application/openapi+json" }],
+        describedby: RECORD_TYPES.map((type) => ({ href: `${INDEX}/schemas/${type}.json`, type: "application/schema+json" })),
+      },
+    ]);
     // The catalog is the one JSON answer with no schema version: the link-set format allows no other member.
     expect(Object.keys(body as object)).toEqual(["linkset"]);
+  });
+
+  it("answers a HEAD as it answers the GET, with the headers and no body", async () => {
+    const on = bench();
+    for (const path of [INDEX_ROUTES.catalog.path, "/robots.txt", "/openapi.json", "/", `/components/${"9a".repeat(20)}`, "/view"]) {
+      const head = await on.head(path);
+      const got = await on.get(path);
+      expect(head.status, path).toBe(got.status);
+      expect([...head.headers].sort(), path).toEqual([...got.headers].sort());
+      expect(await head.text(), path).toBe("");
+    }
+    expect((await on.head(INDEX_ROUTES.catalog.path)).headers.get("link")).toBe('</.well-known/api-catalog>; rel="api-catalog"');
+    expect((await on.head("/schemas/other.json")).status).toBe(404);
+    expect((await on.head("/nodes")).status).toBe(404);
   });
 
   it("points only at answers the index serves, each under the media type the link names", async () => {
     const on = bench();
     const { linkset } = (await (await on.get(INDEX_ROUTES.catalog.path)).json()) as ApiCatalog;
-    for (const link of linkset.flatMap((set) => [...set["service-desc"], ...set.describedby])) {
+    for (const link of linkset.flatMap((set) => [...(set["service-desc"] ?? []), ...(set.describedby ?? [])])) {
       const url = new URL(link.href);
       expect(url.origin).toBe(INDEX);
       const response = await on.get(url.pathname);
