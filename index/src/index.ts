@@ -7,13 +7,14 @@
 // their files is JSON in a shape of the protocol, with the schema version, and a refusal
 // is a code from a closed list. A page's script reads the view or the list and nothing
 // else, and the words a page holds apart from that are written in the repo (KTD14).
-// The index also says what it is to a crawler and to a tool: a `robots.txt`, and the API
-// catalog that points to the description of its routes and the record schemas (R34).
+// The index also says what it is to a crawler and to a tool: a `robots.txt`, a sitemap,
+// and the API catalog that points to the description of its routes and the record
+// schemas (R34).
 
 import { INDEX_ROUTES, REGISTRATION_KEY_HEADER, RESET_KEY_HEADER, conforms, isCommit } from "@cairnfield/protocol";
 import { PAGE, PAGE_FILE, ROOT, pageFile } from "./assets.ts";
 import { registeredComponents } from "./components.ts";
-import { CATALOG_LINK, ROBOTS, ROBOTS_PATH, catalog, description, schema, schemaTypeOf } from "./describe.ts";
+import { CATALOG_LINK, ROBOTS_PATH, SITEMAP_PATH, catalog, description, robots, schema, schemaTypeOf, sitemap } from "./describe.ts";
 import type { Env } from "./env.ts";
 import { jsonOf, readUpTo } from "./fetch.ts";
 import { consume, notice } from "./queue.ts";
@@ -63,14 +64,15 @@ const fixed = (body: string, type: string, link?: string): Response =>
   new Response(body, { headers: { "content-type": type, "x-content-type-options": "nosniff", ...(link === undefined ? {} : { link }) } });
 
 /** What the index says of itself at `url`, or nothing when no such answer stands there. None takes a query, so one of any kind is refused. */
-function described(url: URL): Response | undefined {
+async function described(env: Env, url: URL): Promise<Response | undefined> {
   const path = url.pathname;
   const type = schemaTypeOf(path);
-  const stands = type !== undefined || path === ROBOTS_PATH || path === INDEX_ROUTES.catalog.path || path === INDEX_ROUTES.description.path;
+  const stands = type !== undefined || path === ROBOTS_PATH || path === SITEMAP_PATH || path === INDEX_ROUTES.catalog.path || path === INDEX_ROUTES.description.path;
   if (!stands) return undefined;
   if (url.searchParams.size > 0) return refusal("bad-request");
   if (type !== undefined) return fixed(schema(type), INDEX_ROUTES.schema.response.media);
-  if (path === ROBOTS_PATH) return fixed(ROBOTS, "text/plain; charset=utf-8");
+  if (path === ROBOTS_PATH) return fixed(robots(url.origin), "text/plain; charset=utf-8");
+  if (path === SITEMAP_PATH) return fixed(sitemap(url.origin, (await registeredComponents(env)).map(({ component }) => component)), "application/xml; charset=utf-8");
   // The catalog's own answer names the catalog, as RFC 9727 asks of the answer to a `HEAD` there.
   if (path === INDEX_ROUTES.catalog.path) return fixed(JSON.stringify(catalog(url.origin)), INDEX_ROUTES.catalog.media, CATALOG_LINK);
   return fixed(description(), INDEX_ROUTES.description.response.media);
@@ -88,7 +90,7 @@ async function get(request: Request, env: Env, url: URL): Promise<Response> {
   const paged = PAGE_PATH.exec(path);
   if (paged) return isCommit(paged[1]) ? pageFile(env, request, PAGE, `${path}/view`) : refusal("not-found");
   if (PAGE_FILE.test(path)) return pageFile(env, request, path);
-  return described(url) ?? refusal("not-found");
+  return (await described(env, url)) ?? refusal("not-found");
 }
 
 export default {
