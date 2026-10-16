@@ -1,5 +1,5 @@
-// What the index says of itself apart from its data (R34, R35): a `robots.txt` for a
-// crawler, and the API catalog that points a tool to the description of the routes and
+// What the index says of itself apart from its data (R34, R35): a `robots.txt` and a
+// sitemap for a crawler, and the API catalog that points a tool to the description of the routes and
 // to the schema of each record type. Each is fixed in the code or built from the
 // library, so an index serves it with no setting.
 
@@ -7,7 +7,7 @@ import { API_CATALOG, INDEX_ROUTES, RECORD_TYPES, conforms, generatedFiles, open
 import type { ApiCatalog } from "@cairnfield/protocol";
 import { describe, expect, it } from "vitest";
 import { pageLinks } from "../src/assets.ts";
-import { INDEX, bench, freshIndexForEachTest } from "./bench.ts";
+import { INDEX, bench, freshIndexForEachTest, threeComponents } from "./bench.ts";
 
 freshIndexForEachTest();
 
@@ -15,7 +15,7 @@ const notFound = { status: 404, body: { version: "1", error: "not-found" } };
 const badRequest = { status: 400, body: { version: "1", error: "bad-request" } };
 
 describe("robots.txt", () => {
-  it("lets every crawler read every path, and says a page may be searched and given to a model as input", async () => {
+  it("lets every crawler read every path, says a page may be searched and given to a model as input, and names the sitemap", async () => {
     const on = bench();
     const response = await on.get("/robots.txt");
     expect(response.status).toBe(200);
@@ -26,7 +26,31 @@ describe("robots.txt", () => {
     expect(lines.slice(0, 2)).toEqual(["User-agent: *", "Allow: /"]);
     expect(lines).toContain("Content-Signal: search=yes, ai-input=yes");
     expect(lines.some((line) => /^Disallow/.test(line))).toBe(false);
+    // The sitemap is named by a whole address, as the format asks, under the address the request was made to.
+    expect(lines).toContain(`Sitemap: ${INDEX}/sitemap.xml`);
     expect(lines.at(-1)).toBe("");
+  });
+});
+
+describe("sitemap.xml", () => {
+  it("lists the index's own page and the page of each registered component, in registration order", async () => {
+    const on = bench();
+    const empty = await on.get("/sitemap.xml");
+    expect(empty.status).toBe(200);
+    expect(empty.headers.get("content-type")).toBe("application/xml; charset=utf-8");
+    expect(empty.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await empty.text()).toBe(
+      ['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', `  <url><loc>${INDEX}/</loc></url>`, "</urlset>", ""].join("\n"),
+    );
+
+    const { on: three, components } = await threeComponents();
+    const commits = components.map(({ component }) => component);
+    const text = await (await three.get("/sitemap.xml")).text();
+    expect([...text.matchAll(/<loc>([^<]*)<\/loc>/g)].map((match) => match[1])).toEqual([`${INDEX}/`, ...commits.map((commit) => `${INDEX}/components/${commit}`)]);
+    // Each address in it is a page the index serves.
+    for (const address of [...text.matchAll(/<loc>([^<]*)<\/loc>/g)].map((match) => match[1] ?? "")) {
+      expect((await three.get(new URL(address).pathname)).headers.get("content-type"), address).toBe("text/html; charset=utf-8");
+    }
   });
 });
 
@@ -54,7 +78,7 @@ describe("the API catalog (R34)", () => {
 
   it("answers a HEAD as it answers the GET, with the headers and no body", async () => {
     const on = bench();
-    for (const path of [INDEX_ROUTES.catalog.path, "/robots.txt", "/openapi.json", "/", `/components/${"9a".repeat(20)}`, "/view"]) {
+    for (const path of [INDEX_ROUTES.catalog.path, "/robots.txt", "/sitemap.xml", "/openapi.json", "/", `/components/${"9a".repeat(20)}`, "/view"]) {
       const head = await on.head(path);
       const got = await on.get(path);
       expect(head.status, path).toBe(got.status);
@@ -93,10 +117,10 @@ describe("the API catalog (R34)", () => {
 
   it("serves no schema under another name, and refuses a query on any of these", async () => {
     const on = bench();
-    for (const path of ["/schemas/other.json", "/schemas/finding.json/", "/schemas/finding", "/schemas/", "/schemas/Finding.json", "/.well-known/", "/.well-known/other", "/robots.txt/"]) {
+    for (const path of ["/schemas/other.json", "/schemas/finding.json/", "/schemas/finding", "/schemas/", "/schemas/Finding.json", "/.well-known/", "/.well-known/other", "/robots.txt/", "/sitemap.xml/", "/sitemap"]) {
       expect(await on.call("GET", path), path).toEqual(notFound);
     }
-    for (const path of ["/robots.txt", INDEX_ROUTES.catalog.path, INDEX_ROUTES.description.path, "/schemas/finding.json"]) {
+    for (const path of ["/robots.txt", "/sitemap.xml", INDEX_ROUTES.catalog.path, INDEX_ROUTES.description.path, "/schemas/finding.json"]) {
       expect(await on.call("GET", `${path}?x=1`), path).toEqual(badRequest);
       // None answers a POST.
       expect(await on.call("POST", path), path).toEqual(notFound);
